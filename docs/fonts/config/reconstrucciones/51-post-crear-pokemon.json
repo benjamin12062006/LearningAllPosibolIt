@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 6 E2E - End to end testing/51. E2E - Post Crear pokemon.md",
+  "previous": ["Sección 6 E2E - End to end testing/50. Configuraciones para e2e.md"],
+  "objective": "Crear el spec E2E de Pokemons desde AppModule, enviar POST sin body con Supertest y recuperar la configuración ValidationPipe que no se ejecuta al omitir main.ts. Conservar que esta clase termina con el matcher todavía en 200 y la respuesta ya en 400; corregir la expectativa se continúa en la siguiente lección.",
+  "initial": "La aplicación MyPokemonApp del curso ya tiene AppModule, módulo Pokémon, DTO validado y spec E2E de raíz. La lección 50 configura los scripts E2E/watch; la 51 mueve el spec de raíz a test/e2e y crea test/e2e/pokemons/pokemons.e2e-spec.ts. Se usa el AppModule heredado del curso, no se implementa otra API. No está disponible aquí el repositorio completo ni el bloque exacto de opciones de ValidationPipe en main.ts.",
+  "certainty": "Reconstrucción del archivo de pruebas y su orden de cambios a partir de narración, con rutas de imports y nombres normalizados. La configuración exacta de ValidationPipe no se recupera de la transcripción: el código presenta la instancia mínima identificable y señala que deben restaurarse las opciones del main original antes de reproducirlo fielmente. No se inventan transform/whitelist/forbidNonWhitelisted del curso. El final deliberadamente conserva expect(200) aunque el servidor devuelve 400; no es un test terminado ni se afirma haber ejecutado el proyecto.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "E2E",
+      "change": "Organizar specs bajo test/e2e con estructura equivalente a src.",
+      "certainty": "Explícito, normalizando el nombre verbal del directorio."
+    },
+    {
+      "id": "E2",
+      "line": 19,
+      "phrase": "Beforeeach",
+      "change": "Crear la aplicación en beforeEach con Test.createTestingModule y Supertest para sus peticiones.",
+      "certainty": "Mecanismo explícito; montaje de createNestApplication/app.init ensamblado desde la referencia al spec heredado."
+    },
+    {
+      "id": "E3",
+      "line": 21,
+      "phrase": "app módulo",
+      "change": "Importar AppModule para probar el flujo de aplicación, no únicamente PokemonModule.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E4",
+      "line": 23,
+      "phrase": "bootstrap",
+      "change": "El montaje desde AppModule no ejecuta main.ts ni su prefijo global.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E5",
+      "line": 31,
+      "phrase": "Global prefix",
+      "change": "setGlobalPrefix es una alternativa que el instructor explica, no la configuración aplicada al final de la lección.",
+      "certainty": "Explícito; se mantiene /pokemons en el spec reconstruido."
+    },
+    {
+      "id": "E6",
+      "line": 33,
+      "phrase": "status 200",
+      "change": "POST sin body debe producir 400, pero inicialmente se deja la expectativa 200 y se observa 500 al faltar validación.",
+      "certainty": "Explícito; el fallo se conserva como parte del recorrido."
+    },
+    {
+      "id": "E7",
+      "line": 35,
+      "phrase": "Global Pipes",
+      "change": "Restaurar en la app de prueba el ValidationPipe del main antes de inicializarla.",
+      "certainty": "Instanciación recuperable; opciones exactas ausentes, se declaran."
+    },
+    {
+      "id": "E8",
+      "line": 37,
+      "phrase": "recibimos un Bad Request",
+      "change": "Tras añadir ValidationPipe se obtiene 400 mientras el matcher sigue esperando 200.",
+      "certainty": "Explícito: no convertir el final de la clase en una prueba verde inventada."
+    },
+    {
+      "id": "E9",
+      "source": "Sección 6 E2E - End to end testing/50. Configuraciones para e2e.md",
+      "line": 17,
+      "phrase": "Supertest",
+      "change": "request es el nombre del import Supertest usado para enviar la petición al servidor de la aplicación de prueba.",
+      "certainty": "Explícito; forma de import ensamblada según el ejemplo heredado."
+    },
+    {
+      "id": "E10",
+      "source": "Sección 6 E2E - End to end testing/50. Configuraciones para e2e.md",
+      "line": 19,
+      "phrase": "watch",
+      "change": "El comando de práctica del curso es npm run test:e2e:watch.",
+      "certainty": "Nombre normalizado del comando pronunciado."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Crear la aplicación desde AppModule",
+      "language": "ts",
+      "code": "let app: INestApplication;\n\nbeforeEach(async () => {\n  const moduleFixture: TestingModule = await Test.createTestingModule({\n    imports: [AppModule],\n  }).compile();\n\n  app = moduleFixture.createNestApplication();\n  await app.init();\n});",
+      "why": "El flujo pasa por los módulos reales de la aplicación del curso. Esto resuelve sus dependencias, pero no llama al bootstrap de main ni copia automáticamente su configuración HTTP.",
+      "check": "Usar el proyecto original del curso y npm run test:e2e:watch. Esta fase solo monta la app; confirmar que el spec nuevo resuelve el import ../../../src/app.module desde test/e2e/pokemons.",
+      "evidence": [
+        "E1", "E2", "E3", "E4", "E10"
+      ]
+    },
+    {
+      "title": "Enviar POST sin body y observar el fallo inesperado",
+      "language": "ts",
+      "code": "it('/pokemons (POST) - with no body', () => {\n  return request(app.getHttpServer())\n    .post('/pokemons')\n    .expect(200);\n});",
+      "why": "Se sustituye el GET de raíz heredado por el POST del flujo. El objetivo verbal es rechazar el cuerpo ausente, pero el matcher 200 aún es el heredado. Sin el pipe, el instructor observa 500 y descubre una diferencia de configuración.",
+      "check": "En el estado mostrado, la prueba todavía falla: espera 200 y recibe 500. No deducir que el DTO se valida por estar decorado si la app de pruebas no tiene ValidationPipe.",
+      "evidence": ["E4", "E5", "E6", "E9"]
+    },
+    {
+      "title": "Restaurar ValidationPipe antes de init y conservar la continuación pendiente",
+      "language": "ts",
+      "code": "app = moduleFixture.createNestApplication();\n// Mínimo recuperable: las opciones exactas deben copiarse del main original.\napp.useGlobalPipes(new ValidationPipe());\nawait app.init();\n\n// El matcher al final de ESTA lección todavía es .expect(200).",
+      "why": "Configurar el pipe permite producir el Bad Request previsto. La lección termina antes de corregir/completar las aserciones; la guía debe conservar ese estado en lugar de añadir el contenido de la siguiente clase.",
+      "check": "Primero recuperar las opciones exactas del main del material original. Con la validación aplicada, se espera observar el fallo 200 frente a 400 descrito por el instructor. La siguiente clase completa status/body; no se da esta prueba por aprobada.",
+      "evidence": ["E6", "E7", "E8"]
+    }
+  ],
+  "files": [
+    {
+      "path": "test/e2e/pokemons/pokemons.e2e-spec.ts",
+      "language": "ts",
+      "code": "import { INestApplication, ValidationPipe } from '@nestjs/common';\nimport { Test, TestingModule } from '@nestjs/testing';\nimport * as request from 'supertest';\nimport { AppModule } from '../../../src/app.module';\n\ndescribe('Pokemons (e2e)', () => {\n  let app: INestApplication;\n\n  beforeEach(async () => {\n    const moduleFixture: TestingModule = await Test.createTestingModule({\n      imports: [AppModule],\n    }).compile();\n\n    app = moduleFixture.createNestApplication();\n    // Restaurar aquí las opciones del main original: no constan en la transcripción.\n    app.useGlobalPipes(new ValidationPipe());\n    await app.init();\n  });\n\n  it('/pokemons (POST) - with no body', () => {\n    return request(app.getHttpServer())\n      .post('/pokemons')\n      .expect(200); // Estado todavía fallido al cerrar la lección 51: recibe 400.\n  });\n});",
+      "provenance": "E1/E2/E3: nuevo spec y montaje desde AppModule; E4/E5: ruta /pokemons sin prefijo del main; E6/E8: matcher 200 que aún falla frente al 400; E7: ValidationPipe antes de init; E9: request/Supertest. Imports y nombres moduleFixture/app se ensamblan desde el spec heredado descrito. No se recuperan opciones del pipe ni configuración completa del proyecto, por lo que este archivo no se presenta como réplica exacta ejecutable. El spec de raíz solo cambia de ubicación, sin cuerpo recuperable en esta clase: no se inventa su contenido."
+    }
+  ],
+  "temporary": "No se mantiene el GET de raíz dentro del spec Pokémon. Cambiar Hello World para provocar un error era un experimento de contexto de la lección 50, no un cambio productivo de la 51. La alternativa de configurar setGlobalPrefix se explica, pero no se aplica al spec final del curso. El estado final sigue con la expectativa 200 pendiente de corregir en la lección 52; no se añaden aquí sus pruebas ni mensajes de error ausentes. No se añaden hooks de cierre que no se recuperan de estas transcripciones: son una mejora de adaptación que se documenta aparte, no una atribución al instructor.",
+  "mental": "Importar AppModule y ejecutar main son recorridos distintos. Un DTO decorado necesita el pipe en la app de pruebas para producir el rechazo HTTP. Esta clase descubre esa deriva y termina con un test rojo conocido. Reproducir el punto de partida, observar el resultado y corregir la aserción en su lección correspondiente es distinto de declarar el flujo verificado."
+}

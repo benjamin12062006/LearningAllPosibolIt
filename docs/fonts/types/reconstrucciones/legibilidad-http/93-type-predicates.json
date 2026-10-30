@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 7 Advanced Types/93. Outsourcing Type Guards & Using Type Predicates.md",
+  "previous": [
+    "Sección 7 Advanced Types/90. More on Type Guards.md",
+    "Sección 7 Advanced Types/91. Discriminated Unions.md"
+  ],
+  "objective": "Extraer una comprobación de tipo a isFile y conservar el estrechamiento en loadData.",
+  "initial": "Las lecciones 90 y 91 presentan FileSource/DBSource y una unión discriminada con type file/db. El ejemplo de instanceof de 92 es independiente y no se necesita.",
+  "certainty": "Los nombres FileSource, DBSource, Source, isFile y loadData se recuperan de la narración inglesa/traducida. Los tipos y la condición se ensamblan con 90/91; connectionUrl y guards.ts son normalizaciones documentales de la narración traducida. No se dispone del adjunto: la apertura de archivo y conexión de base siguen como comentarios, tal como el alcance didáctico de la fuente; no existe IO funcional reconstruido.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "isFile",
+      "change": "Extraer la comprobación a isFile",
+      "certainty": "Símbolo y propósito explícitos"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "un predicado de tipo",
+      "change": "Inferencia de la relación entre true y FileSource",
+      "certainty": "Mecanismo explícito; no se añade una anotación que la fuente dice inferida"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "dentro de loadData",
+      "change": "Reutilizar el guard y estrechar source",
+      "certainty": "Uso y efecto explícitos"
+    },
+    {
+      "id": "E4",
+      "source": "Sección 7 Advanced Types/90. More on Type Guards.md",
+      "line": 13,
+      "phrase": "propiedad de ruta",
+      "change": "Contexto de FileSource y Source",
+      "certainty": "Nombres ensamblados con los declarados en 93"
+    },
+    {
+      "id": "E5",
+      "source": "Sección 7 Advanced Types/91. Discriminated Unions.md",
+      "line": 19,
+      "phrase": "file o db",
+      "change": "Discriminante type en ambos tipos",
+      "certainty": "Literales explícitos, código ensamblado"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Conservar el contrato de fuentes",
+      "code": "type FileSource = { type: 'file'; path: string };\ntype DBSource = { type: 'db'; connectionUrl: string };\ntype Source = FileSource | DBSource;",
+      "why": "El guard recibe una unión conocida, cuyos miembros tienen formas distintas. No recibe unknown.",
+      "check": "Observar type file/db y la propiedad específica de cada alternativa.",
+      "evidence": [
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Extraer la decisión con un nombre",
+      "code": "function isFile(source: Source) {\n  return source.type === 'file';\n}",
+      "why": "La condición sigue siendo la misma; isFile expresa su significado al lector y TypeScript infiere el predicado.",
+      "check": "El editor debe inferir source is FileSource en el retorno de isFile.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Leer el flujo desde loadData",
+      "code": "function loadData(source: Source) {\n  if (isFile(source)) {\n    // Aquí se abriría el archivo con source.path.\n    return;\n  }\n  // Aquí se conectaría la base con source.connectionUrl.\n}",
+      "why": "La función usa la decisión nombrada, retorna tras el caso de archivo y deja la alternativa de base al final.",
+      "check": "Dentro del if puede accederse a source.path; después del return, a source.connectionUrl. Son comprobaciones previstas, no ejecución del curso.",
+      "evidence": [
+        "E3",
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "guards.ts",
+      "language": "ts",
+      "code": "type FileSource = { type: 'file'; path: string };\ntype DBSource = { type: 'db'; connectionUrl: string };\ntype Source = FileSource | DBSource;\n\nfunction isFile(source: Source) {\n  return source.type === 'file';\n}\n\nfunction loadData(source: Source) {\n  if (isFile(source)) {\n    // Aquí se abriría el archivo con source.path.\n    return;\n  }\n  // Aquí se conectaría la base con source.connectionUrl.\n}\n",
+      "provenance": "E1–E5. Esqueleto didáctico ensamblado: no se inventan valores de ejemplo, importaciones ni operaciones de IO ausentes."
+    }
+  ],
+  "temporary": "La condición inline anterior se reemplaza por isFile. No se incorporan las clases de la lección 92 ni una base real. Para el backend unknown sigue exigiendo comprobaciones de objeto y campos, adaptación documentada fuera de esta guía.",
+  "mental": "Un guard nombrado transmite intención al lector y estrechamiento a TypeScript. La función principal conserva el flujo visible; separar la condición no elimina las comprobaciones necesarias."
+}

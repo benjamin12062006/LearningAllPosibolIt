@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 10 Deriving Types From Types/124. Understanding Indexed Access Types.md",
+  "previous": [],
+  "objective": "Extraer el tipo de permissions en Perms sin duplicar su estructura.",
+  "initial": "Se conocen typeof y keyof; esta lección define AppUser manualmente y extrae parte de su tipo.",
+  "certainty": "AppUser, Perms y las propiedades name, age, permissions, id, title y description constan en la explicación. La sintaxis se ensambla y indexed-access.ts es una ruta documental: el original no fija nombre de archivo. No se inventan valores del appUser alternativo, pues la transcripción no los da.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "AppUser",
+      "change": "Usuario con lista de objetos de permiso",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E2",
+      "line": 17,
+      "phrase": "un nuevo tipo, Perms",
+      "change": "Necesidad de extraer sin copiar y pegar",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "utilizando a continuación corchetes",
+      "change": "Acceso indexado a permissions en posición de tipo",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Tipo de usuario",
+      "code": "type AppUser = {\n  name: string;\n  age: number;\n  permissions: { id: string; title: string; description: string }[];\n};",
+      "why": "Un único tipo contiene la estructura de los permisos.",
+      "check": "Revisar que permissions es un array de objetos con tres campos string.",
+      "evidence": [
+        "E1"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Extraer parte del tipo",
+      "code": "type Perms = AppUser['permissions'];",
+      "why": "El acceso se realiza sobre un tipo y mantiene su relación con el origen.",
+      "check": "Un cambio en permissions se refleja en Perms sin copiar la definición.",
+      "evidence": [
+        "E2",
+        "E3"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "indexed-access.ts",
+      "language": "ts",
+      "code": "type AppUser = {\n  name: string;\n  age: number;\n  permissions: {\n    id: string;\n    title: string;\n    description: string;\n  }[];\n};\ntype Perms = AppUser['permissions'];\n",
+      "provenance": "E1, E2, E3. AppUser, Perms y las propiedades name, age, permissions, id, title y description constan en la explicación. La sintaxis se ensambla y indexed-access.ts es una ruta documental: el original no fija nombre de archivo. No se inventan valores del appUser alternativo, pues la transcripción no los da."
+    }
+  ],
+  "temporary": "El tipo Perms copiado manualmente y la alternativa typeof appUser son explicaciones comparativas; no se mantienen dos definiciones finales ni se inventa el objeto de datos.",
+  "mental": "Extraer el tipo de permissions en Perms sin duplicar su estructura. La guía recupera el ejemplo del curso; la aplicación a ErrorCodes se documenta por separado en la ficha del proyecto."
+}

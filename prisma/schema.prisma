@@ -1,0 +1,97 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["estadistica_forms"]
+}
+
+model AppUser {
+  id              String    @id
+  identityIssuer  String    @map("identity_issuer")
+  identitySubject String    @map("identity_subject")
+  email           String?
+  displayName     String?   @map("display_name")
+  createdAt       String    @map("created_at")
+  updatedAt       String    @map("updated_at")
+  projects        Project[]
+
+  @@unique([identityIssuer, identitySubject])
+  @@map("app_users")
+  @@schema("estadistica_forms")
+}
+
+model Project {
+  id             String            @id
+  name           String
+  ownerId        String            @map("owner_id")
+  createdAt      String            @map("created_at")
+  country        String?
+  currency       String?
+  channelProfile String?           @map("channel_profile")
+  owner          AppUser           @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  snapshots      CatalogSnapshot[]
+
+  @@index([ownerId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_projects_owner_created")
+  @@map("projects")
+  @@schema("estadistica_forms")
+}
+
+model CatalogSnapshot {
+  id                   String             @id
+  projectId            String             @map("project_id")
+  idColumn             String             @map("id_column")
+  delimiter            String
+  headers              Json?
+  sourceHash           String             @map("source_hash")
+  artifactKey          String             @unique @map("artifact_key")
+  byteSize             Int                @map("byte_size")
+  originalName         String             @map("original_name")
+  projectConfiguration Json               @map("project_configuration")
+  status               String
+  rowCount             Int?               @map("row_count")
+  createdAt            String             @map("created_at")
+  finishedAt           String?            @map("finished_at")
+  error                Json?
+  project              Project            @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  rows                 CatalogRow[]
+  jobs                 CatalogImportJob[]
+
+  @@unique([projectId, id])
+  @@map("catalog_snapshots")
+  @@schema("estadistica_forms")
+}
+
+model CatalogRow {
+  snapshotId     String          @map("snapshot_id")
+  sourceRow      Int             @map("source_row")
+  externalId     String          @map("external_id")
+  originalValues Json            @map("original_values")
+  snapshot       CatalogSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([snapshotId, sourceRow])
+  @@unique([snapshotId, externalId])
+  @@map("catalog_rows")
+  @@schema("estadistica_forms")
+}
+
+model CatalogImportJob {
+  id            String          @id
+  projectId     String          @map("project_id")
+  snapshotId    String          @unique @map("snapshot_id")
+  requestId     String          @map("request_id")
+  status        String
+  processedRows Int             @default(0) @map("processed_rows")
+  createdAt     String          @map("created_at")
+  startedAt     String?         @map("started_at")
+  finishedAt    String?         @map("finished_at")
+  error         Json?
+  snapshot      CatalogSnapshot @relation(fields: [projectId, snapshotId], references: [projectId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([status, createdAt, id], map: "idx_catalog_jobs_queue")
+  @@map("catalog_import_jobs")
+  @@schema("estadistica_forms")
+}

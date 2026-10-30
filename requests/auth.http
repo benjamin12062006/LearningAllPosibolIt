@@ -1,0 +1,18 @@
+# WebStorm: seleccionar local en Run with. CLI: pnpm api:request
+
+### Sin sesión: debe responder 401
+# @name unauthenticated
+GET {{apiUrl}}/auth/me
+Accept: application/json
+
+### Con sesión: el token temporal se genera con pnpm api:auth-test
+# @name authenticated
+GET {{apiUrl}}/auth/me
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+> {%
+  client.test("Sesión válida: HTTP 200", function () {
+    client.assert(response.status === 200, "Se esperaba HTTP 200");
+  });
+%}

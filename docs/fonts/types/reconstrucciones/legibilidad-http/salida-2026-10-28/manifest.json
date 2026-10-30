@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "date": "2026-10-28",
+  "originals": {
+    "Sección 7 Advanced Types/90. More on Type Guards.md": "2862ba17ca87812290f4b33c2db656f512ba2ce2bc99f69f380196b7aa0876d6",
+    "Sección 7 Advanced Types/93. Outsourcing Type Guards & Using Type Predicates.md": "848450844b8ff9e8f218889400914b2973836f8b4b7db2636ef710e3d57c15d1",
+    "Sección 7 Advanced Types/91. Discriminated Unions.md": "5131a406799ec94df3e3db747b487b812cf342a96e72ed83bb78af98fa32cc6c"
+  },
+  "guides": [
+    {
+      "source": "Sección 7 Advanced Types/93. Outsourcing Type Guards & Using Type Predicates.md",
+      "guide": "Sección 7 Advanced Types/93. Outsourcing Type Guards & Using Type Predicates - Reconstrucción guiada.md",
+      "sha256": "e6708761621d89ca99723e1a21878428bef3634688a96140124ea3fa02942101"
+    }
+  ]
+}

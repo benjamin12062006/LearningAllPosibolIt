@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "date": "2026-10-28",
+  "originals": {
+    "Sección 10 Deriving Types From Types/119. Using typeof.md": "07324ad9a3fc33ff6287a4c0814a445a9e7094c7f97903b173dedcda85db9be3",
+    "Sección 10 Deriving Types From Types/122. Extracting Keys with keyof.md": "a0edc6446ea7da236ff7568dc6209442a5e57d6677173f60a4ab6742559a62c1",
+    "Sección 10 Deriving Types From Types/124. Understanding Indexed Access Types.md": "7dc55bdd555e2a216c5b976484fd424396c3fc7b3b4af4c6c600c000ee5c7e11",
+    "Sección 7 Advanced Types/97. Constant Types with as const.md": "c1e95a9afcd90900c2fe1b9d42fa25366208611a1690d99a397af841d5311f5d",
+    "Sección 7 Advanced Types/98. Revisiting the Record Type.md": "823f7c7d58adf90d54c70e9e73f53a7dd4acebee6153521e7a00d4a1a9ad8ec5",
+    "Sección 7 Advanced Types/96. Making Sense of Index Types.md": "e0298c46aea8d16f7d4e3f026a22afbc856919e04acd42bbd1a8fb9f7036b5dc",
+    "Sección 7 Advanced Types/99. The satisfies Keyword.md": "985b56c3e8e2141614d8b75d64f51e0df71b7d35d9380b5b302445d375cc8171"
+  },
+  "guides": [
+    {
+      "source": "Sección 10 Deriving Types From Types/119. Using typeof.md",
+      "guide": "Sección 10 Deriving Types From Types/119. Using typeof - Reconstrucción guiada.md",
+      "sha256": "6fde435da110ea4a74a4a2690a85cd845f8e65265b1c05a2bcdd7123f2b3d724"
+    },
+    {
+      "source": "Sección 10 Deriving Types From Types/122. Extracting Keys with keyof.md",
+      "guide": "Sección 10 Deriving Types From Types/122. Extracting Keys with keyof - Reconstrucción guiada.md",
+      "sha256": "a5225e0cef64ffe120331a0f9b6f50961d8e4197fa2f36428fb54e965d0a9298"
+    },
+    {
+      "source": "Sección 10 Deriving Types From Types/124. Understanding Indexed Access Types.md",
+      "guide": "Sección 10 Deriving Types From Types/124. Understanding Indexed Access Types - Reconstrucción guiada.md",
+      "sha256": "862746bc354ad5e570ca13b18d190ce4779d9ece1356e725ff4ad1a668dc4faf"
+    },
+    {
+      "source": "Sección 7 Advanced Types/97. Constant Types with as const.md",
+      "guide": "Sección 7 Advanced Types/97. Constant Types with as const - Reconstrucción guiada.md",
+      "sha256": "fba055432fb40b467f09328cb5921dd3a8f4aa83ba244f798a2a60b076e4df0b"
+    },
+    {
+      "source": "Sección 7 Advanced Types/98. Revisiting the Record Type.md",
+      "guide": "Sección 7 Advanced Types/98. Revisiting the Record Type - Reconstrucción guiada.md",
+      "sha256": "cfce2a2f45470e0f28dcb9b68f99fe33e28772672dc66ea2c1710a8c3b8589df"
+    },
+    {
+      "source": "Sección 7 Advanced Types/99. The satisfies Keyword.md",
+      "guide": "Sección 7 Advanced Types/99. The satisfies Keyword - Reconstrucción guiada.md",
+      "sha256": "743ffc5f721febbfeac4d8e759e157dc6b0fa5065b1d3d812a736a991c36b99a"
+    }
+  ]
+}

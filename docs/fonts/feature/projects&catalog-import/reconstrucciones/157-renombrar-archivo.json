@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 12 Carga de archivos/157. Renombrar el archivo subido.md",
+  "previous": ["Sección 12 Carga de archivos/155. Validar archivos.md", "Sección 12 Carga de archivos/156. Guardar imagen en filesystem.md"],
+  "objective": "Asignar un nombre UUID a cada imagen recibida mediante el callback filename de diskStorage y organizar los helpers mediante un archivo de barril.",
+  "initial": "El endpoint Files/product ya usa fileFilter y recibe un archivo obligatorio. La lección 156 añade diskStorage para escribirlo en ./static/uploads; la 157 cambia el destino a ./static/products y personaliza filename. El filtro creado en la 155 se hereda sin cambios. FilesModule y FilesService del recurso siguen como contexto, no se inventan sus archivos.",
+  "certainty": "El UUID, concatenación de extensión, callback y destino products se recuperan con alta confianza. El nombre fileNamer y la grafía fileNamer.helper.ts se normalizan de la pronunciación; paths/imports y mensajes se ensamblan. La extensión se toma del MIME declarado, técnica del ejemplo de imágenes que no acredita contenido ni debe trasladarse al parser CSV. El código conserva callback Function y el experimento previo de nombre fijo se excluye del estado final. No se presenta este directorio estático del ejemplo como decisión de despliegue para el producto.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15, "phrase": "Helpers",
+      "change": "Crear helper de filename con request/file/callback a partir del helper anterior.",
+      "certainty": "Mecanismo explícito, nombre fileNamer normalizado."
+    },
+    {
+      "id": "E2", "line": 17, "phrase": "nuevo nombre",
+      "change": "El segundo argumento del callback de filename es el nombre, no un booleano; conservar rama defensiva sin archivo del curso.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E3", "line": 19, "phrase": "Hola mundo",
+      "change": "Probar nombre fijo y observar que puede sobrescribir una carga anterior.",
+      "certainty": "Experimento temporal explícito, no estado final."
+    },
+    {
+      "id": "E4", "line": 21, "phrase": "export",
+      "change": "Crear index.ts que reexporta el filtro y el helper de nombre.",
+      "certainty": "Explícito; sintaxis de barril ensamblada."
+    },
+    {
+      "id": "E5", "line": 25, "phrase": "B4",
+      "change": "Importar v4 de uuid y formar nombre UUID más extensión.",
+      "certainty": "La pronunciación refiere a UUID v4; alias uuid reconstruido."
+    },
+    {
+      "id": "E6", "line": 29, "phrase": "Static Products",
+      "change": "Guardar bajo ./static/products y distinguir nombre físico/path de una URL accesible.",
+      "certainty": "Explícito, junto con línea 13."
+    },
+    {
+      "id": "E7", "line": 33, "phrase": "carpeta pública",
+      "change": "La lectura autorizada requiere control posterior; no se ha expuesto aquí un directorio público.",
+      "certainty": "Explicación explícita, no implementación de autorización."
+    },
+    {
+      "id": "E8", "source": "Sección 12 Carga de archivos/156. Guardar imagen en filesystem.md", "line": 27, "phrase": "disk storage",
+      "change": "Usar diskStorage de multer con destination y filename en opciones de FileInterceptor.",
+      "certainty": "Explícito; import normalizado."
+    },
+    {
+      "id": "E9", "source": "Sección 12 Carga de archivos/155. Validar archivos.md", "line": 41, "phrase": "400",
+      "change": "Conservar la comprobación del archivo obligatorio y retorno de su nombre original.",
+      "certainty": "Estado heredado, con el campo originalname descrito en línea 15 de esa lección."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Configurar la asignación del nombre físico",
+      "language": "ts",
+      "code": "storage: diskStorage({\n  destination: './static/products',\n  filename: fileNamer,\n})",
+      "why": "El almacenamiento de disco invoca filename con su callback. No se usa directamente originalname para seleccionar el nombre físico; aquí solo se configura el lugar del ejemplo.",
+      "check": "En el curso, observar que filename recibe la carga y destination apunta a products. La ruta local no es una URL pública.",
+      "evidence": ["E1", "E2", "E6", "E8"]
+    },
+    {
+      "title": "Sustituir el nombre fijo por un UUID",
+      "language": "ts",
+      "code": "import { v4 as uuid } from 'uuid';\n\nconst fileExtension = file.mimetype.split('/')[1];\nconst fileName = `${uuid()}.${fileExtension}`;\ncallback(null, fileName);",
+      "why": "El nombre fijo reutiliza el mismo destino y puede sobrescribir. El UUID genera una identidad para cada carga; mantener extensión de imagen es una decisión del ejemplo, no una validación del archivo.",
+      "check": "En el proyecto original, repetir una carga debe producir nombres diferentes. La prueba no demuestra qué ocurre ante una colisión de filesystem ni implementa creación exclusiva; ese detalle no se añade al curso.",
+      "evidence": ["E2", "E3", "E5"]
+    },
+    {
+      "title": "Reexportar helpers y mantener la separación entre disco y acceso",
+      "language": "ts",
+      "code": "export { fileFilter } from './fileFilter.helper';\nexport { fileNamer } from './fileNamer.helper';\n\n// El controlador importa ambos desde './helpers'.",
+      "why": "El barril ordena los imports. Ni el nombre, ni destination ni path constituyen por sí mismos una URL pública o una autorización.",
+      "check": "Verificar los imports del curso y que no aparece un endpoint de descarga nuevo en esta clase. La autorización de lectura se anuncia para la siguiente lección.",
+      "evidence": ["E4", "E6", "E7"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/files/helpers/fileNamer.helper.ts",
+      "language": "ts",
+      "code": "import { v4 as uuid } from 'uuid';\n\nexport const fileNamer = (\n  req: Express.Request,\n  file: Express.Multer.File,\n  callback: Function,\n) => {\n  if (!file) return callback(new Error('File is empty'), false);\n\n  const fileExtension = file.mimetype.split('/')[1];\n  const fileName = `${uuid()}.${fileExtension}`;\n  callback(null, fileName);\n};",
+      "provenance": "E1/E2/E5: helper, callback y UUID; la firma y rama defensiva vienen del helper de filtro anterior descrito en 155. La rama false conserva el estilo del curso y no se presenta como el tipo correcto que deba copiar un adaptador nuevo. Mensajes/identificadores se normalizan según certeza inicial."
+    },
+    {
+      "path": "src/files/helpers/index.ts", "language": "ts",
+      "code": "export { fileFilter } from './fileFilter.helper';\nexport { fileNamer } from './fileNamer.helper';",
+      "provenance": "E4: barril. Las dos rutas usan el nombre convencional reconstruido de los helpers; fileFilter se hereda de 155 sin reescribirlo."
+    },
+    {
+      "path": "src/files/files.controller.ts", "language": "ts",
+      "code": "import { BadRequestException, Controller, Post, UploadedFile, UseInterceptors } from '@nestjs/common';\nimport { FileInterceptor } from '@nestjs/platform-express';\nimport { diskStorage } from 'multer';\nimport { FilesService } from './files.service';\nimport { fileFilter, fileNamer } from './helpers';\n\n@Controller('files')\nexport class FilesController {\n  constructor(private readonly filesService: FilesService) {}\n\n  @Post('product')\n  @UseInterceptors(FileInterceptor('file', {\n    fileFilter,\n    storage: diskStorage({\n      destination: './static/products',\n      filename: fileNamer,\n    }),\n  }))\n  uploadFile(@UploadedFile() file: Express.Multer.File) {\n    if (!file) {\n      throw new BadRequestException('Make sure that the file is an image');\n    }\n    return { fileName: file.originalname };\n  }\n}",
+      "provenance": "E6/E8: storage y destino; E4: helpers; E9 y 155: respuesta/guard de archivo heredados; E1/E5: filename. Scaffold y imports se ensamblan desde el recurso del curso. No se inventa una respuesta con URL, checksum o tabla que esta clase no construye."
+    }
+  ],
+  "temporary": "El nombre Hola mundo se descarta porque sobrescribe cargas anteriores. Las imágenes/logs de observación no pertenecen al estado final del código. No se añade aún endpoint de descarga, política de propietario ni garantía de durabilidad del disco. El nombre static no convierte una carpeta en pública por sí mismo; no se introduce ServeStaticModule. FilesService/FilesModule y fileFilter son heredados sin cambios, no archivos nuevos de esta clase.",
+  "mental": "Originalname es un metadato del cliente; filename es el nombre que asigna el storage. El UUID diferencia cargas, pero acceso privado, creación exclusiva y durabilidad son responsabilidades aparte. El curso enseña el callback y deja el control de lectura para una clase posterior."
+}

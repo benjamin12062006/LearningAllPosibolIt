@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 10 Deriving Types From Types/122. Extracting Keys with keyof.md",
+  "previous": [],
+  "objective": "Obtener la unión de nombres de propiedades de User.",
+  "initial": "La lección abre keyof.ts después de presentar typeof. No necesita el ejemplo de la lección 120.",
+  "certainty": "Se recuperan User, UserKeys, validKey, name y age de la narración traducida. Se ensambla la sintaxis del archivo; se elige age como asignación final entre los dos valores que la fuente permite, sin afirmar cuál quedó en el editor.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "un tipo usuario",
+      "change": "Tipo usuario con name string y age number",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "un tipo unión de todas las claves",
+      "change": "keyof deriva la unión y limita validKey",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Definir el objeto de tipos",
+      "code": "type User = { name: string; age: number };",
+      "why": "El punto de partida es un tipo, no una variable de JavaScript.",
+      "check": "Revisar sus dos nombres de propiedades y los tipos de sus valores.",
+      "evidence": [
+        "E1"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Derivar las claves",
+      "code": "type UserKeys = keyof User;\nlet validKey: UserKeys = 'age';",
+      "why": "keyof recibe User y devuelve los literales name y age.",
+      "check": "El editor ofrece ambas claves y rechaza un tercer nombre.",
+      "evidence": [
+        "E2"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "keyof.ts",
+      "language": "ts",
+      "code": "type User = {\n  name: string;\n  age: number;\n};\ntype UserKeys = keyof User;\nlet validKey: UserKeys = 'age';\n",
+      "provenance": "E1, E2. Se recuperan User, UserKeys, validKey, name y age de la narración traducida. Se ensambla la sintaxis del archivo; se elige age como asignación final entre los dos valores que la fuente permite, sin afirmar cuál quedó en el editor."
+    }
+  ],
+  "temporary": "Las asignaciones name y age son alternativas válidas. No se añade una propiedad ajena para dejar un archivo final con error.",
+  "mental": "Obtener la unión de nombres de propiedades de User. La guía recupera el ejemplo del curso; la aplicación a ErrorCodes se documenta por separado en la ficha del proyecto."
+}

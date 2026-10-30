@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 8 Unit Testing - Autenticación, controladores y strategies/80. Test - Auth Controller.md",
+  "previous": [],
+  "objective": "Montar AuthController en un TestingModule, resolver su dependencia de Passport y sustituir AuthService por un objeto con jest.fn. La clase termina comprobando que el controlador está definido; los casos de comportamiento continúan en la siguiente lección.",
+  "initial": "Existe la aplicación de autenticación del curso con AuthController, AuthService, un decorador de autenticación y Passport. Esta lección crea src/auth/auth.controller.spec.ts. No se dispone aquí del repositorio/adjuntos completos de esa aplicación: los imports relativos se ensamblan por convención y los archivos productivos heredados no se reconstruyen ni se inventan.",
+  "certainty": "Reconstrucción de alta confianza del mecanismo y del spec modificado, no una copia literal del archivo en pantalla. La transcripción dice Checkstatus, sin recuperar su identificador exacto: se representa como checkAuthStatus y debe cotejarse con el AuthController del material original antes de ejecutar casos que lo usen. La clase registra PassportModule con estrategia jwt; no implementa un login ni demuestra seguridad de rutas. Nombres de variables e imports se ensamblan a partir de las referencias verbales. El proyecto del curso y sus versiones no se compilan en esta reconstrucción.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 17,
+      "phrase": "beforeeach",
+      "change": "Crear auth.controller.spec.ts con describe, beforeEach y un caso should be defined.",
+      "certainty": "Explícito; se normaliza la transcripción a nombres TypeScript."
+    },
+    {
+      "id": "E2",
+      "line": 19,
+      "phrase": "Compile",
+      "change": "Test.createTestingModule con controllers: [AuthController] y compile asíncrono.",
+      "certainty": "Mecanismo explícito, sintaxis reconstruida."
+    },
+    {
+      "id": "E3",
+      "line": 23,
+      "phrase": "Passport Module",
+      "change": "Obtener el controlador con module.get y registrar PassportModule con estrategia jwt.",
+      "certainty": "Explícito junto con E4."
+    },
+    {
+      "id": "E4",
+      "line": 25,
+      "phrase": "imports",
+      "change": "PassportModule va en imports; después se observa la falta de AuthService.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E5",
+      "line": 27,
+      "phrase": "Checkstatus",
+      "change": "El mock ofrece create, login y el método de comprobación de sesión utilizado por el controlador.",
+      "certainty": "Los dos primeros nombres son recuperables; checkAuthStatus es ensamblado y queda pendiente de cotejo con el archivo original."
+    },
+    {
+      "id": "E6",
+      "line": 29,
+      "phrase": "Jest punto, fn",
+      "change": "Representar los tres métodos con jest.fn y registrar la dependencia en providers.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E7",
+      "line": 31,
+      "phrase": "Use value",
+      "change": "Usar { provide: AuthService, useValue: mockAuthService } para cerrar la resolución de dependencias.",
+      "certainty": "Mecanismo explícito; se normalizan errores fonéticos."
+    },
+    {
+      "id": "E8",
+      "line": 33,
+      "phrase": "Userrepository",
+      "change": "El servicio real obligaría a resolver más dependencias; el mock delimita esta prueba unitaria.",
+      "certainty": "Explicación explícita."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Montar el controlador y observar la dependencia ausente",
+      "language": "ts",
+      "code": "const module: TestingModule = await Test.createTestingModule({\n  controllers: [AuthController],\n}).compile();",
+      "why": "Primero se coloca el sujeto en controllers. Compilar intenta resolver lo que el controlador y sus decoradores necesitan. El instructor muestra el fallo antes de proveer esas piezas.",
+      "check": "En la aplicación original del curso, la compilación del módulo todavía debe fallar por las dependencias de autenticación. No es un estado final listo para ejecutar.",
+      "evidence": [
+        "E1", "E2", "E3"
+      ]
+    },
+    {
+      "title": "Registrar Passport sin cargar el servicio real",
+      "language": "ts",
+      "code": "const module: TestingModule = await Test.createTestingModule({\n  imports: [PassportModule.register({ defaultStrategy: 'jwt' })],\n  controllers: [AuthController],\n}).compile();",
+      "why": "La estrategia es una dependencia del ejemplo original. Resolverla no proporciona todavía AuthService: el siguiente error ayuda a identificar el provider que falta.",
+      "check": "En el material del curso debe desaparecer el primer fallo y quedar el error de resolución de AuthService. Passport no se debe añadir por este motivo a un proyecto distinto que use otro proveedor de identidad.",
+      "evidence": ["E3", "E4"]
+    },
+    {
+      "title": "Sustituir AuthService y recuperar el controlador",
+      "language": "ts",
+      "code": "const mockAuthService = {\n  create: jest.fn(),\n  login: jest.fn(),\n  checkAuthStatus: jest.fn(), // cotejar identificador con el material original\n};\n\nconst module: TestingModule = await Test.createTestingModule({\n  imports: [PassportModule.register({ defaultStrategy: 'jwt' })],\n  controllers: [AuthController],\n  providers: [{ provide: AuthService, useValue: mockAuthService }],\n}).compile();\n\nconst authController = module.get<AuthController>(AuthController);\nexpect(authController).toBeDefined();",
+      "why": "El token AuthService se resuelve al objeto controlado y se evita arrastrar UserRepository/JwtService. La aserción de esta clase comprueba el montaje; aún no comprueba llamadas a create/login ni respuestas HTTP.",
+      "check": "Ejecutar el spec con Jest en la aplicación original debe permitir obtener el controlador y pasar should be defined. Antes de añadir casos sobre el tercer método, confirmar su nombre real. No se ejecutó esa comprobación al generar la guía.",
+      "evidence": ["E1", "E3", "E5", "E6", "E7", "E8"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/auth/auth.controller.spec.ts",
+      "language": "ts",
+      "code": "import { Test, TestingModule } from '@nestjs/testing';\nimport { PassportModule } from '@nestjs/passport';\nimport { AuthController } from './auth.controller';\nimport { AuthService } from './auth.service';\n\nconst mockAuthService = {\n  create: jest.fn(),\n  login: jest.fn(),\n  // La transcripción no recupera la grafía exacta de Checkstatus.\n  checkAuthStatus: jest.fn(),\n};\n\ndescribe('AuthController', () => {\n  let authController: AuthController;\n\n  beforeEach(async () => {\n    const module: TestingModule = await Test.createTestingModule({\n      imports: [PassportModule.register({ defaultStrategy: 'jwt' })],\n      controllers: [AuthController],\n      providers: [\n        { provide: AuthService, useValue: mockAuthService },\n      ],\n    }).compile();\n\n    authController = module.get<AuthController>(AuthController);\n  });\n\n  it('should be defined', () => {\n    expect(authController).toBeDefined();\n  });\n});",
+      "provenance": "E1/E2: estructura del spec y TestingModule; E3/E4: PassportModule, module.get y toBeDefined; E5/E6/E7: los tres mocks y provide/useValue; E8: aislamiento. Imports relativos y sintaxis se ensamblan por convención del archivo, no son literales del vídeo. La grafía checkAuthStatus permanece identificada como incertidumbre; no se reconstruyen archivos productivos heredados."
+    }
+  ],
+  "temporary": "Los módulos sin Passport y sin provider pertenecen al recorrido de errores, no al spec final. No se añaden los tests de llamadas/argumentos que el instructor anuncia para la siguiente clase. El registro del mock en ámbito de archivo no garantiza reiniciar llamadas entre casos; ese problema no aparece con el único caso de montaje de esta lección y deberá resolverse en una adaptación posterior. No se incorporan a la guía APIs modernas de ESM, helpers ni cierres que esta transcripción no enseña.",
+  "mental": "controllers contiene al sujeto; imports resuelve módulos del ejemplo; providers mapea el token AuthService al mock; compile construye el contenedor; module.get recupera la instancia. toBeDefined prueba montaje, no autorización, creación de usuarios ni login. Mantener esa diferencia evita atribuir seguridad a un test que solo inicializa dependencias."
+}

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "date": "2026-10-25",
+  "originals": {
+    "Sección 8 Unit Testing - Autenticación, controladores y strategies/80. Test - Auth Controller.md": "064daf1b1716b08c1c2f6846097436620e9f2d4cdd320c2b1706751578969646",
+    "Sección 6 E2E - End to end testing/51. E2E - Post Crear pokemon.md": "968e9618e746599c0eca4749d0638db2ff8dca6c33eb945e7bf99c8017a3dec4",
+    "Sección 6 E2E - End to end testing/50. Configuraciones para e2e.md": "ebfa4205069ef65428e634a561fce79576ddfd1bea95879cbfa9663a7c6daeaf"
+  },
+  "guides": [
+    {
+      "source": "Sección 8 Unit Testing - Autenticación, controladores y strategies/80. Test - Auth Controller.md",
+      "guide": "Sección 8 Unit Testing - Autenticación, controladores y strategies/80. Test - Auth Controller - Reconstrucción guiada.md",
+      "sha256": "323ed6cee5d413c04f5e327365f89f2f991d607a930f676681c0c8fc156ef66d"
+    },
+    {
+      "source": "Sección 6 E2E - End to end testing/51. E2E - Post Crear pokemon.md",
+      "guide": "Sección 6 E2E - End to end testing/51. E2E - Post Crear pokemon - Reconstrucción guiada.md",
+      "sha256": "d500617e8fbcf9a0b5831865e86a68a521c02a3f8266c62606678df54e38bcdb"
+    }
+  ]
+}

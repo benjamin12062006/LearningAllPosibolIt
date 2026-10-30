@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 7 Advanced Types/97. Constant Types with as const.md",
+  "previous": [],
+  "objective": "Conservar literales y restringir el array de roles con as const.",
+  "initial": "Un array de roles sin as const se infiere como string[]. No se necesita código de otra lección.",
+  "certainty": "Los roles admin, guest y editor y la extracción del primero constan en el original. Se ensambla la sintaxis; const, el identificador firstRole y la ruta advanced.ts son elecciones documentales porque la lección no los fija.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "un array de roles",
+      "change": "Array de cadenas con inferencia amplia",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "admin, guest y editor",
+      "change": "as const conserva los tres literales y vuelve readonly la tupla",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "la cadena admin",
+      "change": "El acceso al primer elemento conserva el literal",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Inferencia amplia",
+      "code": "const roles = ['admin', 'guest', 'editor'];",
+      "why": "Las propiedades de un array const aún admiten cambios; const restringe la reasignación de la variable.",
+      "check": "Observar string[] en el editor; todavía se puede añadir otra cadena.",
+      "evidence": [
+        "E1"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Inferencia estrecha",
+      "code": "const roles = ['admin', 'guest', 'editor'] as const;\nconst firstRole = roles[0];",
+      "why": "as const conserva literales y prohíbe mutaciones desde TypeScript.",
+      "check": "Observar readonly y el tipo literal admin; un push se rechaza al comprobar tipos.",
+      "evidence": [
+        "E2",
+        "E3"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "advanced.ts",
+      "language": "ts",
+      "code": "const roles = ['admin', 'guest', 'editor'] as const;\nconst firstRole = roles[0];\n",
+      "provenance": "E1, E2, E3. Los roles admin, guest y editor y la extracción del primero constan en el original. Se ensambla la sintaxis; const, el identificador firstRole y la ruta advanced.ts son elecciones documentales porque la lección no los fija."
+    }
+  ],
+  "temporary": "Los intentos de push son experimentos de error y no forman parte del estado final. No se añade Object.freeze: la lección trata inferencia estática.",
+  "mental": "Conservar literales y restringir el array de roles con as const. La guía recupera el ejemplo del curso; la aplicación a ErrorCodes se documenta por separado en la ficha del proyecto."
+}

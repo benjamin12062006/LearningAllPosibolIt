@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 10 Deriving Types From Types/119. Using typeof.md",
+  "previous": [],
+  "objective": "Distinguir typeof en ejecución y typeof en una declaración de tipo.",
+  "initial": "La fuente declara un archivo typeof.ts nuevo y vacío.",
+  "certainty": "username, Username, Max y typeof.ts se recuperan de la narración. Se ensambla su escritura exacta desde la explicación traducida; no se conocen opciones de compilador ni comando de ejecución.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "typeof. ts",
+      "change": "Archivo inicial y ejemplo username",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "durante el tiempo de ejecución",
+      "change": "typeof de JavaScript produce una cadena",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "seguido del identificador",
+      "change": "typeof de TypeScript deriva un tipo del valor",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "tipo literal de cadena Max",
+      "change": "const conserva el literal Max",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Operador de JavaScript",
+      "code": "const username = 'Max';\nconsole.log(typeof username);",
+      "why": "typeof en una expresión produce el nombre del tipo durante la ejecución.",
+      "check": "Al ejecutar el JavaScript compilado se espera string. Esta es una comprobación prevista del curso, no ejecutada aquí.",
+      "evidence": [
+        "E1",
+        "E2"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Operador en un alias",
+      "code": "type Username = typeof username;",
+      "why": "El mismo token en posición de tipo deriva el tipo estático del valor existente.",
+      "check": "El editor infiere el literal Max con const; si fuese let se ensancharía a string.",
+      "evidence": [
+        "E3",
+        "E4"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "typeof.ts",
+      "language": "ts",
+      "code": "const username = 'Max';\nconsole.log(typeof username);\ntype Username = typeof username;\n",
+      "provenance": "E1, E2, E3, E4. username, Username, Max y typeof.ts se recuperan de la narración. Se ensambla su escritura exacta desde la explicación traducida; no se conocen opciones de compilador ni comando de ejecución."
+    }
+  ],
+  "temporary": "Cambiar const por let es una comparación temporal. El alias desaparece en JavaScript y no sustituye la constante.",
+  "mental": "Distinguir typeof en ejecución y typeof en una declaración de tipo. La guía recupera el ejemplo del curso; la aplicación a ErrorCodes se documenta por separado en la ficha del proyecto."
+}

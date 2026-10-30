@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "date": "2026-10-25",
+  "originals": {
+    "Sección 12 Carga de archivos/154. Subir un archivo al backend.md": "06663f1573c2741eea0c6a7961b03742c2e380d439cb16597a978cfb4b0a0116",
+    "Sección 12 Carga de archivos/155. Validar archivos.md": "434124d7efa019164fd304d0b417ee6e8c4db6c4f3b7d7d0e7ce7da62d9ea7b5",
+    "Sección 12 Carga de archivos/156. Guardar imagen en filesystem.md": "9207b78e727bef5ccde83321eca0db471130ba98a6e737b3a1c2c320a4e6f966",
+    "Sección 12 Carga de archivos/157. Renombrar el archivo subido.md": "865e2e32381a1e5c42881a7d1101a36ef30022dcc36f16ab0bb692e8b24e476c",
+    "Sección 11 Relaciones en TypeORM/144. Query Runner.md": "49f6e8d5291c3cc77e5bacdbcf00b5b51a580a315669006f56c9419ba306e1f3",
+    "Sección 11 Relaciones en TypeORM/145. Transacciones.md": "be488d12bca773e747d8b0e60cff7433674ab4611426a954a44070c18c4f61e0"
+  },
+  "guides": [
+    {
+      "source": "Sección 12 Carga de archivos/155. Validar archivos.md",
+      "guide": "Sección 12 Carga de archivos/155. Validar archivos - Reconstrucción guiada.md",
+      "sha256": "6300fd59c518cba9b4bf61cd0f449f39fc864c878cec49c42164fb4ef3565b49"
+    },
+    {
+      "source": "Sección 12 Carga de archivos/157. Renombrar el archivo subido.md",
+      "guide": "Sección 12 Carga de archivos/157. Renombrar el archivo subido - Reconstrucción guiada.md",
+      "sha256": "62b2eb5920d16abf373faac07061d51832bfe60f4071836c945f5f87d78f27b6"
+    },
+    {
+      "source": "Sección 11 Relaciones en TypeORM/145. Transacciones.md",
+      "guide": "Sección 11 Relaciones en TypeORM/145. Transacciones - Reconstrucción guiada.md",
+      "sha256": "e9c4cb3fc4a975786a82a347f0afff89b5442c05f13e0177b933501917aba443"
+    }
+  ]
+}

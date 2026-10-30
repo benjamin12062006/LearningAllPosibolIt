@@ -1,0 +1,58 @@
+# WebStorm: seleccionar local. Ejecutar createProject para capturar projectId.
+# Para un proyecto existente, definir projectId en el entorno privado local.
+
+### Crear proyecto; aprovisionar antes mediante PUT /api/v1/users/me
+# @name createProject
+POST {{apiUrl}}/projects
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+{
+  "name": "Mi tienda",
+  "country": "BO",
+  "currency": "BOB",
+  "channelProfile": "google_merchant"
+}
+
+> {%
+  client.assert(response.status === 201, "No se creó el proyecto (se esperaba HTTP 201)");
+  client.assert(typeof response.body.project.id === "string", "Falta project.id");
+  client.global.set("projectId", response.body.project.id);
+%}
+
+### Listar proyectos propios (respuesta { projects })
+# @name listProjects
+GET {{apiUrl}}/projects
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+### Consultar uno propio (respuesta { project }); ajeno/ausente responde 404
+# @name getProject
+GET {{apiUrl}}/projects/{{projectId}}
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+### Completar configuración de un espacio heredado conservando su ID
+# @name configureProject
+PATCH {{apiUrl}}/projects/{{projectId}}
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+{
+  "country": "US",
+  "currency": "USD",
+  "channelProfile": "google_merchant"
+}
+
+### Renombrar sin modificar configuración
+# @name renameProject
+PATCH {{apiUrl}}/projects/{{projectId}}
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+{
+  "name": "Mi tienda renovada"
+}

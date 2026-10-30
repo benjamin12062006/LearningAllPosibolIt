@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 12 Carga de archivos/155. Validar archivos.md",
+  "previous": ["Sección 12 Carga de archivos/154. Subir un archivo al backend.md"],
+  "objective": "Añadir un fileFilter del módulo Files al FileInterceptor del endpoint de imágenes y convertir el archivo ausente o rechazado en BadRequestException en el controlador.",
+  "initial": "La lección 154 genera FilesModule/FilesController/FilesService y crea POST /files/product, con UploadedFile y FileInterceptor('file'). Ese ejemplo recibe una imagen pero todavía no escribe en disco ni registra metadatos en base. La clase 155 modifica el controlador y añade un helper; FilesModule y FilesService generados no cambian y su contenido no se inventa.",
+  "certainty": "El mecanismo de recepción, filtro y control explícito de ausencia se recupera con alta confianza de las dos transcripciones. Imports, nombres de variables y mensajes en inglés se ensamblan desde la narración, no son copia literal de pantalla. Se conservan las extensiones inequívocas jpg/png/gif; la segunda pronunciación de JPG no permite confirmar otra grafía, por lo que la lista exacta del vídeo no se certifica. El tipo callback Function reproduce la explicación del curso; no se presenta como recomendación actual de tipado. El filtro usa mimetype declarado y no inspecciona los bytes. Las afirmaciones del curso sobre un directorio temporal por defecto requieren contraste con la versión real de Multer; no se convierten aquí en garantía.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 19,
+      "phrase": "File Filter",
+      "change": "Crear helpers/fileFilter.helper.ts como función del módulo y registrarla por referencia en opciones del interceptor.",
+      "certainty": "Mecanismo explícito; ruta y camelCase normalizados."
+    },
+    {
+      "id": "E2", "line": 21, "phrase": "tres argumentos",
+      "change": "El callback del filtro indica aceptación con booleano y recibe request/file.",
+      "certainty": "Explícito, junto con el tipo Function descrito en línea 23."
+    },
+    {
+      "id": "E3", "line": 29, "phrase": "file ease empty",
+      "change": "Interrumpir el helper si no hay archivo mediante callback de error y false.",
+      "certainty": "Mensaje inglés normalizado como File is empty, sin atribución literal."
+    },
+    {
+      "id": "E4", "line": 35, "phrase": "MIME type",
+      "change": "Extraer la parte posterior al slash del mimetype.",
+      "certainty": "Explícito; no es validación del contenido."
+    },
+    {
+      "id": "E5", "line": 37, "phrase": "Valid Extensions",
+      "change": "Aceptar extensiones de imagen listadas mediante includes y callback(null,true).",
+      "certainty": "jpg/png/gif recuperables; duplicación fonética de JPG no permite asegurar lista exacta."
+    },
+    {
+      "id": "E6", "line": 39, "phrase": "automáticamente",
+      "change": "Rechazar con callback(null,false) no constituye por sí solo una excepción; controlar ausencia en controller.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E7", "line": 41, "phrase": "400",
+      "change": "El controlador responde BadRequestException si no hay archivo aceptado; con imagen devuelve el nombre.",
+      "certainty": "Estado y mecanismo explícitos; mensaje exacto ensamblado."
+    },
+    {
+      "id": "E8", "source": "Sección 12 Carga de archivos/154. Subir un archivo al backend.md", "line": 33, "phrase": "Upload file",
+      "change": "Usar UploadedFile de common para el argumento de archivo.",
+      "certainty": "Nombre corregido de la pronunciación; API referida explícitamente."
+    },
+    {
+      "id": "E9", "source": "Sección 12 Carga de archivos/154. Subir un archivo al backend.md", "line": 37, "phrase": "Platform Express",
+      "change": "FileInterceptor('file') se importa del adaptador Express y debe coincidir con el campo multipart.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E10", "line": 15, "phrase": "original Name",
+      "change": "Devolver file.originalname como fileName, sin añadir aún renombrado o persistencia.",
+      "certainty": "Campo y propósito explícitos; sintaxis del objeto ensamblada con línea 13."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Conectar el punto de extensión del interceptor",
+      "language": "ts",
+      "code": "export const fileFilter = (\n  req: Express.Request,\n  file: Express.Multer.File,\n  callback: Function,\n) => {\n  return callback(null, true);\n};\n\n// En FilesController:\n@UseInterceptors(FileInterceptor('file', { fileFilter }))",
+      "why": "Primero se observa que el interceptor invoca el helper. Se entrega la referencia fileFilter; llamarlo al configurar el decorador no tendría la request ni el archivo de esa carga.",
+      "check": "En el proyecto original, enviar multipart con campo file debe pasar por el helper. Este true inicial acepta todo: es un estado temporal, no el filtro final.",
+      "evidence": ["E1", "E2", "E8", "E9"]
+    },
+    {
+      "title": "Aceptar únicamente las extensiones de imagen mencionadas",
+      "language": "ts",
+      "code": "if (!file) return callback(new Error('File is empty'), false);\nconst fileExtension = file.mimetype.split('/')[1];\nconst validExtensions = ['jpg', 'png', 'gif'];\nif (validExtensions.includes(fileExtension)) return callback(null, true);\ncallback(null, false);",
+      "why": "El callback decide si ese archivo pasa al controlador. La lista reconstruida conserva solo los valores inequívocos de la narración; el dato se obtiene del MIME declarado, por lo que esta técnica no valida bytes de imagen ni equivale a un parser CSV.",
+      "check": "Con MIME declarado image/png el helper acepta; con application/pdf rechaza. Verificar el comportamiento en el curso, sin concluir que una etiqueta MIME demuestra contenido auténtico.",
+      "evidence": ["E3", "E4", "E5", "E6"]
+    },
+    {
+      "title": "Distinguir rechazo del archivo y respuesta HTTP",
+      "language": "ts",
+      "code": "if (!file) {\n  throw new BadRequestException('Make sure that the file is an image');\n}\nreturn { fileName: file.originalname };",
+      "why": "El filtro puede dejar file indefinido sin lanzar un error HTTP. El controlador del ejemplo exige un archivo y por eso convierte ese caso en Bad Request antes de leer originalname.",
+      "check": "En el proyecto del curso, ausencia o PDF rechazado debe llegar al 400 y una imagen aceptada debe devolver su nombre. No se ejecutó esta comprobación al generar la guía.",
+      "evidence": ["E6", "E7", "E10"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/files/helpers/fileFilter.helper.ts",
+      "language": "ts",
+      "code": "export const fileFilter = (\n  req: Express.Request,\n  file: Express.Multer.File,\n  callback: Function,\n) => {\n  if (!file) return callback(new Error('File is empty'), false);\n\n  const fileExtension = file.mimetype.split('/')[1];\n  // Valores inequívocos del audio; cotejar lista exacta con el material original.\n  const validExtensions = ['jpg', 'png', 'gif'];\n\n  if (validExtensions.includes(fileExtension)) return callback(null, true);\n  callback(null, false);\n};",
+      "provenance": "E1/E2: función helper y firma; E3: rama sin archivo; E4/E5: MIME/lista y aceptación; E6: rechazo sin excepción HTTP. Function es la forma descrita por el instructor; mensajes y grafías se normalizan con las incertidumbres iniciales."
+    },
+    {
+      "path": "src/files/files.controller.ts",
+      "language": "ts",
+      "code": "import { BadRequestException, Controller, Post, UploadedFile, UseInterceptors } from '@nestjs/common';\nimport { FileInterceptor } from '@nestjs/platform-express';\nimport { FilesService } from './files.service';\nimport { fileFilter } from './helpers/fileFilter.helper';\n\n@Controller('files')\nexport class FilesController {\n  constructor(private readonly filesService: FilesService) {}\n\n  @Post('product')\n  @UseInterceptors(FileInterceptor('file', { fileFilter }))\n  uploadFile(@UploadedFile() file: Express.Multer.File) {\n    if (!file) {\n      throw new BadRequestException('Make sure that the file is an image');\n    }\n    return { fileName: file.originalname };\n  }\n}",
+      "provenance": "E8/E9 y lección 154: decoradores, campo file y endpoint product; E1: helper; E6/E7/E10: rechazo y respuesta. Constructor del recurso Files generado en la lección 154 se conserva como contexto de scaffold, sin afirmar una implementación de FilesService. Imports y mensajes reconstruidos; no hay almacenamiento en disco en este estado."
+    }
+  ],
+  "temporary": "Se eliminan logs del archivo y el callback de aceptación incondicional usado para observar el interceptor. La guía conserva el filtro de imágenes del curso, no lo transforma en CSV. No hay todavía diskStorage, renombrado, tablas, autorización ni limpieza transaccional. El curso no justifica confiar en mimetype como validación de bytes; ese límite debe mantenerse visible al adaptar.",
+  "mental": "UploadedFile toma lo que FileInterceptor aceptó. El filtro decide aceptación y el controlador decide si el archivo es obligatorio y qué respuesta HTTP corresponde. Una etiqueta de tipo y una extensión declarada no sustituyen validar el contenido según el dominio."
+}

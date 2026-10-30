@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 7 Advanced Types/99. The satisfies Keyword.md",
+  "previous": [
+    "Sección 7 Advanced Types/98. Revisiting the Record Type.md"
+  ],
+  "objective": "Validar la forma de dataEntries conservando sus claves concretas.",
+  "initial": "Se conoce Record por la lección 98. El ejemplo empieza con dataEntries anotado como Record<string, number>.",
+  "certainty": "dataEntries, entry1, entry2 y entry3 están nombrados en la fuente. Los números 1 y 2, const y advanced.ts son representativos: la transcripción no fija esos valores, declaración o nombre de archivo. Se conserva el mecanismo y no se atribuye al curso el catálogo de errores de Nest.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "dataEntries",
+      "change": "Diccionario inicial con entry1 y entry2",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "entrada3",
+      "change": "La anotación amplia permite una clave ausente",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "añado satisface",
+      "change": "Cambiar anotación por satisfies",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "tipo más específico",
+      "change": "Se comprueba Record sin perder claves concretas",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Anotación amplia",
+      "code": "const dataEntries: Record<string, number> = { entry1: 1, entry2: 2 };",
+      "why": "La forma Record permite cualquier nombre de clave y debilita la detección de claves ausentes.",
+      "check": "Comparar el acceso a entry3 con y sin la anotación amplia.",
+      "evidence": [
+        "E1",
+        "E2"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Comprobar sin ampliar",
+      "code": "const dataEntries = { entry1: 1, entry2: 2 } satisfies Record<string, number>;",
+      "why": "satisfies exige valores numéricos y mantiene las claves entry1 y entry2 inferidas.",
+      "check": "El editor permite entry2 y rechaza entry3; una propiedad con valor string incumple Record.",
+      "evidence": [
+        "E3",
+        "E4"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "advanced.ts",
+      "language": "ts",
+      "code": "const dataEntries = {\n  entry1: 1,\n  entry2: 2,\n} satisfies Record<string, number>;\n",
+      "provenance": "E1, E2, E3, E4. dataEntries, entry1, entry2 y entry3 están nombrados en la fuente. Los números 1 y 2, const y advanced.ts son representativos: la transcripción no fija esos valores, declaración o nombre de archivo. Se conserva el mecanismo y no se atribuye al curso el catálogo de errores de Nest."
+    }
+  ],
+  "temporary": "entry3 es una demostración de error, no una lectura en el código final. React Router se menciona como caso externo, sin construir una configuración ni requerir React.",
+  "mental": "Validar la forma de dataEntries conservando sus claves concretas. La guía recupera el ejemplo del curso; la aplicación a ErrorCodes se documenta por separado en la ficha del proyecto."
+}

@@ -1,0 +1,47 @@
+# WebStorm: seleccionar local. Crear antes un proyecto configurado en projects.http.
+# acceptCatalogImport captura jobId y snapshotId para las consultas siguientes.
+# Para recursos existentes, definir sus IDs en el entorno privado local.
+
+### Aceptar CSV privado; devuelve 202 con snapshotId, jobId y statusUrl relativa
+# @name acceptCatalogImport
+POST {{apiUrl}}/projects/{{projectId}}/imports
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+Content-Type: multipart/form-data; boundary=CatalogBoundary
+
+--CatalogBoundary
+Content-Disposition: form-data; name="idColumn"
+
+id
+--CatalogBoundary
+Content-Disposition: form-data; name="delimiter"
+
+comma
+--CatalogBoundary
+Content-Disposition: form-data; name="file"; filename="shop.csv"
+Content-Type: text/csv
+
+id,title,price
+000123,Café,12.50
+000124,Té,8.00
+--CatalogBoundary--
+
+> {%
+  client.assert(response.status === 202, "No se aceptó el CSV (se esperaba HTTP 202)");
+  client.assert(typeof response.body.jobId === "string", "Falta jobId");
+  client.assert(typeof response.body.snapshotId === "string", "Falta snapshotId");
+  client.global.set("jobId", response.body.jobId);
+  client.global.set("snapshotId", response.body.snapshotId);
+%}
+
+### Consultar queued/running/succeeded/failed y error público cuando exista
+# @name getImportJob
+GET {{apiUrl}}/projects/{{projectId}}/jobs/{{jobId}}
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+### Consultar snapshot; sample contiene como máximo 20 filas y solo aparece con ready
+# @name getImportSnapshot
+GET {{apiUrl}}/projects/{{projectId}}/imports/{{snapshotId}}
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}

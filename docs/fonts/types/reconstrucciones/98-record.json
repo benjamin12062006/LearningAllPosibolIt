@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 7 Advanced Types/98. Revisiting the Record Type.md",
+  "previous": [
+    "Sección 7 Advanced Types/96. Making Sense of Index Types.md"
+  ],
+  "objective": "Expresar un diccionario de valores number | boolean mediante Record.",
+  "initial": "La lección 96 construye un tipo con firma de índice y un objeto inicialmente vacío. Se consulta como contexto, sin reconstruir una guía adicional de esa lección.",
+  "certainty": "La equivalencia de Record<string, number | boolean> con la firma de índice consta en la fuente. Se conserva DataStore como nombre recuperado del ejemplo traducido; store/isOpen y advanced.ts se ensamblan desde la lección 96, cuya narración no permite asegurar todos los identificadores originales.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "tipo de los llamados genéricos",
+      "change": "Record recibe tipos",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "números o booleanos",
+      "change": "Record describe el mismo diccionario que la firma de índice",
+      "certainty": "Pasaje literal verificado; código ensamblado con los límites de certeza indicados."
+    },
+    {
+      "id": "E3",
+      "source": "Sección 7 Advanced Types/96. Making Sense of Index Types.md",
+      "line": 21,
+      "phrase": "id, que podría ser cinco",
+      "change": "Objeto vacío y asignaciones id e isOpen de contexto",
+      "certainty": "Nombres store/isOpen ensamblados desde la narración; valores 5 y false explícitos."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Estado heredado con firma de índice",
+      "code": "type DataStore = { [prop: string]: number | boolean };\nlet store: DataStore = {};\nstore.id = 5;\nstore.isOpen = false;",
+      "why": "La lección anterior permite claves dinámicas con valores restringidos.",
+      "check": "Una asignación de string se rechaza; las dos asignaciones mostradas respetan el contrato.",
+      "evidence": [
+        "E3"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Reutilizar Record",
+      "code": "type DataStore = Record<string, number | boolean>;",
+      "why": "Record expresa la misma restricción sin escribir otra firma de índice.",
+      "check": "Comprobar que store sigue aceptando números y booleanos.",
+      "evidence": [
+        "E1",
+        "E2"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "advanced.ts",
+      "language": "ts",
+      "code": "type DataStore = Record<string, number | boolean>;\nlet store: DataStore = {};\nstore.id = 5;\nstore.isOpen = false;\n",
+      "provenance": "E1, E2, E3. La equivalencia de Record<string, number | boolean> con la firma de índice consta en la fuente. Se conserva DataStore como nombre recuperado del ejemplo traducido; store/isOpen y advanced.ts se ensamblan desde la lección 96, cuya narración no permite asegurar todos los identificadores originales."
+    }
+  ],
+  "temporary": "La asignación de nombre con Max de la lección 96 demuestra un error y se excluye del código final.",
+  "mental": "Expresar un diccionario de valores number | boolean mediante Record. La guía recupera el ejemplo del curso; la aplicación a ErrorCodes se documenta por separado en la ficha del proyecto."
+}

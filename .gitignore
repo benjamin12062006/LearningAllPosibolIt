@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.test-build/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+requests/.env
+http-client.private.env.json
+.DS_Store
+.data/
+src/generated/prisma/

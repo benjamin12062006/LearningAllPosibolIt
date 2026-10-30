@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 11 Relaciones en TypeORM/145. Transacciones.md",
+  "previous": ["Sección 11 Relaciones en TypeORM/144. Query Runner.md"],
+  "objective": "Actualizar producto e imágenes con un QueryRunner de TypeORM: iniciar transacción, realizar escrituras mediante el mismo manager, confirmar o revertir y liberar el recurso.",
+  "initial": "La clase 144 prepara update: extrae images del DTO, hace preload del producto, verifica su existencia e inyecta DataSource para crear el QueryRunner. ProductsService, entidades Product/ProductImage, UpdateProductDto, repositorios y los métodos findOnePlain/handleDBExceptions son heredados. No se dispone de la clase completa ni de sus adjuntos; el estado final recuperable de esta guía es el método update, no un reemplazo íntegro de ProductsService.",
+  "certainty": "El orden de connect/startTransaction, delete acotado al producto, creación de imágenes, manager.save, commit/rollback/release se recupera de la narración. Se ensambla el método update y la sintaxis relacional del delete; mensajes exactos de NotFoundException y grafías se marcan como normalizados. La lectura findOnePlain se elige según la alternativa final que prefiere el instructor. No se inventan implementaciones de métodos heredados ni una clase completa con stubs. El ejemplo es TypeORM, no Prisma, y no incluye archivos de disco dentro de la transacción SQL.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15, "phrase": "start, transacción",
+      "change": "Esperar connect e iniciar la transacción antes de las escrituras.",
+      "certainty": "Explícito; nombres normalizados a la API TypeORM."
+    },
+    {
+      "id": "E2", "line": 23, "phrase": "ID del producto",
+      "change": "Limitar el delete de ProductImage al producto actualizado.",
+      "certainty": "Criterio explícito; sintaxis {product:{id}} ensamblada."
+    },
+    {
+      "id": "E3", "line": 25, "phrase": "map",
+      "change": "Si images está presente, reemplazar product.images por entidades creadas para sus URLs.",
+      "certainty": "Explícito; creación por repositorio no equivale a persistencia hasta save."
+    },
+    {
+      "id": "E4", "line": 27, "phrase": "Manager",
+      "change": "Guardar el producto con queryRunner.manager.save dentro de la transacción.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E5", "line": 33, "phrase": "release",
+      "change": "Confirmar con commitTransaction y liberar el QueryRunner en camino de éxito.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E6", "line": 35, "phrase": "rollback",
+      "change": "En catch hacer rollbackTransaction y release antes de mapear la excepción.",
+      "certainty": "Explícito con la explicación del handle de excepciones en la línea 33."
+    },
+    {
+      "id": "E7", "line": 43, "phrase": "objeto plano",
+      "change": "Descartar la alternativa de reasignar imágenes consultadas y preferir retornar findOnePlain(id).",
+      "certainty": "Alternativa final respaldada también por línea 41."
+    },
+    {
+      "id": "E8", "source": "Sección 11 Relaciones en TypeORM/144. Query Runner.md", "line": 27, "phrase": "operador rest",
+      "change": "Extraer images del DTO y hacer preload con el resto de atributos.",
+      "certainty": "Contexto explícito; nombre toUpdate normalizado."
+    },
+    {
+      "id": "E9", "source": "Sección 11 Relaciones en TypeORM/144. Query Runner.md", "line": 35, "phrase": "Create Query Runner",
+      "change": "Crear el runner a partir del DataSource inyectado.",
+      "certainty": "Explícito con contexto de inyección en línea 33."
+    },
+    {
+      "id": "E10", "line": 17, "phrase": "arreglo vacío",
+      "change": "Distinguir images ausente (conservar) y arreglo presente incluso vacío (reemplazar).",
+      "certainty": "Explícito; if(images) conserva la semántica truthy de arrays en JavaScript."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Preparar el producto y empezar la transacción",
+      "language": "ts",
+      "code": "const { images, ...toUpdate } = updateProductDto;\nconst product = await this.productRepository.preload({ id, ...toUpdate });\nif (!product) throw new NotFoundException(`Product with id ${id} not found`);\n\nconst queryRunner = this.dataSource.createQueryRunner();\nawait queryRunner.connect();\nawait queryRunner.startTransaction();",
+      "why": "La preparación verifica el recurso. A partir de startTransaction, las escrituras que deben ser atómicas se ejecutan con el manager del mismo runner. No basta con crear el runner y seguir usando escrituras ajenas a él.",
+      "check": "En la aplicación original, comprobar que un ID inexistente se rechaza y que se espera la conexión antes de ejecutar las escrituras. Esta guía no ejecuta esa aplicación.",
+      "evidence": ["E1", "E8", "E9"]
+    },
+    {
+      "title": "Reemplazar imágenes y guardar con el mismo manager",
+      "language": "ts",
+      "code": "if (images) {\n  await queryRunner.manager.delete(ProductImage, { product: { id } });\n  product.images = images.map((image) =>\n    this.productImageRepository.create({ url: image }),\n  );\n}\nawait queryRunner.manager.save(product);",
+      "why": "Eliminar imágenes anteriores y guardar las nuevas deben pertenecer a la misma transacción. El criterio del delete está limitado al producto; un images vacío es una orden de borrar imágenes, mientras que su ausencia preserva ese aspecto de la actualización.",
+      "check": "En una base aislada de la aplicación original, probar imágenes nuevas, array vacío y campo ausente. No ejecutar eliminaciones en una base ajena al ejercicio. Las entidades/FK/cascade heredadas deben estar presentes para reproducirlo.",
+      "evidence": ["E2", "E3", "E4", "E10"]
+    },
+    {
+      "title": "Cerrar éxito y fallo sin confundir SQL con lectura posterior",
+      "language": "ts",
+      "code": "try {\n  // Aquí van delete y manager.save de la fase anterior.\n  await queryRunner.commitTransaction();\n  await queryRunner.release();\n  return this.findOnePlain(id);\n} catch (error) {\n  await queryRunner.rollbackTransaction();\n  await queryRunner.release();\n  this.handleDBExceptions(error);\n}",
+      "why": "Commit confirma las escrituras; rollback revierte si fallan. El runner se libera en los dos caminos descritos por el instructor. findOnePlain vuelve a consultar después de confirmar y liberar; esa lectura no forma parte de la transacción terminada.",
+      "check": "En el ejercicio completo, un fallo durante escritura debe conservar el estado anterior; el camino nominal debe devolver el producto consultado. Los fallos de connect/start/commit/release y la lectura posterior no quedan totalmente resueltos por esta transcripción: revisar al adaptar a otro ORM.",
+      "evidence": ["E4", "E5", "E6", "E7"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/products/products.service.ts — método update recuperado; clase heredada incompleta",
+      "language": "ts",
+      "code": "// Miembro de ProductsService; no es un archivo autónomo.\n// La clase/imports/métodos heredados no se recuperan íntegros en estas fuentes.\nasync update(id: string, updateProductDto: UpdateProductDto) {\n  const { images, ...toUpdate } = updateProductDto;\n  const product = await this.productRepository.preload({ id, ...toUpdate });\n  if (!product) {\n    throw new NotFoundException(`Product with id ${id} not found`);\n  }\n\n  const queryRunner = this.dataSource.createQueryRunner();\n  await queryRunner.connect();\n  await queryRunner.startTransaction();\n\n  try {\n    if (images) {\n      await queryRunner.manager.delete(ProductImage, { product: { id } });\n      product.images = images.map((image) =>\n        this.productImageRepository.create({ url: image }),\n      );\n    }\n    await queryRunner.manager.save(product);\n    await queryRunner.commitTransaction();\n    await queryRunner.release();\n    return this.findOnePlain(id);\n  } catch (error) {\n    await queryRunner.rollbackTransaction();\n    await queryRunner.release();\n    this.handleDBExceptions(error);\n  }\n}",
+      "provenance": "E8/E9: preparación heredada de 144; E1: inicio; E2/E3/E4/E10: escrituras; E5/E6: cierre en éxito/error; E7: lectura final. Se muestra todo el método recuperable, no una clase inventada. NotFoundException/mensajes, nombres e imports no disponibles se declaran en el estado inicial; deben cotejarse con el material original."
+    }
+  ],
+  "temporary": "Se descarta la escritura con productRepository.save externa al runner y la alternativa posterior de consultar imágenes y reasignarlas manualmente. No se reproducen borrados manuales de datos que el instructor usa para demostrar el problema. No se completa ProductsService con métodos falsos. La guía preserva el release en ambos caminos del curso, sin sustituirlo por finally ni atribuir al instructor una estrategia Prisma. Un error al liberar después de un commit requiere tratamiento adicional en una implementación robusta: no se debe afirmar que un rollback puede deshacer un commit ya confirmado.",
+  "mental": "La unidad atómica es el conjunto de escrituras del mismo manager, no la secuencia entera de acciones de la aplicación. La preparación previa y la lectura posterior están fuera del bloque confirmado; un archivo en disco también quedaría fuera. Para trasladarlo, conservar las invariantes y usar la API transaccional del ORM real, en vez de copiar QueryRunner en un proyecto Prisma."
+}
