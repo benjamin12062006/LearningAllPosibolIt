@@ -2,10 +2,9 @@
 
 Backend de formularios, estadísticas e investigación, construido paso a paso con **NestJS + TypeScript + pnpm**. Ya dispone de identidad validada, perfil local y proyectos privados persistidos con configuración de tienda.
 
-El código usa **PostgreSQL de Google Cloud SQL** mediante ADC, Cloud SQL Node.js
-Connector, `pg` y Prisma 7.10.0. El [plan](docs/plans/feature/auth/04-sustituir-turso-por-cloud-sql-postgresql.md)
-y la [activación verificada](./bitacora-construccion/settings/07-aplicar-migraciones-y-verificar-cloud-sql.md)
-registran la integración y su comprobación real.
+El código usa **PostgreSQL de Neon** mediante `DATABASE_URL`, `pg` y Prisma 7.10.0.
+El [plan del cambio](docs/plans/config/04-plan-cambiar-cloud-sql-por-neon.md) lo registra;
+la integración anterior con Google Cloud SQL se conserva solo como historia en la bitácora.
 Descope conserva la identidad y la sesión; PostgreSQL almacena el perfil y los proyectos en `estadistica_forms.projects`. La migración conserva los IDs y datos anteriores.
 
 `prisma/migrations` contiene únicamente la historia PostgreSQL activa.
@@ -14,54 +13,25 @@ La integración anterior se retiró tras guardar el commit local de restauració
 registra el alcance. El proyecto ya no incluye una segunda conexión ni migraciones
 alternativas. No se eliminaron bases remotas ni sus datos.
 
-## Configurar Cloud SQL
+## Configurar Neon
 
 Completa el `.env` existente a partir de [`.env.example`](./.env.example), conservando
 `DESCOPE_PROJECT_ID` y los secretos de Descope que ya utilizas:
 
 ```dotenv
-GOOGLE_CLOUD_QUOTA_PROJECT=expo-city-bol
-INSTANCE_CONNECTION_NAME=expo-city-bol:us-east4:expo-city-bol-instance
-DB_NAME=expo-city-bol-database
-DB_USER=catalogo_api
-DB_PASSWORD='contraseña-del-usuario-PostgreSQL'
-POSTGRES_MIGRATION_DATABASE_URL='postgresql://propietario:contraseña-codificada@127.0.0.1:5433/expo-city-bol-database?schema=estadistica_forms&sslmode=disable'
+DATABASE_URL='postgresql://usuario:contraseña@ep-xxxx-pooler.region.aws.neon.tech/neondb?sslmode=require'
 ```
 
-`DB_USER` debe existir en PostgreSQL. Puedes usar la identidad SQL existente del
-proyecto Go si tiene los permisos necesarios. El runtime requiere `USAGE` sobre
-`estadistica_forms` y operaciones sobre sus tablas; la identidad de migración
-requiere permisos para crear ese esquema y sus tablas. No se conceden permisos
-ni se crean usuarios automáticamente.
-
-La contraseña de `DB_PASSWORD` es literal. En la URL de migración, codifica los
-componentes usuario y contraseña: por ejemplo, `@` como `%40` y `#` como `%23`.
-La URL puede usar un propietario SQL distinto al usuario del runtime. No subas
-estos valores a Git ni los añadas al frontend. El runtime usa las variables `DB_*`
-y `INSTANCE_CONNECTION_NAME`; Prisma CLI usa `POSTGRES_MIGRATION_DATABASE_URL`.
-La variable genérica `DATABASE_URL` no se utiliza como destino alternativo.
-
-Si ADC no está configurado en esta Mac:
-
-```sh
-gcloud auth application-default login
-gcloud auth application-default set-quota-project expo-city-bol
-```
-
-ADC permite abrir el canal Google y requiere Cloud SQL Client en la identidad.
-`GOOGLE_CLOUD_QUOTA_PROJECT` selecciona el proyecto de cuota; no reemplaza el
-usuario/contraseña SQL. No hace falta copiar un JSON de servicio si se usa ADC local.
+Usa la cadena de conexión con pooler (host `-pooler`) que muestra el panel de Neon.
+`DATABASE_URL` es solo del servidor: no la subas a Git ni la añadas al frontend. El
+runtime la usa tal cual; Prisma CLI deriva la conexión directa quitando `-pooler` del
+host, porque el pooler no soporta los bloqueos de sesión de las migraciones. Neon
+suspende el cómputo inactivo, así que la primera consulta tras una pausa puede tardar.
 
 ## Migrar y comprobar
 
-El runtime conecta directamente con Cloud SQL y no necesita proxy. Prisma CLI
-sí requiere un extremo PostgreSQL. En otra terminal, para las migraciones:
-
-```sh
-cloud-sql-proxy --address 127.0.0.1 --port 5433 expo-city-bol:us-east4:expo-city-bol-instance
-```
-
-Con `POSTGRES_MIGRATION_DATABASE_URL` preparado, desde esta carpeta:
+El runtime y Prisma CLI usan la misma variable `DATABASE_URL`; no hace falta proxy.
+Desde esta carpeta:
 
 ```sh
 pnpm db:status
@@ -76,8 +46,9 @@ la conexión funciona pero faltan las migraciones. El arranque de Nest no migra.
 Las tablas se crean en `estadistica_forms`, no en `public`; la limpieza de tablas
 del antiguo Go queda a cargo del usuario.
 
-La activación remota del 2026-10-22 y el usuario ficticio consultado quedaron
-registrados en la [entrada 07](./bitacora-construccion/settings/07-aplicar-migraciones-y-verificar-cloud-sql.md).
+La activación remota anterior en Cloud SQL (2026-10-22) quedó registrada en la
+[entrada 07](./bitacora-construccion/settings/07-aplicar-migraciones-y-verificar-cloud-sql.md);
+la base actual es Neon.
 Para repetir la prueba de persistencia ejecuta `pnpm db:smoke`: crea o reutiliza
 únicamente `postgresql-smoke@example.test`, comprueba idempotencia, edición y lectura
 SQL, y conserva esa fila identificable. No crea una cuenta Descope ni omite el guard
@@ -86,6 +57,51 @@ HTTP. La consulta de lectura está en [requests/postgresql-smoke.sql](./requests
 Para cambios futuros usa `pnpm db:migration:create -- --name nombre` contra un
 PostgreSQL de desarrollo aislado con shadow database disponible. Revisa el SQL
 generado y aplica los cambios al destino remoto con `pnpm db:migrate`.
+
+## Límites de la API
+
+| Qué | Límite | Dónde se define |
+| --- | --- | --- |
+| Listados (`projects`, `imports`) | `limit` 1–100 (20 por defecto), `offset` ≥ 0; respuesta con `page.hasMore`; parámetros desconocidos rechazados | `src/common/http/pagination.ts` (REST y GraphQL) |
+| Archivo de importación | 10 MiB (`10485760` bytes) | `IMPORT_LIMITS.fileBytes` y `CHECK` de `catalog_snapshots.byte_size` |
+| Filas por importación | 5.000 | `IMPORT_LIMITS.rows` y `CHECK` de `catalog_snapshots.row_count` |
+| Columnas, registro, lote y muestra | 200 / 1 MiB / 250 filas o 1 MiB / 20 filas | `IMPORT_LIMITS` |
+| Importaciones activas | 1 por proyecto (`409 IMPORT_ALREADY_ACTIVE`) | `ImportAccessGuard` y `CatalogImportRepository.accept` |
+| Profundidad de consulta GraphQL | 6 | `GRAPHQL_MAX_DEPTH` |
+
+Cambiar el archivo o las filas exige actualizar la constante **y** una migración con el `CHECK`;
+`test/features/catalog-import/import-limits.spec.ts` falla si no coinciden. `GET /api/v1/projects/:projectId/imports`
+lista las importaciones de un proyecto, del más reciente al más antiguo y sin la muestra de filas.
+
+## GraphQL
+
+Además de REST, `POST /api/graphql` (code first, Apollo Server 5) expone las mismas
+operaciones con los mismos servicios, guard de Descope y errores bilingües
+(`extensions.code` y `extensions.message.{es,en}`). Autentícate con
+`Authorization: Bearer <sesión Descope>`.
+
+Toda la capa GraphQL vive en `src/graphql/`: `GraphqlApiModule` registra los resolvers
+(`users/`, `projects/`, `catalog-import/`) y `common/` reúne paginación, errores, escalar JSON
+y regla de profundidad. Los módulos de negocio no conocen GraphQL; solo exportan sus servicios
+([bitácora 15](./bitacora-construccion/settings/15-separar-capa-graphql.md)).
+
+```graphql
+{ me { id email displayName } }
+{ projects(limit: 20, offset: 0) { id name configurationStatus } }
+{ project(id: "…") { name country currency channelProfile } }
+{ importJob(projectId: "…", id: "…") { status processedRows } }
+{ importSnapshot(projectId: "…", id: "…") { status headers sample { sourceRow originalValues } } }
+mutation { createProject(input: { name: "Tienda", country: "BO", currency: "BOB", channelProfile: google_merchant }) { id } }
+mutation { updateProject(id: "…", input: { name: "Nuevo" }) { id } }
+mutation { updateMe(input: { displayName: "Ana" }) { id } }
+```
+
+Límites: paginación `limit` 1–100 (20 por defecto), profundidad máxima 6, sin batching,
+sin playground y con introspección solo fuera de `NODE_ENV=production`. La subida del CSV
+sigue siendo `multipart` en REST. El esquema esperado está en
+`test/features/graphql/schema.expected.graphql` (`UPDATE_GRAPHQL_SCHEMA=1` lo regenera).
+El [plan](docs/plans/db/05-plan-implementar-graphql.md) y la
+[bitácora 13](./bitacora-construccion/settings/13-implementar-graphql.md) registran el alcance.
 
 ## Incrementos actuales: sesión, perfil y proyectos propios
 
@@ -170,7 +186,7 @@ Responde `201 { project }`. `GET /api/v1/projects` devuelve `{ projects }`; `GET
 
 El código y la API de esta funcionalidad usan únicamente `projects`. Las rutas anteriores de espacios se retiraron y responden `404`.
 
-La migración `20261025000100_configure_projects` renombra la tabla anterior a `projects`, sus restricciones e índice y añade configuración. La posterior `20261026000100_create_catalog_import` añade snapshots, filas y trabajos. Ambas se comprobaron sobre base temporal. **Aplicar las migraciones pendientes a Cloud SQL antes de ejecutar esta versión allí**, mediante `db:status` → `db:migrate`. La historia aplicada se conserva.
+La migración `20261025000100_configure_projects` renombra la tabla anterior a `projects`, sus restricciones e índice y añade configuración. La posterior `20261026000100_create_catalog_import` añade snapshots, filas y trabajos. Ambas se comprobaron sobre base temporal. **Aplicar las migraciones pendientes a Neon antes de ejecutar esta versión allí**, mediante `db:status` → `db:migrate`. La historia aplicada se conserva.
 
 Peticiones manuales: [requests/projects.http](./requests/projects.http). Registro: [implementación de projects](./bitacora-construccion/feature/projects&catalog-import/02-implementar-projects.md).
 
@@ -247,7 +263,7 @@ src/
     └── projects.dto.ts
 ```
 
-El recorrido para proyectos es `guard de Descope → controller → servicio → usuario local → repositorio → Prisma/pg → Cloud SQL PostgreSQL`.
+El recorrido para proyectos es `guard de Descope → controller → servicio → usuario local → repositorio → Prisma/pg → Neon PostgreSQL`.
 
 - `main.ts` crea la aplicación y configura el puerto; `configure-http.ts` comparte pipes, prefijo, versión y CORS con las pruebas HTTP.
 - `AppModule` reúne los módulos de la aplicación.
@@ -273,7 +289,7 @@ Los tres cursos seleccionados son de Fernando Herrera/DevTalles. No hace falta t
 
 También se revisó `NestJS API Profesional` ([NestJS Mastery: Build & Deploy a Production-Ready API](https://www.udemy.com/course/master-nestjs-the-javascript-nodejs-framework/)). Es una segunda referencia opcional para contrastar organización, pruebas y autorización, no una sustitución de Fernando. Su biblioteca incluye secciones marcadas `OLDER CONTENT`, que no se usarán como configuración vigente.
 
-`Microservicios con NestJS` queda para una necesidad real de distribución. El primer producto es un backend modular. La persistencia elegida es Prisma con PostgreSQL de Cloud SQL y SQL parametrizado; las decisiones históricas de SQLite/Turso se conservan en la bitácora.
+`Microservicios con NestJS` queda para una necesidad real de distribución. El primer producto es un backend modular. La persistencia elegida es Prisma con PostgreSQL de Neon y SQL parametrizado; las decisiones históricas de SQLite/Turso se conservan en la bitácora.
 
 Estos cursos respaldan el backend y los informes. El análisis estadístico, la integración con IA y el uso de Polars requieren fuentes específicas adicionales cuando lleguemos a esa etapa.
 
@@ -293,7 +309,7 @@ Para seleccionar los complementos se consultaron [Testing: introducción a prueb
 
 **Del curso:** CLI oficial, TypeScript, Express como adaptador inicial, módulos por funcionalidad, controladores con decoradores, separación posterior de servicios y desarrollo incremental.
 
-**Adaptación propia:** pnpm, Nest 12.0.3, rutas `/api/v1`, Descope, Prisma con PostgreSQL de Cloud SQL, DTOs con `class-validator` y `class-transformer`, puerto 8080 y orígenes locales. La configuración ESM y las importaciones `.js` provienen del CLI actual; no deben reemplazarse mecánicamente por las de una grabación anterior.
+**Adaptación propia:** pnpm, Nest 12.0.3, rutas `/api/v1`, Descope, Prisma con PostgreSQL de Neon, DTOs con `class-validator` y `class-transformer`, puerto 8080 y orígenes locales. La configuración ESM y las importaciones `.js` provienen del CLI actual; no deben reemplazarse mecánicamente por las de una grabación anterior.
 
 Las pruebas actuales de usuarios y conexión mantienen el runner integrado de Node. Las pruebas nuevas de proyectos siguen el [plan de testing](./docs/plans/config/01-testing-nest-para-futuras-features.md) con Jest, `@nestjs/testing` y Supertest; ambas suites usan PostgreSQL temporal migrado por Prisma. Se retiraron los tests y el comando específicos de espacios junto con esa API.
 
@@ -309,7 +325,7 @@ Este proyecto aplica [construir-desde-cursos](/Users/benji/.agents/skills/constr
 4. Implementar únicamente las piezas necesarias.
 5. Verificar el resultado antes de añadir el siguiente escalón.
 
-El objetivo es una plataforma de formularios y resultados compartidos para educación e investigación. Ya existen perfiles y espacios privados; Nuxt y Flutter consumen el contrato de sesión y perfil. Las siguientes features de producto se definen en `../docs/product/`.
+El objetivo es una plataforma de formularios y resultados compartidos para educación e investigación. Ya existen perfiles y espacios privados; la API expone el contrato de sesión y perfil. Las siguientes features de producto se definen en `../docs/product/`.
 
 Comprobaciones disponibles:
 
@@ -351,4 +367,4 @@ pnpm test:features:unit --testNamePattern='lista usando'
 
 La compilación genera tipos Prisma sin leer `.env`, limpia `.test-build` y compila producción más `test/features` como ESM con metadatos de decoradores. Jest descubre únicamente los tests nuevos compilados; los tipos se importan desde `@jest/globals`. El build productivo excluye los tests. Jest usa `--experimental-vm-modules` en Node 24; su aviso de experimental es esperado.
 
-Las suites tienen proyectos Jest separados `unit/integration/e2e`. Las unitarias crean dobles nuevos por caso e inyectan el servicio real. Integración/HTTP usan Prisma y PostgreSQL temporal PGlite/socket con migraciones locales y limpieza. HTTP sustituye Descope y `POSTGRESQL_CONNECTION` antes de compilar el módulo; mantiene el guard real. Los nuevos tests no cargan `.env`, ADC ni Cloud SQL. La cobertura queda en `coverage/features/`; estas pruebas no verifican login externo ni carga multiproceso de Cloud SQL. Véase la [bitácora de testing](./bitacora-construccion/settings/10-testing-nest-para-features.md).
+Las suites tienen proyectos Jest separados `unit/integration/e2e`. Las unitarias crean dobles nuevos por caso e inyectan el servicio real. Integración/HTTP usan Prisma y PostgreSQL temporal PGlite/socket con migraciones locales y limpieza. HTTP sustituye Descope y `POSTGRESQL_CONNECTION` antes de compilar el módulo; mantiene el guard real. Los nuevos tests no cargan `.env` ni se conectan a Neon. La cobertura queda en `coverage/features/`; estas pruebas no verifican login externo ni carga multiproceso de Cloud SQL. Véase la [bitácora de testing](./bitacora-construccion/settings/10-testing-nest-para-features.md).

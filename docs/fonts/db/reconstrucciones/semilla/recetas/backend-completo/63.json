@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 5 Nest CLI Resource - Brands CRUD/63. Inyectar servicios en otros servicios.md",
+  "previous": [
+    "Sección 5 Nest CLI Resource - Brands CRUD/62. Preparar servicios para insertar SEED.md"
+  ],
+  "objective": "Usar CarsService y BrandsService desde SeedService: exportar cada servicio en su módulo, importar esos módulos en SeedModule y documentar la semilla en el README.",
+  "initial": "CARS_SEED, BRANDS_SEED y los métodos fill…WithSeedData existen (lección 62); SeedService aún no los usa.",
+  "certainty": "El error de Nest se narra de forma aproximada. El texto exacto del README es incierto: solo se recuperan un título y la URL del endpoint.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "Read only cars cars service",
+      "change": "Inyección de CarsService en el constructor de SeedService.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "No puede resolver",
+      "change": "Error al arrancar: Nest no resuelve la dependencia de SeedService.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "asegúrate de que el módulo esté importado",
+      "change": "Solución sugerida por Nest: exportar el proveedor e importar su módulo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "primeramente en nuestro Cars módulo lo vamos a exportar",
+      "change": "CarsModule exports: [CarsService]; SeedModule imports: [CarsModule].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 23,
+      "phrase": "van a ser tratados como singleton",
+      "change": "Se comparte la misma instancia del servicio en toda la aplicación.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 27,
+      "phrase": "voy a exponer mi brands service",
+      "change": "BrandsModule exports: [BrandsService].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 31,
+      "phrase": "Field Data with Seed",
+      "change": "populateDB llama también a fillBrandsWithSeedData(BRANDS_SEED).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 31,
+      "phrase": "fácilmente ejecutan su zip, se recarga todo",
+      "change": "La semilla recupera los datos tras pruebas destructivas.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 33,
+      "phrase": "Ejecutar sit",
+      "change": "README con la instrucción para poblar la base.",
+      "certainty": "media"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Intentar inyectar sin exportar",
+      "code": "constructor(private readonly carsService: CarsService) {}",
+      "why": "Muestra que un proveedor de otro módulo no es visible por defecto.",
+      "check": "Nest falla con «can't resolve dependencies of the SeedService (?)».",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Exportar el servicio e importar el módulo",
+      "code": "@Module({\n  controllers: [CarsController],\n  providers: [CarsService],\n  exports: [CarsService],\n})\nexport class CarsModule {}\n\n\nimport { Module } from '@nestjs/common';\nimport { BrandsModule } from '../brands/brands.module';\nimport { CarsModule } from '../cars/cars.module';\nimport { SeedController } from './seed.controller';\nimport { SeedService } from './seed.service';\n\n@Module({\n  controllers: [SeedController],\n  providers: [SeedService],\n  imports: [CarsModule, BrandsModule],\n})\nexport class SeedModule {}",
+      "why": "Solo lo que un módulo exporta es accesible fuera; se importa el módulo, no el servicio suelto.",
+      "check": "La aplicación arranca y GET /seed carga los carros.",
+      "evidence": [
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Repetir con las marcas",
+      "code": "@Module({\n  controllers: [BrandsController],\n  providers: [BrandsService],\n  exports: [BrandsService],\n})\nexport class BrandsModule {}\n\n\nimport { Injectable } from '@nestjs/common';\nimport { BrandsService } from '../brands/brands.service';\nimport { CarsService } from '../cars/cars.service';\nimport { BRANDS_SEED } from './data/brands.seed';\nimport { CARS_SEED } from './data/cars.seed';\n\n@Injectable()\nexport class SeedService {\n  constructor(\n    private readonly carsService: CarsService,\n    private readonly brandsService: BrandsService,\n  ) {}\n\n  populateDB() {\n    this.carsService.fillCarsWithSeedData(CARS_SEED);\n    this.brandsService.fillBrandsWithSeedData(BRANDS_SEED);\n\n    return 'SEED Executed';\n  }\n}",
+      "why": "Mismo mecanismo para BrandsService; ambos servicios comparten instancia singleton.",
+      "check": "Tras GET /seed, GET /cars y GET /brands devuelven los datos de semilla.",
+      "evidence": [
+        "E6",
+        "E7",
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Documentar en el README",
+      "code": "# Car Dealership\n\nPopulate DB\n\nGET http://localhost:3000/seed",
+      "why": "Un desarrollador nuevo sabe cómo poblar la base al clonar el repositorio.",
+      "check": "La vista previa Markdown muestra la instrucción.",
+      "evidence": [
+        "E9"
+      ],
+      "language": "md"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { BrandsService } from '../brands/brands.service';\nimport { CarsService } from '../cars/cars.service';\nimport { BRANDS_SEED } from './data/brands.seed';\nimport { CARS_SEED } from './data/cars.seed';\n\n@Injectable()\nexport class SeedService {\n  constructor(\n    private readonly carsService: CarsService,\n    private readonly brandsService: BrandsService,\n  ) {}\n\n  populateDB() {\n    this.carsService.fillCarsWithSeedData(CARS_SEED);\n    this.brandsService.fillBrandsWithSeedData(BRANDS_SEED);\n\n    return 'SEED Executed';\n  }\n}",
+      "provenance": "E1, E7"
+    },
+    {
+      "path": "src/seed/seed.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { BrandsModule } from '../brands/brands.module';\nimport { CarsModule } from '../cars/cars.module';\nimport { SeedController } from './seed.controller';\nimport { SeedService } from './seed.service';\n\n@Module({\n  controllers: [SeedController],\n  providers: [SeedService],\n  imports: [CarsModule, BrandsModule],\n})\nexport class SeedModule {}",
+      "provenance": "E4, E6"
+    },
+    {
+      "path": "src/cars/cars.module.ts — exports",
+      "language": "ts",
+      "code": "@Module({\n  controllers: [CarsController],\n  providers: [CarsService],\n  exports: [CarsService],\n})\nexport class CarsModule {}",
+      "provenance": "E4"
+    },
+    {
+      "path": "src/brands/brands.module.ts — exports",
+      "language": "ts",
+      "code": "@Module({\n  controllers: [BrandsController],\n  providers: [BrandsService],\n  exports: [BrandsService],\n})\nexport class BrandsModule {}",
+      "provenance": "E6"
+    },
+    {
+      "path": "README.md",
+      "language": "md",
+      "code": "# Car Dealership\n\nPopulate DB\n\nGET http://localhost:3000/seed",
+      "provenance": "E9"
+    }
+  ],
+  "temporary": "Se escribe CarsService dos o tres veces en el constructor para mostrar cómo Nest marca cada dependencia no resuelta con «?».",
+  "mental": "Para usar un servicio ajeno: el módulo dueño lo exporta y el módulo consumidor importa ese módulo; la semilla orquesta servicios existentes."
+}

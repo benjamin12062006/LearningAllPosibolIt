@@ -52,7 +52,7 @@ export async function createTestDatabase(options: { migrate?: boolean } = {}) {
           cwd: process.cwd(),
           env: {
             PATH: process.env.PATH,
-            POSTGRES_MIGRATION_DATABASE_URL: url.toString(),
+            DATABASE_URL: url.toString(),
           },
           timeout: 30_000,
         },

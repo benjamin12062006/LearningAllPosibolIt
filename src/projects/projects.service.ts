@@ -4,6 +4,12 @@ import { apiError } from '../common/http/api-error.js';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { UsersService } from '../users/users.service.js';
 import type { CreateProjectDto, UpdateProjectDto } from './projects.dto.js';
+import {
+  fetchWindow,
+  resolvePage,
+  toPage,
+  type PageRequest,
+} from '../common/http/pagination.js';
 import { ProjectsRepository } from './projects.repository.js';
 import type { ConfiguredProject } from './projects.types.js';
 
@@ -14,9 +20,14 @@ export class ProjectsService {
     private readonly projectsRepository: ProjectsRepository,
   ) {}
 
-  async findAll(identity: AuthenticatedIdentity) {
+  async findAll(identity: AuthenticatedIdentity, query?: Partial<PageRequest>) {
     const owner = await this.usersService.findCurrent(identity);
-    return this.projectsRepository.findAllByOwner(owner.id);
+    const page = resolvePage(query);
+    const rows = await this.projectsRepository.findAllByOwner(
+      owner.id,
+      fetchWindow(page),
+    );
+    return toPage(rows, page);
   }
 
   async create(identity: AuthenticatedIdentity, input: CreateProjectDto) {

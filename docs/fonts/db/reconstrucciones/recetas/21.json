@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 3 Nest + GraphQL - Introducción/20. Creando un nuevo proyecto de Nest con GraphQL.md"
+  ],
+  "source": "Sección 3 Nest + GraphQL - Introducción/21. Instalar GraphQL en Nest.md",
+  "objective": "Instalar los paquetes de GraphQL para Nest sobre Express, registrar GraphQLModule.forRoot con el driver de Apollo y generar el esquema automáticamente (code first).",
+  "initial": "Proyecto Nest nuevo (02-todo) creado en la lección 20: se borraron AppController, AppService y su spec, AppModule quedó vacío y se desinstalaron los paquetes de Prettier/ESLint para no recibir avisos del linter.",
+  "certainty": "La transcripción es reconocimiento de voz con ruido (\"Graf Jewel\" = GraphQL, \"Apolo\" = Apollo). El instructor no dicta el código carácter a carácter: se ensambla desde sus explicaciones y la documentación de Nest que cita. El curso es de 2022 (Nest 9, Apollo Server 3); las versiones actuales difieren y se contrastan fuera de esta guía. Los nombres de paquetes del curso (apollo-server-express) corresponden a esa época. Las opciones debug/playground se mencionan como recomendadas pero no consta que se añadan en esta lección.",
+  "evidence": [
+    {
+      "id": "E8",
+      "line": 21,
+      "phrase": "el Up Service, no lo voy a ocupar",
+      "change": "Estado inicial: se eliminan controlador y servicio por defecto.",
+      "certainty": "alta",
+      "source": "Sección 3 Nest + GraphQL - Introducción/20. Creando un nuevo proyecto de Nest con GraphQL.md"
+    },
+    {
+      "id": "E1",
+      "line": 17,
+      "phrase": "Apolo Server Express",
+      "change": "Instalación: @nestjs/graphql, @nestjs/apollo, graphql y apollo-server-express (yarn add).",
+      "certainty": "media: nombres reconstruidos desde audio"
+    },
+    {
+      "id": "E2",
+      "line": 19,
+      "phrase": "Debug Falls y el Playground From Falls",
+      "change": "Existe un único forRoot y opciones recomendadas debug/playground.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 23,
+      "phrase": "también el Apolo Driver",
+      "change": "GraphQLModule.forRoot con ApolloDriver y ApolloDriverConfig en imports de AppModule.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 25,
+      "phrase": "requiere por lo menos un esquema existente",
+      "change": "Error esperado: Apollo necesita al menos un esquema o tipo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 27,
+      "phrase": "auto esquema file",
+      "change": "autoSchemaFile con join(process.cwd(), \"src/schema.gql\").",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 29,
+      "phrase": "trabajemos con el Code first",
+      "change": "Decisión del curso: enfoque code first.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 31,
+      "phrase": "ocupamos proveer el query inicial",
+      "change": "La app sigue sin compilar hasta definir un Query raíz (lección 22).",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Instalar las dependencias de GraphQL",
+      "code": "yarn add @nestjs/graphql @nestjs/apollo graphql apollo-server-express",
+      "why": "Nest usa Express por defecto; estos paquetes integran GraphQL con el driver de Apollo sobre Express.",
+      "check": "Los cuatro paquetes aparecen en package.json.",
+      "evidence": [
+        "E1"
+      ],
+      "language": "bash"
+    },
+    {
+      "title": "Registrar GraphQLModule con el driver de Apollo",
+      "code": "import { GraphQLModule } from '@nestjs/graphql';\nimport { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';\n\n// dentro de @Module({ imports: [...] })\nGraphQLModule.forRoot<ApolloDriverConfig>({\n  driver: ApolloDriver,\n}),",
+      "why": "forRoot es la configuración raíz única de GraphQL; las features adicionales usarían forFeature.",
+      "check": "Al guardar, la terminal muestra el error de Apollo que exige al menos un esquema (E4).",
+      "evidence": [
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Generar el esquema automáticamente (code first)",
+      "code": "import { join } from 'path';\n\nGraphQLModule.forRoot<ApolloDriverConfig>({\n  driver: ApolloDriver,\n  autoSchemaFile: join(process.cwd(), 'src/schema.gql'),\n}),",
+      "why": "Con code first el esquema schema.gql se genera desde clases y decoradores TypeScript; join viene de path de Node.",
+      "check": "Todavía no compila: falta un Query raíz. Se resuelve en la lección 22.",
+      "evidence": [
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "package.json (dependencias añadidas)",
+      "language": "text",
+      "code": "\"@nestjs/apollo\"\n\"@nestjs/graphql\"\n\"apollo-server-express\"\n\"graphql\"",
+      "provenance": "E1"
+    },
+    {
+      "path": "src/app.module.ts",
+      "language": "ts",
+      "code": "import { join } from 'path';\nimport { Module } from '@nestjs/common';\nimport { GraphQLModule } from '@nestjs/graphql';\nimport { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';\n\n@Module({\n  imports: [\n    GraphQLModule.forRoot<ApolloDriverConfig>({\n      driver: ApolloDriver,\n      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),\n    }),\n  ],\n  controllers: [],\n  providers: [],\n})\nexport class AppModule {}",
+      "provenance": "E8 (módulo vacío), E3 (driver), E5 (autoSchemaFile)"
+    }
+  ],
+  "temporary": "Ninguno. La aplicación queda deliberadamente sin compilar al final de la lección.",
+  "mental": "GraphQL en Nest = paquetes + GraphQLModule.forRoot(driver) + un esquema. En code first el esquema sale de las clases; sin al menos un Query raíz Apollo no arranca."
+}

@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [],
+  "source": "Sección 8 Items + Usuarios - Peticiones autenticadas/102. findAll por usuario.md",
+  "objective": "Que el Query items devuelva solo los artículos del usuario autenticado, pasando el usuario del token al servicio y filtrando con where por la relación user.",
+  "initial": "Item tiene relación ManyToOne con User; ItemsResolver está protegido con JwtAuthGuard y createItem guarda el usuario del token (lecciones 100–101).",
+  "certainty": "Transcripción por reconocimiento de voz (\"fin o\" = findAll, \"Parent\"/\"pan\" = @Parent). Proyecto Anylist con TypeORM y PostgreSQL (curso de 2022). El código se ensambla desde las explicaciones. Los demás métodos del resolver no se reconstruyen en esta guía.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "documentación de tipo RM",
+      "change": "Tarea basada en find de TypeORM.",
+      "certainty": "media"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "paginar, filtrar",
+      "change": "findAll tenía un TODO de filtrar, paginar y por usuario.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 21,
+      "phrase": "solo regresen los artículos que corresponden al usuario",
+      "change": "Requisito: filtrar por el usuario del token.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 25,
+      "phrase": "mediante el current user",
+      "change": "@CurrentUser() user en el resolver y findAll(user) en el servicio.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 27,
+      "phrase": "Select asterisco from items where",
+      "change": "where: { user: { id: user.id } } equivale a WHERE userId = id.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Preparar datos de prueba",
+      "code": "-- En Table Plus: cambiar el userId de algunos items a otro usuario (Melissa)",
+      "why": "Con datos de dos usuarios se ve que findAll devolvía todo.",
+      "check": "Fernando ve también los artículos de Melissa: el defecto que hay que corregir.",
+      "evidence": [
+        "E2",
+        "E3"
+      ],
+      "language": "sql"
+    },
+    {
+      "title": "Pasar el usuario al servicio",
+      "code": "@Query(() => [Item], { name: 'items' })\nasync findAll(@CurrentUser() user: User): Promise<Item[]> {\n  return this.itemsService.findAll(user);\n}",
+      "why": "El propietario sale del token, no de un argumento que el cliente pueda manipular.",
+      "check": "Compila; el servicio debe aceptar el usuario.",
+      "evidence": [
+        "E4"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Filtrar en el repositorio",
+      "code": "  async findAll(user: User): Promise<Item[]> {\n    // TODO: filtrar, paginar, por usuario...\n    return this.itemsRepository.find({\n      where: {\n        user: {\n          id: user.id,\n        },\n      },\n    });\n  }",
+      "why": "La condición sobre la relación genera WHERE \"userId\" = :id.",
+      "check": "Con el token de Fernando solo aparecen sus dos artículos.",
+      "evidence": [
+        "E5"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/items/items.resolver.ts (fragmento)",
+      "language": "ts",
+      "code": "import { UseGuards } from '@nestjs/common';\nimport { Query, Resolver } from '@nestjs/graphql';\nimport { ItemsService } from './items.service';\nimport { Item } from './entities/item.entity';\nimport { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';\nimport { CurrentUser } from '../auth/decorators/current-user.decorator';\nimport { User } from '../users/entities/user.entity';\n\n@Resolver(() => Item)\n@UseGuards(JwtAuthGuard)\nexport class ItemsResolver {\n  constructor(private readonly itemsService: ItemsService) {}\n\n  // createItem, findOne, updateItem y removeItem (lecciones 101, 103, 104) sin cambios.\n\n  @Query(() => [Item], { name: 'items' })\n  async findAll(@CurrentUser() user: User): Promise<Item[]> {\n    return this.itemsService.findAll(user);\n  }\n}",
+      "provenance": "E4; guard de lecciones previas"
+    },
+    {
+      "path": "src/items/items.service.ts (método findAll)",
+      "language": "ts",
+      "code": "  async findAll(user: User): Promise<Item[]> {\n    // TODO: filtrar, paginar, por usuario...\n    return this.itemsRepository.find({\n      where: {\n        user: {\n          id: user.id,\n        },\n      },\n    });\n  }",
+      "provenance": "E2, E5"
+    }
+  ],
+  "temporary": "Ediciones manuales en la base de datos (pepinos, aguacate, leche, lechuga y cambio de dueño) solo para probar.",
+  "mental": "El usuario del token (CurrentUser) entra como parámetro del servicio; el repositorio filtra por la relación. Nunca se confía en un id de propietario enviado por el cliente."
+}

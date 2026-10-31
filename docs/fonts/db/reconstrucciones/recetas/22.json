@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 3 Nest + GraphQL - Introducción/21. Instalar GraphQL en Nest.md"
+  ],
+  "source": "Sección 3 Nest + GraphQL - Introducción/22. Mi primer Resolver.md",
+  "objective": "Crear el primer módulo y resolver con un Query raíz helloWorld que devuelve String, ver el esquema generado y consultarlo en /graphql.",
+  "initial": "AppModule con GraphQLModule.forRoot (ApolloDriver, autoSchemaFile) de la lección 21; la app no arranca por falta de Query raíz.",
+  "certainty": "La transcripción es reconocimiento de voz con ruido (\"Graf Jewel\" = GraphQL, \"Apolo\" = Apollo). El instructor no dicta el código carácter a carácter: se ensambla desde sus explicaciones y la documentación de Nest que cita. El curso es de 2022 (Nest 9, Apollo Server 3); las versiones actuales difieren y se contrastan fuera de esta guía. El texto exacto devuelto (\"Hola Mundo\") es aproximado. playground: false se activa al final para demostrar el efecto; la lección 23 lo mantiene en false al añadir Apollo Studio.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "tenemos que proveer un Keri Ruth",
+      "change": "Problema: falta el Query raíz, punto de entrada.",
+      "certainty": "media"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "Hello World o el nombre que ustedes quieran",
+      "change": "nest g mo helloWorld: módulo HelloWorldModule importado en AppModule.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "Generamos una R de resolver",
+      "change": "nest g r helloWorld --no-spec crea HelloWorldResolver.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "Son prácticamente providers",
+      "change": "El resolver se registra en providers; equivale a un controlador REST.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 23,
+      "phrase": "seleccionen el de Graph",
+      "change": "@Query debe importarse de @nestjs/graphql, no de @nestjs/common.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 25,
+      "phrase": "función de flecha y colocar que va a regresar algo de tipo string",
+      "change": "@Query(() => String) y método helloWorld(): string.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 27,
+      "phrase": "apareció este esquema",
+      "change": "schema.gql se genera solo; no editarlo a mano.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 29,
+      "phrase": "Slash Graf Jewel",
+      "change": "El endpoint por defecto es /graphql.",
+      "certainty": "media"
+    },
+    {
+      "id": "E9",
+      "line": 39,
+      "phrase": "ponemos el playground en Falls",
+      "change": "playground: false en forRoot desactiva el playground.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Crear el módulo y el resolver",
+      "code": "nest g mo helloWorld\nnest g r helloWorld --no-spec",
+      "why": "El módulo agrupa la lógica de hola mundo; el resolver escucha las operaciones GraphQL de ese módulo.",
+      "check": "AppModule importa HelloWorldModule y este registra HelloWorldResolver en providers.",
+      "evidence": [
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "language": "bash"
+    },
+    {
+      "title": "Definir el Query raíz",
+      "code": "import { Query, Resolver } from '@nestjs/graphql';\n\n@Resolver()\nexport class HelloWorldResolver {\n  @Query(() => String)\n  helloWorld(): string {\n    return 'Hola Mundo';\n  }\n}",
+      "why": "GraphQL necesita saber el tipo de retorno: el string de TypeScript no basta, se declara con () => String.",
+      "check": "La app arranca y src/schema.gql contiene type Query { helloWorld: String! }.",
+      "evidence": [
+        "E1",
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Consultar en /graphql y desactivar el playground",
+      "code": "GraphQLModule.forRoot<ApolloDriverConfig>({\n  driver: ApolloDriver,\n  playground: false,\n  autoSchemaFile: join(process.cwd(), 'src/schema.gql'),\n}),",
+      "why": "El playground documenta el esquema; puede quedar activo en desarrollo y desactivarse en producción.",
+      "check": "En http://localhost:3000/graphql la consulta { helloWorld } devuelve el texto; con playground: false la página ya no muestra el playground.",
+      "evidence": [
+        "E8",
+        "E9"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/hello-world/hello-world.resolver.ts",
+      "language": "ts",
+      "code": "import { Query, Resolver } from '@nestjs/graphql';\n\n@Resolver()\nexport class HelloWorldResolver {\n  @Query(() => String)\n  helloWorld(): string {\n    return 'Hola Mundo';\n  }\n}",
+      "provenance": "E3, E5, E6"
+    },
+    {
+      "path": "src/hello-world/hello-world.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { HelloWorldResolver } from './hello-world.resolver';\n\n@Module({\n  providers: [HelloWorldResolver],\n})\nexport class HelloWorldModule {}",
+      "provenance": "E2, E4"
+    },
+    {
+      "path": "src/app.module.ts",
+      "language": "ts",
+      "code": "import { join } from 'path';\nimport { Module } from '@nestjs/common';\nimport { GraphQLModule } from '@nestjs/graphql';\nimport { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';\nimport { HelloWorldModule } from './hello-world/hello-world.module';\n\n@Module({\n  imports: [\n    GraphQLModule.forRoot<ApolloDriverConfig>({\n      driver: ApolloDriver,\n      playground: false,\n      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),\n    }),\n    HelloWorldModule,\n  ],\n  controllers: [],\n  providers: [],\n})\nexport class AppModule {}",
+      "provenance": "Lección 21 (forRoot), E2, E9"
+    }
+  ],
+  "temporary": "Consultas de prueba con alias (hola, hola2) en el playground; Postman, Altair e Insomnia se muestran solo como alternativas.",
+  "mental": "Resolver ≈ controlador, pero va en providers. @Query de @nestjs/graphql + tipo GraphQL explícito → el esquema se regenera solo → /graphql responde."
+}

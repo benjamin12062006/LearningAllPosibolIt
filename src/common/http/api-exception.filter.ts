@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { toGraphQLError } from '../../graphql/common/graphql-error.js';
 import { API_MESSAGES } from './messages.js';
 import {
   ApplicationFailure,
@@ -46,6 +47,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(ApiExceptionFilter.name);
 
   catch(error: unknown, host: ArgumentsHost) {
+    if (host.getType<string>() === 'graphql') return this.catchGraphQL(error);
+
     const http = host.switchToHttp();
     const request = http.getRequest<Request & { importRequestId?: string }>();
     const response = http.getResponse<Response>();
@@ -69,6 +72,15 @@ export class ApiExceptionFilter implements ExceptionFilter {
     responseBody.requestId = requestId;
 
     response.status(status).json(responseBody);
+  }
+
+  /** En GraphQL el filtro devuelve el error; graphql-js lo registra en `errors`. */
+  private catchGraphQL(error: unknown) {
+    const requestId = randomUUID();
+    const { status, body } = getExceptionDetails(error);
+    const code = resolveErrorCode(body.code, status);
+    if (status >= 500) this.logger.error({ code, requestId });
+    return toGraphQLError(code, requestId, readValidationIssues(code, body));
   }
 }
 

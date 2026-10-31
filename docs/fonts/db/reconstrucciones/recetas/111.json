@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [],
+  "source": "Sección 9 Seed Data - Cargar y purgar base de datos/111. Seed Resolver.md",
+  "objective": "Crear el recurso seed con una Mutation executeSeed sin argumentos que delega en SeedService, planificar los pasos (purgar, crear usuarios, crear items) y exportar TypeOrmModule en users e items.",
+  "initial": "Anylist con auth, users e items; sin datos de prueba organizados.",
+  "certainty": "Transcripción por reconocimiento de voz (\"Cid\"/\"sid\"/\"zed\" = seed, \"Sprout\"/\"Broad\" = isProd/prod). Proyecto Anylist con TypeORM y PostgreSQL (curso de 2022). El código se ensambla desde las explicaciones. El texto de description es aproximado.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "Execute Cid",
+      "change": "La semilla modifica datos: semánticamente es una Mutation.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "generar res de resource",
+      "change": "nest g res seed --no-spec.",
+      "certainty": "media"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "El code first enter",
+      "change": "GraphQL code first sin endpoints CRUD.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "async execute zed",
+      "change": "Mutation que devuelve Promise<boolean>.",
+      "certainty": "media"
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "construcción de una base de datos",
+      "change": "name executeSeed y description (se confundieron al principio).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 25,
+      "phrase": "async execute si",
+      "change": "SeedService.executeSeed devuelve true o lanza excepciones de Nest.",
+      "certainty": "media"
+    },
+    {
+      "id": "E7",
+      "line": 27,
+      "phrase": "borrar todo",
+      "change": "Paso 1: purgar para poder repetir sin choques de claves únicas.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 29,
+      "phrase": "crear usuarios",
+      "change": "Orden: purgar → usuarios → items (dependencias).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 35,
+      "phrase": "exponer el Type o RM Mayu",
+      "change": "Exportar TypeOrmModule en users (e items) para inyectar repositorios.",
+      "certainty": "media"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Generar el recurso",
+      "code": "nest g res seed --no-spec\n# GraphQL (code first), sin CRUD",
+      "why": "El seed vive en su propio módulo, separado de users e items.",
+      "check": "AppModule importa SeedModule.",
+      "evidence": [
+        "E2",
+        "E3"
+      ],
+      "language": "bash"
+    },
+    {
+      "title": "Declarar la mutación",
+      "code": "import { Mutation, Resolver } from '@nestjs/graphql';\nimport { SeedService } from './seed.service';\n\n@Resolver()\nexport class SeedResolver {\n  constructor(private readonly seedService: SeedService) {}\n\n  @Mutation(() => Boolean, { name: 'executeSeed', description: 'Ejecuta la construcción de la base de datos' })\n  async executeSeed(): Promise<boolean> {\n    return this.seedService.executeSeed();\n  }\n}",
+      "why": "Borrar e insertar son cambios de datos: Mutation, no Query.",
+      "check": "mutation { executeSeed } devuelve true.",
+      "evidence": [
+        "E1",
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Planificar el servicio",
+      "code": "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class SeedService {\n  constructor() {}\n\n  async executeSeed() {\n    // Limpiar la base de datos BORRAR TODO\n\n    // Crear usuarios\n\n    // Crear items\n\n    return true;\n  }\n}",
+      "why": "El orden de pasos respeta las dependencias entre tablas.",
+      "check": "Sigue devolviendo true.",
+      "evidence": [
+        "E6",
+        "E7",
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Exponer repositorios",
+      "code": "// users.module.ts\nexports: [TypeOrmModule, UsersService],\n\n// items.module.ts\nexports: [ItemsService, TypeOrmModule],",
+      "why": "Se quiere borrar desde el seed sin añadir un \"borrar todo\" en UsersService.",
+      "check": "Compila; los repositorios podrán inyectarse en SeedService.",
+      "evidence": [
+        "E9"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.resolver.ts",
+      "language": "ts",
+      "code": "import { Mutation, Resolver } from '@nestjs/graphql';\nimport { SeedService } from './seed.service';\n\n@Resolver()\nexport class SeedResolver {\n  constructor(private readonly seedService: SeedService) {}\n\n  @Mutation(() => Boolean, { name: 'executeSeed', description: 'Ejecuta la construcción de la base de datos' })\n  async executeSeed(): Promise<boolean> {\n    return this.seedService.executeSeed();\n  }\n}",
+      "provenance": "E1, E4, E5"
+    },
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class SeedService {\n  constructor() {}\n\n  async executeSeed() {\n    // Limpiar la base de datos BORRAR TODO\n\n    // Crear usuarios\n\n    // Crear items\n\n    return true;\n  }\n}",
+      "provenance": "E6–E8"
+    },
+    {
+      "path": "exports de users.module.ts e items.module.ts",
+      "language": "ts",
+      "code": "// users.module.ts\nexports: [TypeOrmModule, UsersService],\n\n// items.module.ts\nexports: [ItemsService, TypeOrmModule],",
+      "provenance": "E9"
+    }
+  ],
+  "temporary": "Confusión inicial entre name y description de la mutación, corregida en la misma lección.",
+  "mental": "Seed = Mutation sin argumentos → servicio propio con pasos ordenados (purgar → usuarios → items)."
+}

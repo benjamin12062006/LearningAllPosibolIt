@@ -61,6 +61,7 @@ model CatalogSnapshot {
   jobs                 CatalogImportJob[]
 
   @@unique([projectId, id])
+  @@index([projectId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_catalog_snapshots_project_created")
   @@map("catalog_snapshots")
   @@schema("estadistica_forms")
 }

@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 5 Nest CLI Resource - Brands CRUD/61. Crear servicio SEED para cargar datos.md",
+  "previous": [],
+  "objective": "Crear un recurso seed con un único GET /seed que delega en SeedService.populateDB, para que cualquier desarrollador pueda recargar datos de prueba con una sola petición.",
+  "initial": "Proyecto car-dealership con CarsModule (carros en un arreglo privado) y BrandsModule creado con el CLI en las lecciones 59–60; aún sin base de datos ni variables de entorno.",
+  "certainty": "Transcripción por voz con ruido («SID»/«Sid» = seed, «Popular TV»/«Divi» = populateDB). El nombre runSeed del método del controlador y el texto exacto del retorno ('SEED Executed') se ensamblan desde la narración; el CLI y la estructura generada son altamente probables.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "recargar la base de datos a un estado en el cual él pueda probar",
+      "change": "Propósito: que un desarrollador nuevo pueda poblar datos de prueba con un comando.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 17,
+      "phrase": "sólo va a funcionar en desarrollo",
+      "change": "La semilla es una herramienta de desarrollo; la protección llegará con variables de entorno.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "generar resource de recurso",
+      "change": "nest g res seed --no-spec, tipo REST API con endpoints CRUD que luego se recortan.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "sólo voy a ocupar un get",
+      "change": "Se borran DTO, entity y los métodos POST/PATCH/DELETE; queda un único GET.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 23,
+      "phrase": "Population Database",
+      "change": "Método del servicio populateDB.",
+      "certainty": "media"
+    },
+    {
+      "id": "E6",
+      "line": 23,
+      "phrase": "return sit execute",
+      "change": "El servicio devuelve un texto de confirmación ('SEED Executed').",
+      "certainty": "media"
+    },
+    {
+      "id": "E7",
+      "line": 25,
+      "phrase": "los cars están private",
+      "change": "Los datos viven en servicios de otros módulos: hará falta exponer un método de carga.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Generar el recurso seed",
+      "code": "nest g res seed --no-spec",
+      "why": "El CLI crea módulo, controlador y servicio y registra SeedModule en AppModule; el instructor prefiere generar y borrar lo sobrante.",
+      "check": "Aparece src/seed y AppModule importa SeedModule.",
+      "evidence": [
+        "E3"
+      ],
+      "language": "bash"
+    },
+    {
+      "title": "Recortar el controlador a un GET",
+      "code": "import { Controller, Get } from '@nestjs/common';\nimport { SeedService } from './seed.service';\n\n@Controller('seed')\nexport class SeedController {\n  constructor(private readonly seedService: SeedService) {}\n\n  @Get()\n  runSeed() {\n    return this.seedService.populateDB();\n  }\n}",
+      "why": "La semilla no recibe datos del cliente; un GET basta para dispararla.",
+      "check": "GET http://localhost:3000/seed responde.",
+      "evidence": [
+        "E4"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Dejar en el servicio un único método",
+      "code": "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class SeedService {\n  populateDB() {\n    return 'SEED Executed';\n  }\n}",
+      "why": "La lógica vive en el servicio; por ahora solo confirma que se ejecuta.",
+      "check": "La respuesta es SEED Executed.",
+      "evidence": [
+        "E5",
+        "E6"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.controller.ts",
+      "language": "ts",
+      "code": "import { Controller, Get } from '@nestjs/common';\nimport { SeedService } from './seed.service';\n\n@Controller('seed')\nexport class SeedController {\n  constructor(private readonly seedService: SeedService) {}\n\n  @Get()\n  runSeed() {\n    return this.seedService.populateDB();\n  }\n}",
+      "provenance": "E3, E4"
+    },
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class SeedService {\n  populateDB() {\n    return 'SEED Executed';\n  }\n}",
+      "provenance": "E5, E6"
+    },
+    {
+      "path": "src/seed/seed.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { SeedService } from './seed.service';\nimport { SeedController } from './seed.controller';\n\n@Module({\n  controllers: [SeedController],\n  providers: [SeedService],\n})\nexport class SeedModule {}",
+      "provenance": "E3 (generado por el CLI)"
+    }
+  ],
+  "temporary": "Se pide comentar los carros y marcas en memoria para simular un desarrollador sin datos; no es parte del código final.",
+  "mental": "Seed = recurso propio con un único disparador; el controlador solo escucha y el servicio hará la carga, que necesitará acceso a otros módulos."
+}

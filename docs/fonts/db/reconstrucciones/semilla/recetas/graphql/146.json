@@ -1,0 +1,195 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 11 Entidad para el manejo de listas Maestro Detalle/146. Lists y ListItems - Seed Inserción.md",
+  "previous": [
+    "Sección 11 Entidad para el manejo de listas Maestro Detalle/145. Lists y ListsItems - Seed Limpieza.md"
+  ],
+  "objective": "Completar la semilla del maestro-detalle: crear listas a nombre del usuario y añadir a la primera lista 15 items con cantidad y estado aleatorios, siempre mediante los servicios existentes.",
+  "initial": "La semilla purga list_items, lists, items y users, y crea usuarios e items (lección 145).",
+  "certainty": "No consta si el instructor añade await en la llamada a listItemService.create dentro del bucle; se reconstruye sin await, como sugiere la narración («podríamos hacerlo todo de manera simultánea»). Los nombres de las listas se recuperan de la narración y de la comprobación en TablePlus.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "Export Const y vamos a poner set list",
+      "change": "Constante SEED_LISTS en seed-data.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 13,
+      "phrase": "el user o el usuario dueño de esta lista",
+      "change": "Una lista requiere su usuario propietario existente.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "un arreglo de objetos",
+      "change": "Cada lista es un objeto para poder añadir campos sin tocar el código.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "no tener que reinventar la rueda",
+      "change": "Se inyectan ListsService y ListItemService en lugar de usar repositorios.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "Logs Lee",
+      "change": "Método loadLists(user): Promise<List>.",
+      "certainty": "media"
+    },
+    {
+      "id": "E6",
+      "line": 25,
+      "phrase": "Aquí regresamos la primera lista",
+      "change": "return lists[0].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 27,
+      "phrase": "supermercado fin de semana y el diario",
+      "change": "Listas Supermercado, Diario, Fin de semana.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 27,
+      "phrase": "load list items",
+      "change": "Método loadListItems(list, items).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 31,
+      "phrase": "un límite de unos 15 artículos",
+      "change": "itemsService.findAll(user, { limit: 15, ... }, ...).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 33,
+      "phrase": "como un objeto vacío",
+      "change": "searchArgs como {}.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 33,
+      "phrase": "Falta offset",
+      "change": "PaginationArgs exige offset: { limit: 15, offset: 0 }.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 35,
+      "phrase": "así me aseguro de que estamos usando los mismos métodos",
+      "change": "listItemService.create para reutilizar la lógica de creación.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E13",
+      "line": 37,
+      "phrase": "podríamos hacerlo todo de manera simultánea",
+      "change": "Las creaciones de list items no dependen entre sí.",
+      "certainty": "media"
+    },
+    {
+      "id": "E14",
+      "line": 39,
+      "phrase": "math round, paréntesis de math, punto random",
+      "change": "quantity: Math.round(Math.random() * 10).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E15",
+      "line": 41,
+      "phrase": "si esto es igual a cero, entonces folles",
+      "change": "completed: Math.round(Math.random() * 1) === 0 ? false : true.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E16",
+      "line": 45,
+      "phrase": "tenemos 15 ahí",
+      "change": "Comprobación: la lista tiene 15 items tras login.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Datos de listas como objetos",
+      "code": "// Añadido a src/seed/data/seed-data.ts\nexport const SEED_LISTS = [\n  {\n    name: 'Supermercado',\n  },\n  {\n    name: 'Diario',\n  },\n  {\n    name: 'Fin de semana',\n  },\n];",
+      "why": "Un objeto por lista admite campos futuros sin cambiar la semilla.",
+      "check": "seed-data.ts compila.",
+      "evidence": [
+        "E1",
+        "E3",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Crear listas con el servicio",
+      "code": "async loadLists(user: User): Promise<List> {\n  const lists = [];\n\n  for (const list of SEED_LISTS) {\n    lists.push(await this.listsService.create(list, user));\n  }\n\n  return lists[0];\n}",
+      "why": "Cada lista necesita el usuario creado antes; se devuelve la primera para colgarle items.",
+      "check": "La tabla lists tiene las tres listas del usuario.",
+      "evidence": [
+        "E2",
+        "E4",
+        "E5",
+        "E6"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Elegir items y crear list items",
+      "code": "async loadListItems(list: List, items: Item[]) {\n  for (const item of items) {\n    this.listItemService.create({\n      quantity: Math.round(Math.random() * 10),\n      completed: Math.round(Math.random() * 1) === 0 ? false : true,\n      listId: list.id,\n      itemId: item.id,\n    });\n  }\n}",
+      "why": "Se reutilizan findAll paginado y create del dominio; los ids salen de los registros recién creados.",
+      "check": "list_items contiene 15 filas con quantity y completed variables.",
+      "evidence": [
+        "E8",
+        "E9",
+        "E10",
+        "E11",
+        "E12",
+        "E13",
+        "E14",
+        "E15"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Encadenar todo en executeSeed",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { Item } from '../items/entities/item.entity';\nimport { ItemsService } from '../items/items.service';\nimport { ListItem } from '../list-item/entities/list-item.entity';\nimport { ListItemService } from '../list-item/list-item.service';\nimport { List } from '../lists/entities/list.entity';\nimport { ListsService } from '../lists/lists.service';\nimport { User } from '../users/entities/user.entity';\nimport { UsersService } from '../users/users.service';\nimport { SEED_ITEMS, SEED_LISTS, SEED_USERS } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(\n    private readonly configService: ConfigService,\n\n    @InjectRepository(Item)\n    private readonly itemsRepository: Repository<Item>,\n\n    @InjectRepository(User)\n    private readonly usersRepository: Repository<User>,\n\n    @InjectRepository(ListItem)\n    private readonly listItemsRepository: Repository<ListItem>,\n\n    @InjectRepository(List)\n    private readonly listsRepository: Repository<List>,\n\n    private readonly usersService: UsersService,\n    private readonly itemsService: ItemsService,\n    private readonly listsService: ListsService,\n    private readonly listItemService: ListItemService,\n  ) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n    await this.deleteDatabase();\n\n    // Crear usuarios\n    const user = await this.loadUsers();\n\n    // Crear items\n    await this.loadItems(user);\n\n    // Crear listas\n    const list = await this.loadLists(user);\n\n    // Crear listItems\n    const items = await this.itemsService.findAll(\n      user,\n      { limit: 15, offset: 0 },\n      {},\n    );\n    await this.loadListItems(list, items);\n\n    return true;\n  }\n\n  async deleteDatabase() {\n    // ListItems\n    await this.listItemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Lists\n    await this.listsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Items\n    await this.itemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Users\n    await this.usersRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n  }\n\n  async loadUsers(): Promise<User> {\n    const users = [];\n\n    for (const user of SEED_USERS) {\n      users.push(await this.usersService.create(user));\n    }\n\n    return users[0];\n  }\n\n  async loadItems(user: User): Promise<void> {\n    const itemsPromises = [];\n\n    for (const item of SEED_ITEMS) {\n      itemsPromises.push(this.itemsService.create(item, user));\n    }\n\n    await Promise.all(itemsPromises);\n  }\n\n  async loadLists(user: User): Promise<List> {\n    const lists = [];\n\n    for (const list of SEED_LISTS) {\n      lists.push(await this.listsService.create(list, user));\n    }\n\n    return lists[0];\n  }\n\n  async loadListItems(list: List, items: Item[]) {\n    for (const item of items) {\n      this.listItemService.create({\n        quantity: Math.round(Math.random() * 10),\n        completed: Math.round(Math.random() * 1) === 0 ? false : true,\n        listId: list.id,\n        itemId: item.id,\n      });\n    }\n  }\n}",
+      "why": "Construcción en orden de dependencias: usuarios → items → listas → list items.",
+      "check": "Tras login, la query de listas muestra totalItems 15 en la primera.",
+      "evidence": [
+        "E16"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { Item } from '../items/entities/item.entity';\nimport { ItemsService } from '../items/items.service';\nimport { ListItem } from '../list-item/entities/list-item.entity';\nimport { ListItemService } from '../list-item/list-item.service';\nimport { List } from '../lists/entities/list.entity';\nimport { ListsService } from '../lists/lists.service';\nimport { User } from '../users/entities/user.entity';\nimport { UsersService } from '../users/users.service';\nimport { SEED_ITEMS, SEED_LISTS, SEED_USERS } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(\n    private readonly configService: ConfigService,\n\n    @InjectRepository(Item)\n    private readonly itemsRepository: Repository<Item>,\n\n    @InjectRepository(User)\n    private readonly usersRepository: Repository<User>,\n\n    @InjectRepository(ListItem)\n    private readonly listItemsRepository: Repository<ListItem>,\n\n    @InjectRepository(List)\n    private readonly listsRepository: Repository<List>,\n\n    private readonly usersService: UsersService,\n    private readonly itemsService: ItemsService,\n    private readonly listsService: ListsService,\n    private readonly listItemService: ListItemService,\n  ) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n    await this.deleteDatabase();\n\n    // Crear usuarios\n    const user = await this.loadUsers();\n\n    // Crear items\n    await this.loadItems(user);\n\n    // Crear listas\n    const list = await this.loadLists(user);\n\n    // Crear listItems\n    const items = await this.itemsService.findAll(\n      user,\n      { limit: 15, offset: 0 },\n      {},\n    );\n    await this.loadListItems(list, items);\n\n    return true;\n  }\n\n  async deleteDatabase() {\n    // ListItems\n    await this.listItemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Lists\n    await this.listsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Items\n    await this.itemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Users\n    await this.usersRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n  }\n\n  async loadUsers(): Promise<User> {\n    const users = [];\n\n    for (const user of SEED_USERS) {\n      users.push(await this.usersService.create(user));\n    }\n\n    return users[0];\n  }\n\n  async loadItems(user: User): Promise<void> {\n    const itemsPromises = [];\n\n    for (const item of SEED_ITEMS) {\n      itemsPromises.push(this.itemsService.create(item, user));\n    }\n\n    await Promise.all(itemsPromises);\n  }\n\n  async loadLists(user: User): Promise<List> {\n    const lists = [];\n\n    for (const list of SEED_LISTS) {\n      lists.push(await this.listsService.create(list, user));\n    }\n\n    return lists[0];\n  }\n\n  async loadListItems(list: List, items: Item[]) {\n    for (const item of items) {\n      this.listItemService.create({\n        quantity: Math.round(Math.random() * 10),\n        completed: Math.round(Math.random() * 1) === 0 ? false : true,\n        listId: list.id,\n        itemId: item.id,\n      });\n    }\n  }\n}",
+      "provenance": "Lección 145; E4–E16"
+    },
+    {
+      "path": "src/seed/data/seed-data.ts — SEED_LISTS",
+      "language": "ts",
+      "code": "// Añadido a src/seed/data/seed-data.ts\nexport const SEED_LISTS = [\n  {\n    name: 'Supermercado',\n  },\n  {\n    name: 'Diario',\n  },\n  {\n    name: 'Fin de semana',\n  },\n];",
+      "provenance": "E1, E3, E7"
+    }
+  ],
+  "temporary": "Prueba en la consola de Chrome de Math.round(Math.random() * 2) y cambio a * 1 para obtener 0 o 1.",
+  "mental": "La semilla reconstruye el grafo completo en orden de dependencias, pasando cada registro devuelto al siguiente paso y usando los mismos servicios que la API."
+}

@@ -1,0 +1,225 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 13 Autenticación de autorización/186. SEED de usuarios, productos e imágenes.md",
+  "previous": [
+    "Sección 11 Relaciones en TypeORM/148. Insertar de forma masiva.md"
+  ],
+  "objective": "Sembrar usuarios y productos relacionados: purgar en orden (productos y después usuarios), insertar usuarios con el repositorio y crear los productos a nombre del primer usuario guardado.",
+  "initial": "La semilla inserta productos con ProductsService.create (lección 148). Ahora create exige el usuario que crea el producto; AuthModule ya exporta TypeOrmModule con User.",
+  "certainty": "Los datos de usuario se oyen como «Test uno», «The Swan» (Test One) y «ABC. 123». El rol del segundo usuario (['user', 'super']) es de certeza media. save(seedUsers) se reconstruye desde «Decidí users», con certeza media: el instructor explica que lo importante es usar el resultado del save, que trae el id.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "el create necesita que yo especifique el usuario",
+      "change": "ProductsService.create(product, user).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 13,
+      "phrase": "usualmente solo es en desarrollo que se utiliza el Cid",
+      "change": "La semilla es destructiva y de desarrollo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 15,
+      "phrase": "purgar toda la base de datos",
+      "change": "Nuevo método que limpia todas las tablas en orden.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 15,
+      "phrase": "la integridad referencial va a molestarme",
+      "change": "Borrar usuarios con productos viola la clave foránea.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 17,
+      "phrase": "delight, tables",
+      "change": "Método privado deleteTables.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 17,
+      "phrase": "primero necesito borrar los productos",
+      "change": "Orden: productos (con imágenes en cascada) y después usuarios.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 19,
+      "phrase": "Puedo inyectar el repositorio del usuario",
+      "change": "@InjectRepository(User) en SeedService, sin crear métodos en AuthService.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 21,
+      "phrase": "ya estábamos exportando el ORM",
+      "change": "AuthModule ya exporta TypeOrmModule; no hay error de dependencias.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 21,
+      "phrase": "Estamos a punto de usar repositorios create query builder",
+      "change": "createQueryBuilder() sobre el repositorio de usuarios.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 23,
+      "phrase": "Voy a poner un objeto vacío",
+      "change": "delete().where({}).execute() borra todos los usuarios.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 23,
+      "phrase": "Sid y User",
+      "change": "Interfaz SeedUser: email, fullName, password, roles.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 25,
+      "phrase": "Test uno, arroba google.com",
+      "change": "Usuarios test1@google.com (admin) y test2.",
+      "certainty": "media"
+    },
+    {
+      "id": "E13",
+      "line": 27,
+      "phrase": "insert users",
+      "change": "Método privado insertUsers.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E14",
+      "line": 29,
+      "phrase": "users for each",
+      "change": "users.push(this.userRepository.create(user)).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E15",
+      "line": 29,
+      "phrase": "esto literalmente no crea el usuario",
+      "change": "create solo prepara la entidad; save la guarda.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E16",
+      "line": 31,
+      "phrase": "admin, user o first user",
+      "change": "runSeed toma el primer usuario y se lo pasa a insertNewProducts.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E17",
+      "line": 33,
+      "phrase": "Yo le quité la autenticación",
+      "change": "El endpoint de la semilla se deja sin @Auth mientras se borran los usuarios.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E18",
+      "line": 35,
+      "phrase": "falta el aire al usuario",
+      "change": "Error 500: el usuario enviado no tenía id; se usa el resultado de save (dbUsers).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E19",
+      "line": 37,
+      "phrase": "Rol era roles",
+      "change": "La propiedad es roles en plural.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Purgar en orden",
+      "code": "private async deleteTables() {\n  await this.productsService.deleteAllProducts();\n\n  const queryBuilder = this.userRepository.createQueryBuilder();\n  await queryBuilder.delete().where({}).execute();\n}",
+      "why": "Los productos referencian a los usuarios: se borran primero (las imágenes caen en cascada).",
+      "check": "Ejecutar la semilla vacía ambas tablas sin errores de clave foránea.",
+      "evidence": [
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Datos de usuarios",
+      "code": "interface SeedUser {\n  email: string;\n  fullName: string;\n  password: string;\n  roles: string[];\n}\n\ninterface SeedData {\n  users: SeedUser[];\n  products: SeedProduct[]; // SeedProduct: interfaz del adjunto (lección 148)\n}\n\nexport const initialData: SeedData = {\n  users: [\n    {\n      email: 'test1@google.com',\n      fullName: 'Test One',\n      password: 'Abc123',\n      roles: ['admin'],\n    },\n    {\n      email: 'test2@google.com',\n      fullName: 'Test Two',\n      password: 'Abc123',\n      roles: ['user', 'super'],\n    },\n  ],\n  products: [\n    // ...productos del adjunto (lección 148)\n  ],\n};",
+      "why": "Usuarios con roles para probar autorización.",
+      "check": "seed-data.ts compila.",
+      "evidence": [
+        "E11",
+        "E12",
+        "E19"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Insertar usuarios y devolver el primero",
+      "code": "private async insertUsers() {\n  const seedUsers = initialData.users;\n  const users: User[] = [];\n\n  seedUsers.forEach((user) => {\n    users.push(this.userRepository.create(user));\n  });\n\n  const dbUsers = await this.userRepository.save(seedUsers);\n  return dbUsers[0];\n}",
+      "why": "Solo el resultado de save trae el id que necesita la relación.",
+      "check": "La tabla de usuarios contiene los dos usuarios.",
+      "evidence": [
+        "E13",
+        "E14",
+        "E15",
+        "E18"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Crear productos a nombre del usuario",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { User } from '../auth/entities/user.entity';\nimport { ProductsService } from '../products/products.service';\nimport { initialData } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  constructor(\n    private readonly productsService: ProductsService,\n\n    @InjectRepository(User)\n    private readonly userRepository: Repository<User>,\n  ) {}\n\n  async runSeed() {\n    await this.deleteTables();\n    const adminUser = await this.insertUsers();\n\n    await this.insertNewProducts(adminUser);\n\n    return 'SEED EXECUTED';\n  }\n\n  private async deleteTables() {\n    await this.productsService.deleteAllProducts();\n\n    const queryBuilder = this.userRepository.createQueryBuilder();\n    await queryBuilder.delete().where({}).execute();\n  }\n\n  private async insertUsers() {\n    const seedUsers = initialData.users;\n\n    const users: User[] = [];\n\n    seedUsers.forEach((user) => {\n      users.push(this.userRepository.create(user));\n    });\n\n    const dbUsers = await this.userRepository.save(seedUsers);\n\n    return dbUsers[0];\n  }\n\n  private async insertNewProducts(user: User) {\n    await this.productsService.deleteAllProducts();\n\n    const products = initialData.products;\n\n    const insertPromises = [];\n\n    products.forEach((product) => {\n      insertPromises.push(this.productsService.create(product, user));\n    });\n\n    await Promise.all(insertPromises);\n\n    return true;\n  }\n}\n\n\n@Get()\n// @Auth(ValidRoles.admin)\nexecuteSeed() {\n  return this.seedService.runSeed();\n}",
+      "why": "create(product, user) mantiene la relación propietario-producto.",
+      "check": "GET /api/seed crea usuarios y productos con su user_id.",
+      "evidence": [
+        "E1",
+        "E16",
+        "E17"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { User } from '../auth/entities/user.entity';\nimport { ProductsService } from '../products/products.service';\nimport { initialData } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  constructor(\n    private readonly productsService: ProductsService,\n\n    @InjectRepository(User)\n    private readonly userRepository: Repository<User>,\n  ) {}\n\n  async runSeed() {\n    await this.deleteTables();\n    const adminUser = await this.insertUsers();\n\n    await this.insertNewProducts(adminUser);\n\n    return 'SEED EXECUTED';\n  }\n\n  private async deleteTables() {\n    await this.productsService.deleteAllProducts();\n\n    const queryBuilder = this.userRepository.createQueryBuilder();\n    await queryBuilder.delete().where({}).execute();\n  }\n\n  private async insertUsers() {\n    const seedUsers = initialData.users;\n\n    const users: User[] = [];\n\n    seedUsers.forEach((user) => {\n      users.push(this.userRepository.create(user));\n    });\n\n    const dbUsers = await this.userRepository.save(seedUsers);\n\n    return dbUsers[0];\n  }\n\n  private async insertNewProducts(user: User) {\n    await this.productsService.deleteAllProducts();\n\n    const products = initialData.products;\n\n    const insertPromises = [];\n\n    products.forEach((product) => {\n      insertPromises.push(this.productsService.create(product, user));\n    });\n\n    await Promise.all(insertPromises);\n\n    return true;\n  }\n}",
+      "provenance": "E1, E3–E10, E13–E18"
+    },
+    {
+      "path": "src/seed/data/seed-data.ts — usuarios",
+      "language": "ts",
+      "code": "interface SeedUser {\n  email: string;\n  fullName: string;\n  password: string;\n  roles: string[];\n}\n\ninterface SeedData {\n  users: SeedUser[];\n  products: SeedProduct[]; // SeedProduct: interfaz del adjunto (lección 148)\n}\n\nexport const initialData: SeedData = {\n  users: [\n    {\n      email: 'test1@google.com',\n      fullName: 'Test One',\n      password: 'Abc123',\n      roles: ['admin'],\n    },\n    {\n      email: 'test2@google.com',\n      fullName: 'Test Two',\n      password: 'Abc123',\n      roles: ['user', 'super'],\n    },\n  ],\n  products: [\n    // ...productos del adjunto (lección 148)\n  ],\n};",
+      "provenance": "E11, E12, E19"
+    },
+    {
+      "path": "src/seed/seed.controller.ts — endpoint sin @Auth",
+      "language": "ts",
+      "code": "@Get()\n// @Auth(ValidRoles.admin)\nexecuteSeed() {\n  return this.seedService.runSeed();\n}",
+      "provenance": "E17"
+    }
+  ],
+  "temporary": "Se envían los usuarios sin guardar para demostrar el error 500 por falta de id y se vuelve a dbUsers.",
+  "mental": "Purgar hijos antes que padres, crear padres y usar el registro guardado (con id) para crear los hijos con su relación."
+}

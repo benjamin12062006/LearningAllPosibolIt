@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 6 Autenticación y autorización/75. JwtAuthGuard.md"
+  ],
+  "source": "Sección 6 Autenticación y autorización/77. Custom Decorator - CurrentUser.md",
+  "objective": "Crear el decorador de parámetro CurrentUser que extrae req.user del contexto GraphQL y falla con un error interno si el guard no se aplicó.",
+  "initial": "JwtAuthGuard funcionando; JwtStrategy.validate devuelve el usuario activo, que Passport deja en req.user (lecciones 75–76).",
+  "certainty": "Transcripción por reconocimiento de voz (\"J brute out\" = JwtAuthGuard, \"out\" = auth, \"Gard\"/\"Cat\" = guard). El código se ensambla desde las explicaciones; el proyecto es Anylist con Passport JWT (curso de 2022). El texto exacto del error y el parámetro roles = [] (reservado para la lección 79) se reconstruyen desde la explicación.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "a nivel de resolver",
+      "change": "Más adelante el guard se colocará a nivel de resolver.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "tiene el token y tiene un usuario",
+      "change": "AuthResponse = token + usuario; hace falta saber qué usuario es.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "Decoradores Decoradores",
+      "change": "Carpeta auth/decorators con current-user.decorator.ts.",
+      "certainty": "media"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "create param decorador",
+      "change": "CurrentUser = createParamDecorator(...) de @nestjs/common.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "validar los roles",
+      "change": "Primer argumento roles = [] (todavía sin uso).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 23,
+      "phrase": "Graph Curl Execute Context",
+      "change": "GqlExecutionContext.create(context) en lugar del contexto HTTP.",
+      "certainty": "media"
+    },
+    {
+      "id": "E7",
+      "line": 25,
+      "phrase": "quiero la request y de la request quiero el user",
+      "change": "ctx.getContext().req.user.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 27,
+      "phrase": "Internal Server error",
+      "change": "Sin usuario: InternalServerErrorException (error del desarrollador, no del cliente).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 31,
+      "phrase": "Current user user important",
+      "change": "Uso: revalidateToken(@CurrentUser() user: User) con console.log.",
+      "certainty": "media"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Crear el decorador",
+      "code": "import { createParamDecorator, ExecutionContext, InternalServerErrorException } from '@nestjs/common';\nimport { GqlExecutionContext } from '@nestjs/graphql';\n\nexport const CurrentUser = createParamDecorator(\n  (roles = [], context: ExecutionContext) => {\n    const ctx = GqlExecutionContext.create(context);\n    const user = ctx.getContext().req.user;\n\n    if (!user) {\n      throw new InternalServerErrorException(\n        'No user inside the request - make sure that we used the AuthGuard',\n      );\n    }\n\n    return user;\n  },\n);",
+      "why": "El usuario lo deja Passport en la request tras validate; en GraphQL hay que leerla vía GqlExecutionContext.",
+      "check": "El archivo compila e importa sin errores.",
+      "evidence": [
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Fallar si falta el guard",
+      "code": "if (!user) {\n  throw new InternalServerErrorException('No user inside the request - make sure that we used the AuthGuard');\n}",
+      "why": "Si llega vacío es un fallo de programación (se olvidó el guard); se responde 500 sin dar pistas al cliente.",
+      "check": "Sin @UseGuards el Query responde Internal Server Error.",
+      "evidence": [
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Usarlo en el resolver",
+      "code": "revalidateToken(@CurrentUser() user: User): AuthResponse {\n  console.log('revalidateToken, user:', user);\n  throw new Error('No implementado');\n}",
+      "why": "El resolver recibe el usuario ya validado sin tocar la request.",
+      "check": "Con token válido la consola muestra la instancia del usuario; sin token, 401.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E9"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/auth/decorators/current-user.decorator.ts",
+      "language": "ts",
+      "code": "import { createParamDecorator, ExecutionContext, InternalServerErrorException } from '@nestjs/common';\nimport { GqlExecutionContext } from '@nestjs/graphql';\n\nexport const CurrentUser = createParamDecorator(\n  (roles = [], context: ExecutionContext) => {\n    const ctx = GqlExecutionContext.create(context);\n    const user = ctx.getContext().req.user;\n\n    if (!user) {\n      throw new InternalServerErrorException(\n        'No user inside the request - make sure that we used the AuthGuard',\n      );\n    }\n\n    return user;\n  },\n);",
+      "provenance": "E3–E8"
+    },
+    {
+      "path": "src/auth/auth.resolver.ts (fragmento de revalidate)",
+      "language": "ts",
+      "code": "import { UseGuards } from '@nestjs/common';\nimport { Query, Resolver } from '@nestjs/graphql';\nimport { AuthService } from './auth.service';\nimport { AuthResponse } from './types/auth-response.type';\nimport { JwtAuthGuard } from './guards/jwt-auth.guard';\nimport { CurrentUser } from './decorators/current-user.decorator';\nimport { User } from '../users/entities/user.entity';\n\n@Resolver(() => AuthResponse)\nexport class AuthResolver {\n  constructor(private readonly authService: AuthService) {}\n\n  // signup y login (lecciones 67–71) se conservan sin cambios; no se reconstruyen aquí.\n\n  @Query(() => AuthResponse, { name: 'revalidate' })\n  @UseGuards(JwtAuthGuard)\n  revalidateToken(@CurrentUser() user: User): AuthResponse {\n    console.log('revalidateToken, user:', user);\n    throw new Error('No implementado');\n  }\n}",
+      "provenance": "Lección 75; E9"
+    }
+  ],
+  "temporary": "console.log del usuario y throw \"No implementado\" se sustituyen en la lección 78.",
+  "mental": "Guard autentica y deja req.user; CurrentUser lo lee del contexto GraphQL. Si no hay usuario es un error del servidor, no del cliente."
+}

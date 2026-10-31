@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 9 Seed Data - Cargar y purgar base de datos/115. Seed - Paso 4 Crear items.md",
+  "previous": [
+    "Sección 9 Seed Data - Cargar y purgar base de datos/114. Seed - Paso 3 Crear usuarios.md"
+  ],
+  "objective": "Crear todos los items de la semilla a nombre del usuario devuelto por loadUsers, lanzando las creaciones en paralelo con Promise.all.",
+  "initial": "executeSeed purga, carga usuarios y obtiene el primero (lección 114).",
+  "certainty": "El nombre itemsPromises se recupera de la propia narración («Item Promises»). La firma create(item, user) de ItemsService viene de la sección 8.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "async load items",
+      "change": "Método loadItems(user): Promise<void>.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "este usuario viene con el nuevo ID",
+      "change": "Se usa el usuario recién creado, cuyo id cambia en cada ejecución.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "Hacer un Awake del disco Load Items",
+      "change": "await this.loadItems(user) en executeSeed.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "No voy a insertar el aguacate",
+      "change": "A diferencia de loadUsers, no se espera dentro del bucle.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 19,
+      "phrase": "Vamos a inyectar el servicio",
+      "change": "Inyección de ItemsService.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 21,
+      "phrase": "me pide el item y me pide el user",
+      "change": "this.itemsService.create(item, user).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 21,
+      "phrase": "una wait del Promise Tool",
+      "change": "await Promise.all(itemsPromises).",
+      "certainty": "media"
+    },
+    {
+      "id": "E8",
+      "line": 23,
+      "phrase": "Item Promises es un arreglo de promesas",
+      "change": "Nombre semántico itemsPromises.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 23,
+      "phrase": "Este usuario de Fernando tiene 103 productos",
+      "change": "Comprobación con una query autenticada tras nuevo login.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Inyectar ItemsService y crear en paralelo",
+      "code": "  async loadItems(user: User): Promise<void> {\n    const itemsPromises = [];\n\n    for (const item of SEED_ITEMS) {\n      itemsPromises.push(this.itemsService.create(item, user));\n    }\n\n    await Promise.all(itemsPromises);\n  }",
+      "why": "Las creaciones de items son independientes entre sí; esperarlas juntas acelera la semilla.",
+      "check": "La tabla items se llena con el user_id del primer usuario.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E4",
+        "E5",
+        "E6",
+        "E7",
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Encadenar en executeSeed",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { Item } from '../items/entities/item.entity';\nimport { ItemsService } from '../items/items.service';\nimport { User } from '../users/entities/user.entity';\nimport { UsersService } from '../users/users.service';\nimport { SEED_ITEMS, SEED_USERS } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(\n    private readonly configService: ConfigService,\n\n    @InjectRepository(Item)\n    private readonly itemsRepository: Repository<Item>,\n\n    @InjectRepository(User)\n    private readonly usersRepository: Repository<User>,\n\n    private readonly usersService: UsersService,\n    private readonly itemsService: ItemsService,\n  ) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n    await this.deleteDatabase();\n\n    // Crear usuarios\n    const user = await this.loadUsers();\n\n    // Crear items\n    await this.loadItems(user);\n\n    return true;\n  }\n\n  async deleteDatabase() {\n    // borrar items\n    await this.itemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // borrar users\n    await this.usersRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n  }\n\n  async loadUsers(): Promise<User> {\n    const users = [];\n\n    for (const user of SEED_USERS) {\n      users.push(await this.usersService.create(user));\n    }\n\n    return users[0];\n  }\n\n  async loadItems(user: User): Promise<void> {\n    const itemsPromises = [];\n\n    for (const item of SEED_ITEMS) {\n      itemsPromises.push(this.itemsService.create(item, user));\n    }\n\n    await Promise.all(itemsPromises);\n  }\n}",
+      "why": "Orden de construcción inverso al de purga: usuarios y después items.",
+      "check": "Tras login, la query de users muestra itemCount 103 para el primer usuario.",
+      "evidence": [
+        "E3",
+        "E9"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { Item } from '../items/entities/item.entity';\nimport { ItemsService } from '../items/items.service';\nimport { User } from '../users/entities/user.entity';\nimport { UsersService } from '../users/users.service';\nimport { SEED_ITEMS, SEED_USERS } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(\n    private readonly configService: ConfigService,\n\n    @InjectRepository(Item)\n    private readonly itemsRepository: Repository<Item>,\n\n    @InjectRepository(User)\n    private readonly usersRepository: Repository<User>,\n\n    private readonly usersService: UsersService,\n    private readonly itemsService: ItemsService,\n  ) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n    await this.deleteDatabase();\n\n    // Crear usuarios\n    const user = await this.loadUsers();\n\n    // Crear items\n    await this.loadItems(user);\n\n    return true;\n  }\n\n  async deleteDatabase() {\n    // borrar items\n    await this.itemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // borrar users\n    await this.usersRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n  }\n\n  async loadUsers(): Promise<User> {\n    const users = [];\n\n    for (const user of SEED_USERS) {\n      users.push(await this.usersService.create(user));\n    }\n\n    return users[0];\n  }\n\n  async loadItems(user: User): Promise<void> {\n    const itemsPromises = [];\n\n    for (const item of SEED_ITEMS) {\n      itemsPromises.push(this.itemsService.create(item, user));\n    }\n\n    await Promise.all(itemsPromises);\n  }\n}",
+      "provenance": "Lección 114; E1–E8"
+    }
+  ],
+  "temporary": "Consultas de users con items y quantityUnits para explorar los datos sembrados.",
+  "mental": "Padres en secuencia (se necesita su id), hijos independientes en paralelo con Promise.all, siempre a través de los servicios."
+}

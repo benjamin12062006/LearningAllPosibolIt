@@ -169,7 +169,7 @@ Medir duración, memoria y latencia de la API con el límite elegido; registrar 
 
 ## Cierre y continuidad
 
-Completar la siguiente entrada de bitácora del incremento con archivos, decisiones y pruebas realmente ejecutadas. Con el importador verificado, conectar el recorrido mínimo Nuxt y pasar a versiones de mapeo/reglas y evaluación. No crear tablas de reglas/feed ni construir un motor universal en esta etapa.
+Completar la siguiente entrada de bitácora del incremento con archivos, decisiones y pruebas realmente ejecutadas. Con el importador verificado, pasar a versiones de mapeo/reglas y evaluación. No crear tablas de reglas/feed ni construir un motor universal en esta etapa.
 
 ## Ejecución del 2026-10-26
 
@@ -183,4 +183,4 @@ El cierre usa `onModuleDestroy` antes de cerrar el PrismaService importado, con 
 
 Resultados y pendientes operativos: [bitácora 03](../../../../bitacora-construccion/feature/projects&catalog-import/03-implementar-catalog-import.md). Cadena de fuentes: [fuente 05](../../../fonts/feature/projects&catalog-import/05-implementacion-catalog-import.md). Peticiones: [catalog-import.http](../../../../requests/catalog-import.http).
 
-Sigue U1, conexión del recorrido mínimo en Nuxt. El [plan bilingüe](../../config/02-mensajes-y-errores-bilingues-es-en.md) permanece pendiente de orden independiente.
+Sigue el backend: [ajustes de límites](04-plan-ajustes-limites-y-consultas.md). El [plan bilingüe](../../config/02-mensajes-y-errores-bilingues-es-en.md) permanece pendiente de orden independiente.

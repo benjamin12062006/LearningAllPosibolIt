@@ -38,5 +38,6 @@ import {
       }),
     },
   ],
+  exports: [CatalogImportService],
 })
 export class CatalogImportModule {}

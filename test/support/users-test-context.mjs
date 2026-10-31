@@ -27,7 +27,7 @@ export async function createUsersTestContext() {
     const migrate = () =>
       execFileAsync(prismaCli, ['migrate', 'deploy'], {
         cwd: projectRoot,
-        env: { ...process.env, POSTGRES_MIGRATION_DATABASE_URL: databaseUrl },
+        env: { ...process.env, DATABASE_URL: databaseUrl },
         timeout: 30_000,
       });
     await migrate();

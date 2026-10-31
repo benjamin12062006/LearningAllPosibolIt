@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
 import { CreateProjectDto, UpdateProjectDto } from './projects.dto.js';
 import { ProjectsService } from './projects.service.js';
 import { apiError } from '../common/http/api-error.js';
+import { PaginationQueryDto } from '../common/http/pagination.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
 
 @Controller('projects')
@@ -22,10 +24,15 @@ export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Get()
-  async findAll(@Req() request: AuthenticatedRequest) {
-    return {
-      projects: await this.projectsService.findAll(identityOf(request)),
-    };
+  async findAll(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: PaginationQueryDto,
+  ) {
+    const { items, page } = await this.projectsService.findAll(
+      identityOf(request),
+      query,
+    );
+    return { projects: items, page };
   }
 
   @Post()

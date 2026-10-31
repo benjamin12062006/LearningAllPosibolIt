@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 8 Seed y Paginación/96. Crear un custom provider - opcional.md",
+  "previous": [
+    "Sección 8 Seed y Paginación/95. Insertar multiples registros simultáneamente.md"
+  ],
+  "objective": "Sacar axios de SeedService con el patrón adaptador: interfaz HttpAdapter, AxiosAdapter inyectable en CommonModule y SeedService que depende del adaptador.",
+  "initial": "SeedService usa axios directamente como propiedad (lecciones 92–95). CommonModule existe desde la sección anterior.",
+  "certainty": "El mensaje exacto del error del adaptador es aproximado («es un error… check logs»). Se asume que CommonModule ya existía sin proveedores, porque la lección lo abre y cierra sin crearlo.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "crearme un adaptador que va a envolver accesos",
+      "change": "Envolver la librería de terceros para cambiarla sin tocar los servicios.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 17,
+      "phrase": "lo voy a crear dentro de Commons",
+      "change": "El adaptador vive en common porque otros módulos podrían hacer peticiones HTTP.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "Adapter interface",
+      "change": "common/interfaces/http-adapter.interface.ts.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "va a tener que tener el GET",
+      "change": "Contrato get(url: string): Promise.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "aquí yo voy a poner queso de tipo genérico",
+      "change": "get<T>(url: string): Promise<T>.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 23,
+      "phrase": "Acciones Punto Adapter, Punto TS",
+      "change": "common/adapters/axios.adapter.ts con AxiosAdapter.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 25,
+      "phrase": "implementar la interfaz http adapter",
+      "change": "class AxiosAdapter implements HttpAdapter.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 27,
+      "phrase": "Y ahora voy a colocar un try. Un catch.",
+      "change": "try/catch alrededor de axios.get<T>; devuelve data.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 29,
+      "phrase": "throw new error directamente",
+      "change": "En error se lanza un Error genérico que pide revisar logs.",
+      "certainty": "media"
+    },
+    {
+      "id": "E10",
+      "line": 31,
+      "phrase": "Con el arroba inyectable",
+      "change": "@Injectable() para poder inyectarlo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 31,
+      "phrase": "están a nivel de módulo",
+      "change": "Los proveedores se registran en su módulo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 33,
+      "phrase": "exportar los puntos de nuestro actions adapter",
+      "change": "CommonModule providers y exports: [AxiosAdapter].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E13",
+      "line": 33,
+      "phrase": "vamos a importar el common model",
+      "change": "SeedModule importa CommonModule.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E14",
+      "line": 35,
+      "phrase": "Voy a ponerle HTTP de tipo aux adapter",
+      "change": "private readonly http: AxiosAdapter; this.http.get<PokeResponse>(...).",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Definir el contrato",
+      "code": "export interface HttpAdapter {\n  get<T>(url: string): Promise<T>;\n}",
+      "why": "Cualquier cliente HTTP futuro (fetch u otro) implementará este método.",
+      "check": "Compila.",
+      "evidence": [
+        "E2",
+        "E3",
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Implementar el adaptador de axios",
+      "code": "import { Injectable } from '@nestjs/common';\nimport axios, { AxiosInstance } from 'axios';\nimport { HttpAdapter } from '../interfaces/http-adapter.interface';\n\n@Injectable()\nexport class AxiosAdapter implements HttpAdapter {\n  private axios: AxiosInstance = axios;\n\n  async get<T>(url: string): Promise<T> {\n    try {\n      const { data } = await this.axios.get<T>(url);\n      return data;\n    } catch (error) {\n      throw new Error('This is an error - Check logs');\n    }\n  }\n}",
+      "why": "Si axios cambia su API, solo se modifica esta clase.",
+      "check": "Compila e implementa HttpAdapter.",
+      "evidence": [
+        "E1",
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Registrar y exportar el proveedor",
+      "code": "import { Module } from '@nestjs/common';\nimport { AxiosAdapter } from './adapters/axios.adapter';\n\n@Module({\n  providers: [AxiosAdapter],\n  exports: [AxiosAdapter],\n})\nexport class CommonModule {}\n\n\nimport { Module } from '@nestjs/common';\nimport { CommonModule } from '../common/common.module';\nimport { PokemonModule } from '../pokemon/pokemon.module';\nimport { SeedController } from './seed.controller';\nimport { SeedService } from './seed.service';\n\n@Module({\n  controllers: [SeedController],\n  providers: [SeedService],\n  imports: [PokemonModule, CommonModule],\n})\nexport class SeedModule {}",
+      "why": "Los proveedores son de módulo: hay que exportarlo e importar CommonModule donde se use.",
+      "check": "La aplicación arranca sin errores de dependencias.",
+      "evidence": [
+        "E11",
+        "E12",
+        "E13"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Inyectar el adaptador en la semilla",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { InjectModel } from '@nestjs/mongoose';\nimport { Model } from 'mongoose';\nimport { AxiosAdapter } from '../common/adapters/axios.adapter';\nimport { Pokemon } from '../pokemon/entities/pokemon.entity';\nimport { PokeResponse } from './interfaces/poke-response.interface';\n\n@Injectable()\nexport class SeedService {\n  constructor(\n    @InjectModel(Pokemon.name)\n    private readonly pokemonModel: Model<Pokemon>,\n\n    private readonly http: AxiosAdapter,\n  ) {}\n\n  async executeSeed() {\n    await this.pokemonModel.deleteMany({}); // delete * from pokemons;\n\n    const data = await this.http.get<PokeResponse>(\n      'https://pokeapi.co/api/v2/pokemon?limit=650',\n    );\n\n    const pokemonToInsert: { name: string; no: number }[] = [];\n\n    data.results.forEach(({ name, url }) => {\n      const segments = url.split('/');\n      const no: number = +segments[segments.length - 2];\n\n      pokemonToInsert.push({ name, no });\n    });\n\n    await this.pokemonModel.insertMany(pokemonToInsert);\n\n    return 'Seed Executed';\n  }\n}",
+      "why": "SeedService ya no conoce axios; solo el contrato del adaptador.",
+      "check": "GET /api/v2/seed vuelve a cargar 650 pokémon con IDs nuevos.",
+      "evidence": [
+        "E14"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/common/interfaces/http-adapter.interface.ts",
+      "language": "ts",
+      "code": "export interface HttpAdapter {\n  get<T>(url: string): Promise<T>;\n}",
+      "provenance": "E3–E5"
+    },
+    {
+      "path": "src/common/adapters/axios.adapter.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport axios, { AxiosInstance } from 'axios';\nimport { HttpAdapter } from '../interfaces/http-adapter.interface';\n\n@Injectable()\nexport class AxiosAdapter implements HttpAdapter {\n  private axios: AxiosInstance = axios;\n\n  async get<T>(url: string): Promise<T> {\n    try {\n      const { data } = await this.axios.get<T>(url);\n      return data;\n    } catch (error) {\n      throw new Error('This is an error - Check logs');\n    }\n  }\n}",
+      "provenance": "E6–E10"
+    },
+    {
+      "path": "src/common/common.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { AxiosAdapter } from './adapters/axios.adapter';\n\n@Module({\n  providers: [AxiosAdapter],\n  exports: [AxiosAdapter],\n})\nexport class CommonModule {}",
+      "provenance": "E11, E12"
+    },
+    {
+      "path": "src/seed/seed.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { CommonModule } from '../common/common.module';\nimport { PokemonModule } from '../pokemon/pokemon.module';\nimport { SeedController } from './seed.controller';\nimport { SeedService } from './seed.service';\n\n@Module({\n  controllers: [SeedController],\n  providers: [SeedService],\n  imports: [PokemonModule, CommonModule],\n})\nexport class SeedModule {}",
+      "provenance": "E13"
+    },
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { InjectModel } from '@nestjs/mongoose';\nimport { Model } from 'mongoose';\nimport { AxiosAdapter } from '../common/adapters/axios.adapter';\nimport { Pokemon } from '../pokemon/entities/pokemon.entity';\nimport { PokeResponse } from './interfaces/poke-response.interface';\n\n@Injectable()\nexport class SeedService {\n  constructor(\n    @InjectModel(Pokemon.name)\n    private readonly pokemonModel: Model<Pokemon>,\n\n    private readonly http: AxiosAdapter,\n  ) {}\n\n  async executeSeed() {\n    await this.pokemonModel.deleteMany({}); // delete * from pokemons;\n\n    const data = await this.http.get<PokeResponse>(\n      'https://pokeapi.co/api/v2/pokemon?limit=650',\n    );\n\n    const pokemonToInsert: { name: string; no: number }[] = [];\n\n    data.results.forEach(({ name, url }) => {\n      const segments = url.split('/');\n      const no: number = +segments[segments.length - 2];\n\n      pokemonToInsert.push({ name, no });\n    });\n\n    await this.pokemonModel.insertMany(pokemonToInsert);\n\n    return 'Seed Executed';\n  }\n}",
+      "provenance": "E14; resto de la lección 95"
+    }
+  ],
+  "temporary": "",
+  "mental": "La semilla depende de un proveedor propio inyectable, no de una librería de terceros; cambiar de cliente HTTP es crear otro adaptador."
+}

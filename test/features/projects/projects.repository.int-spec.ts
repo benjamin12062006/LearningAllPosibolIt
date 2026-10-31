@@ -54,7 +54,10 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
       [tiedDate],
     );
 
-    const projects = await repository.findAllByOwner(owner.id);
+    const projects = await repository.findAllByOwner(owner.id, {
+      limit: 100,
+      offset: 0,
+    });
 
     expect(projects.map(({ id }) => id)).toEqual(
       [first.id, second.id].sort().reverse(),
@@ -75,7 +78,9 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
     const own = await repository.create(owner.id, 'Propio', projectInput);
     const foreign = await repository.create(other.id, 'Ajeno', projectInput);
 
-    expect(await repository.findAllByOwner(owner.id)).toEqual([own]);
+    expect(
+      await repository.findAllByOwner(owner.id, { limit: 100, offset: 0 }),
+    ).toEqual([own]);
     expect(await repository.findByOwner(owner.id, foreign.id)).toBeNull();
     expect(
       await repository.update(owner.id, foreign.id, { name: 'Intrusión' }),
@@ -138,7 +143,9 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
         "INSERT INTO estadistica_forms.projects (id,name,owner_id,created_at) VALUES ('orphan','Huérfano','missing','2026-10-25')",
       ),
     ).rejects.toMatchObject({ code: '23503' });
-    expect(await repository.findAllByOwner(owner.id)).toEqual([]);
+    expect(
+      await repository.findAllByOwner(owner.id, { limit: 100, offset: 0 }),
+    ).toEqual([]);
   });
 
   it('Prisma no reaplica las migraciones al repetir deploy', async () => {
@@ -146,7 +153,7 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
     const { rows } = await database.connection.pool.query(
       'SELECT migration_name, rolled_back_at FROM estadistica_forms._prisma_migrations ORDER BY migration_name',
     );
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     expect(rows.every((row) => row.rolled_back_at === null)).toBe(true);
   });
 });

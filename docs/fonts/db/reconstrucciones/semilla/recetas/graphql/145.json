@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 11 Entidad para el manejo de listas Maestro Detalle/145. Lists y ListsItems - Seed Limpieza.md",
+  "previous": [
+    "Sección 9 Seed Data - Cargar y purgar base de datos/115. Seed - Paso 4 Crear items.md"
+  ],
+  "objective": "Ampliar la purga de la semilla al maestro-detalle: borrar list_items, después lists, después items y por último users, importando los módulos que exportan esos repositorios.",
+  "initial": "La semilla purga items y usuarios y siembra usuarios e items (lección 115). Existen las entidades List y ListItem con relaciones a usuario e item.",
+  "certainty": "Las rutas de carpeta list-item y lists se infieren de los nombres de módulo citados. El orden de purga es explícito en la narración.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "borrar la información que se encuentra primero en los ítems y luego en las listas",
+      "change": "Orden: list items antes que lists.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "exportando tanto el id service como el type o RM motion",
+      "change": "ListItemModule y ListsModule exportan su servicio y TypeOrmModule.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "el punto más granular sería nuestros items",
+      "change": "Se empieza por la tabla más dependiente (list items).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "list, ítem repositorio",
+      "change": "@InjectRepository(ListItem) listItemsRepository y @InjectRepository(List) listsRepository.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "Great Fury Builder y eliminamos todo",
+      "change": "createQueryBuilder().delete().where({}).execute() por tabla.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 21,
+      "phrase": "también aquí tenemos nuestras listas",
+      "change": "Después se borran las listas, que ya no tienen dependientes.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 23,
+      "phrase": "Item repositorio es el que está fallando",
+      "change": "Error de dependencias: SeedModule no importaba los módulos nuevos.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 23,
+      "phrase": "importar también el list item module",
+      "change": "SeedModule importa ListItemModule y ListsModule.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 29,
+      "phrase": "si ustedes quisieran borrar la lista, controles no van a poder",
+      "change": "Borrar una lista con items viola la integridad referencial.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 33,
+      "phrase": "No podemos usar ID que estén en duro",
+      "change": "Los ids cambian en cada ejecución: hay que encadenar los registros devueltos.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Exportar servicios y repositorios",
+      "code": "// list-item.module.ts\nexports: [ListItemService, TypeOrmModule],\n\n// lists.module.ts\nexports: [ListsService, TypeOrmModule],",
+      "why": "Sin la exportación, SeedService no puede inyectar ni servicios ni repositorios de esos módulos.",
+      "check": "Compila.",
+      "evidence": [
+        "E2"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Inyectar los repositorios nuevos",
+      "code": "@InjectRepository(ListItem)\nprivate readonly listItemsRepository: Repository<ListItem>,\n\n@InjectRepository(List)\nprivate readonly listsRepository: Repository<List>,",
+      "why": "La purga se hace directamente por repositorio, igual que con items y usuarios.",
+      "check": "Nest falla hasta importar los módulos.",
+      "evidence": [
+        "E4",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Importar los módulos",
+      "code": "import { Module } from '@nestjs/common';\nimport { ConfigModule } from '@nestjs/config';\nimport { ItemsModule } from '../items/items.module';\nimport { ListItemModule } from '../list-item/list-item.module';\nimport { ListsModule } from '../lists/lists.module';\nimport { UsersModule } from '../users/users.module';\nimport { SeedResolver } from './seed.resolver';\nimport { SeedService } from './seed.service';\n\n@Module({\n  providers: [SeedResolver, SeedService],\n  imports: [\n    ConfigModule,\n    ItemsModule,\n    ListItemModule,\n    ListsModule,\n    UsersModule,\n  ],\n})\nexport class SeedModule {}",
+      "why": "Importar el módulo trae lo que exporta.",
+      "check": "La aplicación arranca sin errores.",
+      "evidence": [
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Purgar en orden de dependencias",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { Item } from '../items/entities/item.entity';\nimport { ItemsService } from '../items/items.service';\nimport { ListItem } from '../list-item/entities/list-item.entity';\nimport { List } from '../lists/entities/list.entity';\nimport { User } from '../users/entities/user.entity';\nimport { UsersService } from '../users/users.service';\nimport { SEED_ITEMS, SEED_USERS } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(\n    private readonly configService: ConfigService,\n\n    @InjectRepository(Item)\n    private readonly itemsRepository: Repository<Item>,\n\n    @InjectRepository(User)\n    private readonly usersRepository: Repository<User>,\n\n    @InjectRepository(ListItem)\n    private readonly listItemsRepository: Repository<ListItem>,\n\n    @InjectRepository(List)\n    private readonly listsRepository: Repository<List>,\n\n    private readonly usersService: UsersService,\n    private readonly itemsService: ItemsService,\n  ) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n    await this.deleteDatabase();\n\n    // Crear usuarios\n    const user = await this.loadUsers();\n\n    // Crear items\n    await this.loadItems(user);\n\n    return true;\n  }\n\n  async deleteDatabase() {\n    // ListItems\n    await this.listItemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Lists\n    await this.listsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Items\n    await this.itemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Users\n    await this.usersRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n  }\n\n  async loadUsers(): Promise<User> {\n    const users = [];\n\n    for (const user of SEED_USERS) {\n      users.push(await this.usersService.create(user));\n    }\n\n    return users[0];\n  }\n\n  async loadItems(user: User): Promise<void> {\n    const itemsPromises = [];\n\n    for (const item of SEED_ITEMS) {\n      itemsPromises.push(this.itemsService.create(item, user));\n    }\n\n    await Promise.all(itemsPromises);\n  }\n}",
+      "why": "Hijos antes que padres: list_items → lists → items → users.",
+      "check": "Crear una lista con un item, ejecutar executeSeed y comprobar que ambas tablas quedan vacías.",
+      "evidence": [
+        "E1",
+        "E3",
+        "E5",
+        "E6",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { Item } from '../items/entities/item.entity';\nimport { ItemsService } from '../items/items.service';\nimport { ListItem } from '../list-item/entities/list-item.entity';\nimport { List } from '../lists/entities/list.entity';\nimport { User } from '../users/entities/user.entity';\nimport { UsersService } from '../users/users.service';\nimport { SEED_ITEMS, SEED_USERS } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(\n    private readonly configService: ConfigService,\n\n    @InjectRepository(Item)\n    private readonly itemsRepository: Repository<Item>,\n\n    @InjectRepository(User)\n    private readonly usersRepository: Repository<User>,\n\n    @InjectRepository(ListItem)\n    private readonly listItemsRepository: Repository<ListItem>,\n\n    @InjectRepository(List)\n    private readonly listsRepository: Repository<List>,\n\n    private readonly usersService: UsersService,\n    private readonly itemsService: ItemsService,\n  ) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n    await this.deleteDatabase();\n\n    // Crear usuarios\n    const user = await this.loadUsers();\n\n    // Crear items\n    await this.loadItems(user);\n\n    return true;\n  }\n\n  async deleteDatabase() {\n    // ListItems\n    await this.listItemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Lists\n    await this.listsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Items\n    await this.itemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // Users\n    await this.usersRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n  }\n\n  async loadUsers(): Promise<User> {\n    const users = [];\n\n    for (const user of SEED_USERS) {\n      users.push(await this.usersService.create(user));\n    }\n\n    return users[0];\n  }\n\n  async loadItems(user: User): Promise<void> {\n    const itemsPromises = [];\n\n    for (const item of SEED_ITEMS) {\n      itemsPromises.push(this.itemsService.create(item, user));\n    }\n\n    await Promise.all(itemsPromises);\n  }\n}",
+      "provenance": "Lección 115; E1, E3–E6"
+    },
+    {
+      "path": "src/seed/seed.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { ConfigModule } from '@nestjs/config';\nimport { ItemsModule } from '../items/items.module';\nimport { ListItemModule } from '../list-item/list-item.module';\nimport { ListsModule } from '../lists/lists.module';\nimport { UsersModule } from '../users/users.module';\nimport { SeedResolver } from './seed.resolver';\nimport { SeedService } from './seed.service';\n\n@Module({\n  providers: [SeedResolver, SeedService],\n  imports: [\n    ConfigModule,\n    ItemsModule,\n    ListItemModule,\n    ListsModule,\n    UsersModule,\n  ],\n})\nexport class SeedModule {}",
+      "provenance": "E8"
+    },
+    {
+      "path": "exports de list-item.module.ts y lists.module.ts",
+      "language": "ts",
+      "code": "// list-item.module.ts\nexports: [ListItemService, TypeOrmModule],\n\n// lists.module.ts\nexports: [ListsService, TypeOrmModule],",
+      "provenance": "E2"
+    }
+  ],
+  "temporary": "Lista «Supermercado» y un list item creados a mano por GraphQL para comprobar el borrado.",
+  "mental": "Cada nueva tabla dependiente se añade al principio de la purga; los ids no se fijan a mano porque cambian en cada ejecución."
+}

@@ -2,34 +2,42 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { resolveDatabaseConnection } from '../dist/database/database-connection.js';
 
-const environment = {
-  INSTANCE_CONNECTION_NAME: 'test-project:test-region:test-instance',
-  DB_NAME: 'test-db',
-  DB_USER: 'test-user',
-  DB_PASSWORD: '  literal$password  ',
-};
+const neonUrl =
+  'postgresql://user:pass@ep-test-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require';
 
 function config(values) {
   return { get: (name) => values[name] };
 }
 
-test('Cloud SQL conserva la contraseña literal y valida su configuración', () => {
-  const resolved = resolveDatabaseConnection(config(environment));
-  assert.equal(resolved.password, environment.DB_PASSWORD);
-  for (const name of Object.keys(environment)) {
-    assert.throws(
-      () => resolveDatabaseConnection(config({ ...environment, [name]: '' })),
-      new RegExp(name),
-    );
-  }
-  assert.throws(() =>
-    resolveDatabaseConnection(
-      config({ ...environment, INSTANCE_CONNECTION_NAME: 'invalid' }),
-    ),
+test('Neon usa DATABASE_URL y exige TLS fuera de localhost', () => {
+  assert.equal(
+    resolveDatabaseConnection(config({ DATABASE_URL: `  ${neonUrl}  ` })).url,
+    neonUrl,
   );
-  assert.throws(() =>
+  assert.equal(
     resolveDatabaseConnection(
-      config({ DATABASE_URL: 'postgresql://unused.invalid/db' }),
-    ),
+      config({ DATABASE_URL: 'postgresql://u:p@127.0.0.1:5432/db' }),
+    ).url,
+    'postgresql://u:p@127.0.0.1:5432/db',
+  );
+  for (const DATABASE_URL of [
+    undefined,
+    '',
+    'no es una url',
+    'mysql://u:p@host/db',
+    'postgresql://u:p@ep-test.neon.tech/neondb',
+    'postgresql://u:p@ep-test.neon.tech/neondb?sslmode=disable',
+  ]) {
+    assert.throws(() => resolveDatabaseConnection(config({ DATABASE_URL })));
+  }
+});
+
+test('los mensajes de error no revelan la URL ni la contraseña', () => {
+  assert.throws(
+    () =>
+      resolveDatabaseConnection(
+        config({ DATABASE_URL: 'postgresql://u:secreto@host.neon.tech/db' }),
+      ),
+    (error) => !/secreto/.test(error.message),
   );
 });

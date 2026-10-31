@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 13 Autenticación de autorización/187. Encriptar contraseña de los usuarios del SEED.md",
+  "previous": [
+    "Sección 13 Autenticación de autorización/186. SEED de usuarios, productos e imágenes.md",
+    "Sección 13 Autenticación de autorización/168. Encriptar la contraseña.md"
+  ],
+  "objective": "Guardar las contraseñas de los usuarios sembrados con el mismo hash bcrypt que AuthService, para que el login funcione con ellos.",
+  "initial": "La semilla inserta usuarios con contraseña en texto plano (lección 186); AuthService.create usa bcrypt.hashSync(password, 10) (lección 168).",
+  "certainty": "Se recupera que el hash se aplica en seed-data.ts y que se importa bcrypt igual que en AuthService; los usuarios se conservan de la lección 186.",
+  "evidence": [
+    {
+      "id": "E7",
+      "line": 19,
+      "phrase": "asterisco a script",
+      "change": "import * as bcrypt from 'bcrypt'.",
+      "certainty": "alta",
+      "source": "Sección 13 Autenticación de autorización/168. Encriptar la contraseña.md"
+    },
+    {
+      "id": "E8",
+      "line": 23,
+      "phrase": "unas diez vueltas",
+      "change": "bcrypt.hashSync(password, 10).",
+      "certainty": "alta",
+      "source": "Sección 13 Autenticación de autorización/168. Encriptar la contraseña.md"
+    },
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "las contraseñas de nuestros usuarios si no están encriptadas",
+      "change": "Las contraseñas sembradas quedan en texto plano.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 13,
+      "phrase": "nunca va a ser match",
+      "change": "El login compara contra un hash: falla con texto plano.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 15,
+      "phrase": "la misma técnica que nosotros usamos para encriptar",
+      "change": "Aplicar el mismo procedimiento de AuthService.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "El password de aquí aquí va a ser ABC. 123",
+      "change": "password: bcrypt.hashSync('Abc123', 10).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 19,
+      "phrase": "el script también tenemos que importarlo",
+      "change": "Importar bcrypt en seed-data.ts.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 19,
+      "phrase": "Tenemos la contraseña encriptada",
+      "change": "Comprobación: la tabla muestra hashes y el login funciona.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Hashear en los datos de la semilla",
+      "code": "import * as bcrypt from 'bcrypt';\n\ninterface SeedUser {\n  email: string;\n  fullName: string;\n  password: string;\n  roles: string[];\n}\n\nexport const initialData: SeedData = {\n  users: [\n    {\n      email: 'test1@google.com',\n      fullName: 'Test One',\n      password: bcrypt.hashSync('Abc123', 10),\n      roles: ['admin'],\n    },\n    {\n      email: 'test2@google.com',\n      fullName: 'Test Two',\n      password: bcrypt.hashSync('Abc123', 10),\n      roles: ['user', 'super'],\n    },\n  ],\n  products: [\n    // ...productos del adjunto (lección 148)\n  ],\n};",
+      "why": "Los usuarios sembrados deben ser indistinguibles de los registrados por la API.",
+      "check": "Tras la semilla, POST de login con test1@google.com y Abc123 devuelve el token; otra contraseña falla.",
+      "evidence": [
+        "E7",
+        "E8",
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/data/seed-data.ts — usuarios con hash",
+      "language": "ts",
+      "code": "import * as bcrypt from 'bcrypt';\n\ninterface SeedUser {\n  email: string;\n  fullName: string;\n  password: string;\n  roles: string[];\n}\n\nexport const initialData: SeedData = {\n  users: [\n    {\n      email: 'test1@google.com',\n      fullName: 'Test One',\n      password: bcrypt.hashSync('Abc123', 10),\n      roles: ['admin'],\n    },\n    {\n      email: 'test2@google.com',\n      fullName: 'Test Two',\n      password: bcrypt.hashSync('Abc123', 10),\n      roles: ['user', 'super'],\n    },\n  ],\n  products: [\n    // ...productos del adjunto (lección 148)\n  ],\n};",
+      "provenance": "E7, E8, E4, E5"
+    }
+  ],
+  "temporary": "",
+  "mental": "Los datos sembrados deben respetar los mismos invariantes que los creados por la API (aquí, contraseña hasheada)."
+}

@@ -1,0 +1,128 @@
+type ApiError {
+  code: String!
+  field: String
+  message: LocalizedMessage!
+  requestId: String
+  sourceRow: Int
+}
+
+enum ChannelProfile {
+  google_merchant
+}
+
+enum ConfigurationStatus {
+  ready
+  required
+}
+
+input CreateProjectInput {
+  channelProfile: ChannelProfile!
+  country: String!
+  currency: String!
+  name: String!
+}
+
+enum ImportDelimiter {
+  comma
+  semicolon
+}
+
+type ImportJob {
+  createdAt: String!
+  error: ApiError
+  finishedAt: String
+  id: ID!
+  processedRows: Int!
+  projectId: ID!
+  snapshotId: ID!
+  startedAt: String
+  status: ImportJobStatus!
+}
+
+enum ImportJobStatus {
+  failed
+  queued
+  running
+  succeeded
+}
+
+type ImportRow {
+  externalId: String!
+  originalValues: JSON!
+  sourceRow: Int!
+}
+
+type ImportSnapshot {
+  byteSize: Int!
+  createdAt: String!
+  delimiter: ImportDelimiter!
+  error: ApiError
+  finishedAt: String
+  headers: [String!]
+  id: ID!
+  idColumn: String!
+  originalName: String!
+  projectId: ID!
+  rowCount: Int
+  sample: [ImportRow!]!
+  sourceHash: String!
+  status: ImportSnapshotStatus!
+}
+
+enum ImportSnapshotStatus {
+  failed
+  importing
+  pending
+  ready
+}
+
+"""Objeto JSON de solo lectura."""
+scalar JSON
+
+type LocalizedMessage {
+  en: String!
+  es: String!
+}
+
+type Mutation {
+  createProject(input: CreateProjectInput!): Project!
+  updateMe(input: UpdateMeInput!): User!
+  updateProject(id: ID!, input: UpdateProjectInput!): Project!
+}
+
+type Project {
+  channelProfile: ChannelProfile
+  configurationStatus: ConfigurationStatus!
+  country: String
+  createdAt: String!
+  currency: String
+  id: ID!
+  name: String!
+}
+
+type Query {
+  importJob(id: ID!, projectId: ID!): ImportJob!
+  importSnapshot(id: ID!, projectId: ID!): ImportSnapshot!
+  me: User!
+  project(id: ID!): Project!
+  projects(limit: Int! = 20, offset: Int! = 0): [Project!]!
+}
+
+input UpdateMeInput {
+  displayName: String
+}
+
+input UpdateProjectInput {
+  channelProfile: ChannelProfile
+  country: String
+  currency: String
+  name: String
+}
+
+type User {
+  createdAt: String!
+  displayName: String
+  email: String
+  id: ID!
+  updatedAt: String!
+}

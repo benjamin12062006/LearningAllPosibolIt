@@ -41,6 +41,7 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
   async function accept(
     csv = 'id,title\n000123,Café\n',
     overrides: Partial<Acceptance> = {},
+    queuedAlongsideActive = false,
   ) {
     const upload = await store.receive(Readable.from([Buffer.from(csv)]));
     const input: Acceptance = {
@@ -58,7 +59,38 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
       ...overrides,
     };
     await store.finalize(upload.filename, input.artifactKey);
-    await repository.accept(input);
+    if (queuedAlongsideActive) {
+      // Reproduce un estado ya persistido con dos trabajos en cola del mismo
+      // proyecto, que `accept` ya no permite crear.
+      const now = new Date().toISOString();
+      await prisma.catalogSnapshot.create({
+        data: {
+          id: input.snapshotId,
+          projectId: input.projectId,
+          idColumn: input.idColumn,
+          delimiter: input.delimiter,
+          sourceHash: input.sourceHash,
+          artifactKey: input.artifactKey,
+          byteSize: input.byteSize,
+          originalName: input.originalName,
+          projectConfiguration: {},
+          status: 'pending',
+          createdAt: now,
+        },
+      });
+      await prisma.catalogImportJob.create({
+        data: {
+          id: input.jobId,
+          projectId: input.projectId,
+          snapshotId: input.snapshotId,
+          requestId: input.requestId,
+          status: 'queued',
+          createdAt: now,
+        },
+      });
+    } else {
+      await repository.accept(input);
+    }
     return input;
   }
 
@@ -177,7 +209,7 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
 
   it('la unicidad de IDs es por snapshot y un lote fallido revierte filas y progreso', async () => {
     const first = await accept();
-    const second = await accept();
+    const second = await accept(undefined, {}, true);
     const job = await repository.claim();
     expect(job).not.toBeNull();
     if (!job) throw new Error('Falta job');
@@ -287,7 +319,7 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
 
   it('reconcilia running interrumpidos y retoma los queued persistidos al arrancar', async () => {
     const first = await accept();
-    const second = await accept();
+    const second = await accept(undefined, {}, true);
     const interrupted = await repository.claim();
     if (!interrupted) throw new Error('Falta job');
     const queued = interrupted.id === first.jobId ? second : first;
@@ -315,7 +347,11 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
   it('archivo ausente o checksum cambiado termina con código estable', async () => {
     const missing = await accept();
     await store.removeArtifact(missing.artifactKey);
-    const changed = await accept('id\n1\n', { sourceHash: '0'.repeat(64) });
+    const changed = await accept(
+      'id\n1\n',
+      { sourceHash: '0'.repeat(64) },
+      true,
+    );
     await worker.runUntilIdle();
     expect(
       await repository.findJob(ownerId, projectId, missing.jobId),
@@ -401,5 +437,54 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
     process.stdout.write(
       `${JSON.stringify({ benchmark: 'catalog-import-5000', bytes: Buffer.byteLength(csv), durationMs, rssBefore, rssAfter: process.memoryUsage().rss })}\n`,
     );
+  });
+  it('rechaza una segunda importación activa y acepta otra al terminar la primera', async () => {
+    const first = await accept();
+    await expect(accept()).rejects.toMatchObject({
+      response: publicError('IMPORT_ALREADY_ACTIVE'),
+    });
+    expect(await prisma.catalogSnapshot.count()).toBe(1);
+
+    await worker.runUntilIdle();
+    expect(
+      await repository.findJob(ownerId, projectId, first.jobId),
+    ).toMatchObject({ status: 'succeeded' });
+    await expect(accept()).resolves.toBeDefined();
+  });
+
+  it('lista las importaciones del propietario, recientes primero y sin la muestra', async () => {
+    const first = await accept();
+    await worker.runUntilIdle();
+    const second = await accept('id\n9\n');
+    const all = await repository.listSnapshots(ownerId, projectId, {
+      limit: 10,
+      offset: 0,
+    });
+    expect(all.map(({ id }) => id)).toEqual([
+      second.snapshotId,
+      first.snapshotId,
+    ]);
+    expect(all[0]).toMatchObject({
+      status: 'pending',
+      job: { id: second.jobId, status: 'queued', processedRows: 0 },
+    });
+    expect(all[1]).toMatchObject({
+      status: 'ready',
+      job: { id: first.jobId, status: 'succeeded' },
+    });
+    expect(all[0]).not.toHaveProperty('sample');
+
+    const window = await repository.listSnapshots(ownerId, projectId, {
+      limit: 1,
+      offset: 1,
+    });
+    expect(window.map(({ id }) => id)).toEqual([first.snapshotId]);
+
+    await expect(
+      repository.listSnapshots(otherOwnerId, projectId, {
+        limit: 10,
+        offset: 0,
+      }),
+    ).rejects.toMatchObject({ response: publicError('PROJECT_NOT_FOUND') });
   });
 });

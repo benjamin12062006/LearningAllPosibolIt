@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "date": "2026-10-30",
+  "originals": {
+    "Sección 8 Items + Usuarios - Peticiones autenticadas/102. findAll por usuario.md": "97f42c643e81bdcf8e150d002da3a7cbb295c45d35ac84aa46480756b8ded1b8",
+    "Sección 8 Items + Usuarios - Peticiones autenticadas/106. ResolveField con información del padre.md": "9194a0680199d00096e7c8c4e8c857140a902786d2811d1d280b803d4790d7f6",
+    "Sección 9 Seed Data - Cargar y purgar base de datos/111. Seed Resolver.md": "8aa1f31e7b11a67bb546c149233aae08421ea9bf69b7d696cb221d0666adfe99",
+    "Sección 9 Seed Data - Cargar y purgar base de datos/112. Seed - Paso 1 Protección.md": "0ee477563e233f41f15c1f61e9701e9e59f9de7934391b447e5e88d8ee579ae2",
+    "Sección 9 Seed Data - Cargar y purgar base de datos/113. Seed - Paso 2 Borrar registros anteriores.md": "de14b3a3727c8172cbd42830cb7bc226d50044b41c79c0814b40e6a64d34ebd7",
+    "Sección 10 Paginaciones, paginaciones anidadas y filtros/121. Paginar resultados - Args.md": "7d034e3e57df0d5f88de10db82f4e81ab0cbca8f2b9a2a372bbafc251664b6cc",
+    "Sección 10 Paginaciones, paginaciones anidadas y filtros/122. Aplicar la paginación.md": "84b75bcd2a15aa1fbbad2cdf960219f90efef728c6932e9d74fdcc0359bb18a0",
+    "Sección 3 Nest + GraphQL - Introducción/21. Instalar GraphQL en Nest.md": "7d0951970e18e3568a99307faff0e183daee3a6c9f9eaee163ae333152895909",
+    "Sección 3 Nest + GraphQL - Introducción/20. Creando un nuevo proyecto de Nest con GraphQL.md": "7afd1786c14d782516f823bfea5888f80ce78bd36aac8b9f1e2908206f4decf7",
+    "Sección 3 Nest + GraphQL - Introducción/22. Mi primer Resolver.md": "6506153db89f7c9c22976c385fbefd1e89ffadc676c0e3d0333a842215f10c8f",
+    "Sección 3 Nest + GraphQL - Introducción/25. Tarea - Generar un random entre cero y otro número.md": "e97b7241bb7d4530ff214846a0d4190327bb8c4a5c1682887bba9117153be2f0",
+    "Sección 3 Nest + GraphQL - Introducción/26. Arguments.md": "4b53bdbe7d9a06c18a3e445444e893f507130ee1cce77eaabd37f3bb8d7d7272",
+    "Sección 3 Nest + GraphQL - Introducción/24. Generar un nuevo query.md": "bfc9e4e4707fbcb7f95d4d14e877f56e9373f9b882b633b914a79e2bc2789874",
+    "Sección 4 GraphQL TODO - Continuación/32. Todo Resolver y Custom object types.md": "b1b5b870448a1020cb210243f15d463b178cc60e913116f26490b5e1c3265b29",
+    "Sección 4 GraphQL TODO - Continuación/34. Regresar un Todo por ID.md": "f29c8a3bed30169a9d8a19df8bd38167c7c6872244d7f677994f7c5227c0a896",
+    "Sección 4 GraphQL TODO - Continuación/33. Services.md": "8118a604680c2c4e199832f57c337a8d0dba74648c943d68ba2200fab76981a2",
+    "Sección 4 GraphQL TODO - Continuación/36. Mutation e Inputs.md": "94f8d1391ab8756ce28752266719be646bd17621ce0e4cb59f8507e51e24ae44",
+    "Sección 4 GraphQL TODO - Continuación/37. Validaciones y creación de Todo.md": "213b6ef7edcf3bd739ee494acf4b9cfb0b53c952eb93ccd1fa7797f73cd99abb",
+    "Sección 4 GraphQL TODO - Continuación/38. Actualizar un Todo.md": "93b5ce0da2d9d43796e3bb9d656b7ec81fb0710bedadc3fffc79f15a1d89c25c",
+    "Sección 4 GraphQL TODO - Continuación/39. Eliminar un Todo.md": "f84a07e5ecfef247a2ef24f3887028e37c01cbdbd28b13624d935877d5d76599",
+    "Sección 6 Autenticación y autorización/75. JwtAuthGuard.md": "892491ab8e7a93b8cd0dea47ecd041e32c14b8a4a3c88df1e272c18f8f49677d",
+    "Sección 6 Autenticación y autorización/77. Custom Decorator - CurrentUser.md": "89723e0f7dc1a957b0f60a46a21ea846f84034600fabb6da6409f7053b2f206e",
+    "Sección 7 Usuarios y enumeraciones - Admin Roles/87. GraphQL Enumerations.md": "51313b35fc55d1762b0851b8c764a68afc8b3c35530102405b9fbcd40101d272",
+    "Sección 7 Usuarios y enumeraciones - Admin Roles/94. Bonus - Bloquear GQLSchema Introducción.md": "bf54d512a76156905c1bbda83a525f3eec1366ac2c95c606a7de7e254540b705",
+    "Sección 7 Usuarios y enumeraciones - Admin Roles/95. Bonus - GraphQLModule forRootAsync.md": "ae8aee84f4fc1a53395e7d4f6c306acc36646388433437f9f380fa6cb5c4bb7f"
+  },
+  "guides": [
+    {
+      "source": "Sección 8 Items + Usuarios - Peticiones autenticadas/102. findAll por usuario.md",
+      "guide": "Sección 8 Items + Usuarios - Peticiones autenticadas/102. findAll por usuario - Reconstrucción guiada.md",
+      "sha256": "0f1df1ddd0d736f9bc039d20ca7c72cc64f3901b428ef3fe4aff82d9c230621b"
+    },
+    {
+      "source": "Sección 8 Items + Usuarios - Peticiones autenticadas/106. ResolveField con información del padre.md",
+      "guide": "Sección 8 Items + Usuarios - Peticiones autenticadas/106. ResolveField con información del padre - Reconstrucción guiada.md",
+      "sha256": "9cbacb73b7abee36866c943465c67a835222e0238343106793ec0bd936697540"
+    },
+    {
+      "source": "Sección 9 Seed Data - Cargar y purgar base de datos/111. Seed Resolver.md",
+      "guide": "Sección 9 Seed Data - Cargar y purgar base de datos/111. Seed Resolver - Reconstrucción guiada.md",
+      "sha256": "9184f514f3610c5be31b78ed306b147bc5ad41889d9d407e1f3794626c8b8b63"
+    },
+    {
+      "source": "Sección 9 Seed Data - Cargar y purgar base de datos/112. Seed - Paso 1 Protección.md",
+      "guide": "Sección 9 Seed Data - Cargar y purgar base de datos/112. Seed - Paso 1 Protección - Reconstrucción guiada.md",
+      "sha256": "bf66c8f7ad9258ed799de31ea1e170f7a2b1aa7c0bf502cf2301a9ba6d7d3f2c"
+    },
+    {
+      "source": "Sección 9 Seed Data - Cargar y purgar base de datos/113. Seed - Paso 2 Borrar registros anteriores.md",
+      "guide": "Sección 9 Seed Data - Cargar y purgar base de datos/113. Seed - Paso 2 Borrar registros anteriores - Reconstrucción guiada.md",
+      "sha256": "c983e6bb74d485c2a0bee2512d2f8f916e923a1c43fb30fe1e436754fa16ba39"
+    },
+    {
+      "source": "Sección 10 Paginaciones, paginaciones anidadas y filtros/121. Paginar resultados - Args.md",
+      "guide": "Sección 10 Paginaciones, paginaciones anidadas y filtros/121. Paginar resultados - Args - Reconstrucción guiada.md",
+      "sha256": "f337e8406cfe60ff41853509996874c25afb2a132919b55e1c60cca900d12819"
+    },
+    {
+      "source": "Sección 10 Paginaciones, paginaciones anidadas y filtros/122. Aplicar la paginación.md",
+      "guide": "Sección 10 Paginaciones, paginaciones anidadas y filtros/122. Aplicar la paginación - Reconstrucción guiada.md",
+      "sha256": "269153de697c0d5c529725c707944c818ac4954eebcc8aad24d8ca74f90a2e3e"
+    },
+    {
+      "source": "Sección 3 Nest + GraphQL - Introducción/21. Instalar GraphQL en Nest.md",
+      "guide": "Sección 3 Nest + GraphQL - Introducción/21. Instalar GraphQL en Nest - Reconstrucción guiada.md",
+      "sha256": "abe171be6d69605bae7a18295112f6b72471ab61ee7e7c4977df5e45b9fbc4f3"
+    },
+    {
+      "source": "Sección 3 Nest + GraphQL - Introducción/22. Mi primer Resolver.md",
+      "guide": "Sección 3 Nest + GraphQL - Introducción/22. Mi primer Resolver - Reconstrucción guiada.md",
+      "sha256": "df2e35268a59d125ad9f39c221b15b55dd4fe08b64635f01717489dfe401a466"
+    },
+    {
+      "source": "Sección 3 Nest + GraphQL - Introducción/26. Arguments.md",
+      "guide": "Sección 3 Nest + GraphQL - Introducción/26. Arguments - Reconstrucción guiada.md",
+      "sha256": "ece2d938eee8eaeac434229c612fe174dcb0c2412c81642b419a67584b224b84"
+    },
+    {
+      "source": "Sección 4 GraphQL TODO - Continuación/32. Todo Resolver y Custom object types.md",
+      "guide": "Sección 4 GraphQL TODO - Continuación/32. Todo Resolver y Custom object types - Reconstrucción guiada.md",
+      "sha256": "65abeb8c6fa20b00745dc2f2ea0cb5c5103613071a7468d62a05dfbb09f0309d"
+    },
+    {
+      "source": "Sección 4 GraphQL TODO - Continuación/36. Mutation e Inputs.md",
+      "guide": "Sección 4 GraphQL TODO - Continuación/36. Mutation e Inputs - Reconstrucción guiada.md",
+      "sha256": "c69146b5c6368e32f4e7afd9220eaa62ac6740fb5bd0f8b532844be58e2803c7"
+    },
+    {
+      "source": "Sección 4 GraphQL TODO - Continuación/37. Validaciones y creación de Todo.md",
+      "guide": "Sección 4 GraphQL TODO - Continuación/37. Validaciones y creación de Todo - Reconstrucción guiada.md",
+      "sha256": "fdf71a639dea06d3eb92962b8ec6bd6638388d113416782311aef955e9d8f127"
+    },
+    {
+      "source": "Sección 4 GraphQL TODO - Continuación/38. Actualizar un Todo.md",
+      "guide": "Sección 4 GraphQL TODO - Continuación/38. Actualizar un Todo - Reconstrucción guiada.md",
+      "sha256": "1fc69169dfb21265d219c08843ef30a115d900dabb92228336d9f531d62024e7"
+    },
+    {
+      "source": "Sección 4 GraphQL TODO - Continuación/39. Eliminar un Todo.md",
+      "guide": "Sección 4 GraphQL TODO - Continuación/39. Eliminar un Todo - Reconstrucción guiada.md",
+      "sha256": "4a96023260bcbc6ec9d6a012640621d2055dac5a6683b134d7edb8144fb190a3"
+    },
+    {
+      "source": "Sección 6 Autenticación y autorización/75. JwtAuthGuard.md",
+      "guide": "Sección 6 Autenticación y autorización/75. JwtAuthGuard - Reconstrucción guiada.md",
+      "sha256": "2bb098d4473a6d5b8d84583017430f9b072d6a4687f78100335606b3f5f8bf18"
+    },
+    {
+      "source": "Sección 6 Autenticación y autorización/77. Custom Decorator - CurrentUser.md",
+      "guide": "Sección 6 Autenticación y autorización/77. Custom Decorator - CurrentUser - Reconstrucción guiada.md",
+      "sha256": "b2ae4cc26a08f5bf71e1e601966256dc9a91350e580085dcd50883a12edffdaf"
+    },
+    {
+      "source": "Sección 7 Usuarios y enumeraciones - Admin Roles/87. GraphQL Enumerations.md",
+      "guide": "Sección 7 Usuarios y enumeraciones - Admin Roles/87. GraphQL Enumerations - Reconstrucción guiada.md",
+      "sha256": "65eec3ae6fd40fd87c816e58756e1d0c7c39b131fdce413c6e233a7b102a88f4"
+    },
+    {
+      "source": "Sección 7 Usuarios y enumeraciones - Admin Roles/95. Bonus - GraphQLModule forRootAsync.md",
+      "guide": "Sección 7 Usuarios y enumeraciones - Admin Roles/95. Bonus - GraphQLModule forRootAsync - Reconstrucción guiada.md",
+      "sha256": "95d8b287df62cebd7eaac98ba2de3b423de93f04c191d28625b647622a1669c4"
+    }
+  ]
+}

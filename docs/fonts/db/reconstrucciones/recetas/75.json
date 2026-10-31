@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [],
+  "source": "Sección 6 Autenticación y autorización/75. JwtAuthGuard.md",
+  "objective": "Proteger un Query con un guard JWT adaptado a GraphQL: extender AuthGuard(\"jwt\") de Passport y sobrescribir getRequest con GqlExecutionContext.",
+  "initial": "AuthModule con signup/login que devuelven AuthResponse (token y usuario), PassportModule, JwtModule y JwtStrategy (lecciones 72–74).",
+  "certainty": "Transcripción por reconocimiento de voz (\"J brute out\" = JwtAuthGuard, \"out\" = auth, \"Gard\"/\"Cat\" = guard). El código se ensambla desde las explicaciones; el proyecto es Anylist con Passport JWT (curso de 2022). Las rutas de imports (types/auth-response.type, guards/jwt-auth.guard) siguen la estructura del curso pero no se dictan. signup/login no se reconstruyen en esta guía.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "Todo es el mismo Endpoint",
+      "change": "En GraphQL no hay rutas: todo llega al mismo endpoint.",
+      "certainty": "media"
+    },
+    {
+      "id": "E2",
+      "line": 17,
+      "phrase": "se va a llamar rivalidad",
+      "change": "Query revalidate que devuelve AuthResponse.",
+      "certainty": "media"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "Current user",
+      "change": "El usuario se obtendrá con un decorador CurrentUser; de momento se lanza \"No implementado\".",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 23,
+      "phrase": "no funciona exactamente igual",
+      "change": "AuthGuard() de Passport no sirve tal cual en GraphQL.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 25,
+      "phrase": "no puede leer Propiedades de Find Reading Nothing",
+      "change": "Error al usar AuthGuard directo: no encuentra la request.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 27,
+      "phrase": "export class j brute out",
+      "change": "guards/jwt-auth.guard.ts: JwtAuthGuard extends AuthGuard(\"jwt\").",
+      "certainty": "media"
+    },
+    {
+      "id": "E7",
+      "line": 29,
+      "phrase": "sobre escritura del get request",
+      "change": "Override de getRequest(context: ExecutionContext).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 31,
+      "phrase": "Get context, paréntesis request",
+      "change": "GqlExecutionContext.create(context).getContext().req.",
+      "certainty": "media"
+    },
+    {
+      "id": "E9",
+      "line": 35,
+      "phrase": "tenemos 1401",
+      "change": "Sin token responde Unauthorized (401).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 39,
+      "phrase": "Pónganlo con A mayúscula",
+      "change": "Header Authorization: Bearer <token> en Apollo Studio.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Declarar el Query protegido",
+      "code": "@Query(() => AuthResponse, { name: 'revalidate' })\nrevalidateToken(/* @CurrentUser() user: User */): AuthResponse {\n  throw new Error('No implementado');\n}",
+      "why": "Es un Query porque no recibe datos del cliente; sirve para comprobar el flujo antes de implementarlo.",
+      "check": "revalidate responde el error \"No implementado\".",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Comprobar que AuthGuard de Passport no basta",
+      "code": "@UseGuards(AuthGuard())",
+      "why": "En GraphQL la request no está donde Passport la busca; el error es confuso (no puede leer propiedades de undefined).",
+      "check": "La consulta falla con el error de propiedades indefinidas; se retira este decorador.",
+      "evidence": [
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Crear JwtAuthGuard",
+      "code": "import { ExecutionContext } from '@nestjs/common';\nimport { GqlExecutionContext } from '@nestjs/graphql';\nimport { AuthGuard } from '@nestjs/passport';\n\nexport class JwtAuthGuard extends AuthGuard('jwt') {\n  // ! Override\n  getRequest(context: ExecutionContext) {\n    const ctx = GqlExecutionContext.create(context);\n    const request = ctx.getContext().req;\n    return request;\n  }\n}",
+      "why": "Se reutiliza la estrategia jwt de Passport y solo se cambia cómo obtener la request: desde el contexto GraphQL.",
+      "check": "Con @UseGuards(JwtAuthGuard), sin token responde 401.",
+      "evidence": [
+        "E6",
+        "E7",
+        "E8",
+        "E9"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Enviar el token",
+      "code": "Authorization: Bearer <token devuelto por login>",
+      "why": "Los headers compartidos de Apollo Studio evitan repetirlo en cada operación.",
+      "check": "Con token, la estrategia recibe el payload (id, iat, exp) y se llega a \"No implementado\".",
+      "evidence": [
+        "E10"
+      ],
+      "language": "text"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/auth/guards/jwt-auth.guard.ts",
+      "language": "ts",
+      "code": "import { ExecutionContext } from '@nestjs/common';\nimport { GqlExecutionContext } from '@nestjs/graphql';\nimport { AuthGuard } from '@nestjs/passport';\n\nexport class JwtAuthGuard extends AuthGuard('jwt') {\n  // ! Override\n  getRequest(context: ExecutionContext) {\n    const ctx = GqlExecutionContext.create(context);\n    const request = ctx.getContext().req;\n    return request;\n  }\n}",
+      "provenance": "E6–E8"
+    },
+    {
+      "path": "src/auth/auth.resolver.ts (fragmento de revalidate)",
+      "language": "ts",
+      "code": "import { UseGuards } from '@nestjs/common';\nimport { Query, Resolver } from '@nestjs/graphql';\nimport { AuthService } from './auth.service';\nimport { AuthResponse } from './types/auth-response.type';\nimport { JwtAuthGuard } from './guards/jwt-auth.guard';\n\n@Resolver(() => AuthResponse)\nexport class AuthResolver {\n  constructor(private readonly authService: AuthService) {}\n\n  // signup y login (lecciones 67–71) se conservan sin cambios; no se reconstruyen aquí.\n\n  @Query(() => AuthResponse, { name: 'revalidate' })\n  @UseGuards(JwtAuthGuard)\n  revalidateToken(/* @CurrentUser() user: User */): AuthResponse {\n    throw new Error('No implementado');\n  }\n}",
+      "provenance": "E2, E3, E9; signup/login de lecciones previas"
+    }
+  ],
+  "temporary": "@UseGuards(AuthGuard()) se prueba y se elimina. La estrategia imprime el payload y devuelve error a propósito hasta la lección 76.",
+  "mental": "Passport sigue validando el JWT; en GraphQL solo hay que decirle de dónde sacar la request: GqlExecutionContext → getContext().req."
+}

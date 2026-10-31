@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 11 Relaciones en TypeORM/148. Insertar de forma masiva.md",
+  "previous": [
+    "Sección 11 Relaciones en TypeORM/147. Product Seed.md"
+  ],
+  "objective": "Insertar los productos del adjunto reutilizando ProductsService.create en paralelo con Promise.all, para que la semilla pase por la misma lógica que la API.",
+  "initial": "runSeed borra todos los productos (lección 147).",
+  "certainty": "El archivo seed-data.ts es un adjunto del curso que no aparece en la transcripción: se muestra solo como esqueleto. El paso del README es aproximado.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "Voy a crear un nuevo directorio llamado Data",
+      "change": "Carpeta seed/data.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "set data, punto TS",
+      "change": "Archivo seed/data/seed-data.ts con el adjunto.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 15,
+      "phrase": "Era inicial de era lo único que estoy exportando",
+      "change": "Solo se exporta initialData; sus interfaces son internas.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 17,
+      "phrase": "mediante un insert many",
+      "change": "Alternativa descartada: inserción directa por repositorio.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 17,
+      "phrase": "si no tendríamos que hacer el mismo procesamiento",
+      "change": "Se reutiliza ProductsService.create para no duplicar la lógica de creación.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 19,
+      "phrase": "lo va a manejar el only exception",
+      "change": "Los errores pasan por el mismo manejo de excepciones del servicio.",
+      "certainty": "media"
+    },
+    {
+      "id": "E7",
+      "line": 21,
+      "phrase": "constante insert promises",
+      "change": "Arreglo insertPromises.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 23,
+      "phrase": "debe de lucir como el create product",
+      "change": "El SeedProduct es compatible estructuralmente con CreateProductDto.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 27,
+      "phrase": "Promise Point, punto a punto",
+      "change": "await Promise.all(insertPromises).",
+      "certainty": "media"
+    },
+    {
+      "id": "E10",
+      "line": 29,
+      "phrase": "cada uno de los productos también tiene su relación con las imágenes",
+      "change": "create también crea las imágenes relacionadas.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 29,
+      "phrase": "maneja la secuencia",
+      "change": "Los IDs secuenciales de imágenes no se reinician; se acepta.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 33,
+      "phrase": "volver a ejecutarle",
+      "change": "La semilla es repetible y reconstruye lo borrado por error.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E13",
+      "line": 35,
+      "phrase": "Podríamos colocar un paso o un nuevo paso que diga ejecutar",
+      "change": "README con el paso de la semilla.",
+      "certainty": "media"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Guardar los datos del adjunto",
+      "code": "// Adjunto del curso (gist): su contenido no aparece en la transcripción.\n// Se recupera que solo se exporta initialData y que cada producto\n// se parece al DTO de creación (título, descripción, imágenes...).\nexport const initialData = {\n  products: [\n    // ...productos del adjunto\n  ],\n};",
+      "why": "Los datos de semilla quedan separados del servicio.",
+      "check": "El archivo compila sin errores de tipos.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Crear cada producto con el servicio, en paralelo",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { ProductsService } from '../products/products.service';\nimport { initialData } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  constructor(private readonly productsService: ProductsService) {}\n\n  async runSeed() {\n    await this.insertNewProducts();\n    return 'SEED EXECUTED';\n  }\n\n  private async insertNewProducts() {\n    await this.productsService.deleteAllProducts();\n\n    const products = initialData.products;\n\n    const insertPromises = [];\n\n    products.forEach((product) => {\n      insertPromises.push(this.productsService.create(product));\n    });\n\n    await Promise.all(insertPromises);\n\n    return true;\n  }\n}",
+      "why": "Reutilizar create aplica el mismo procesamiento (slug, imágenes, validaciones) que la API.",
+      "check": "GET /api/seed tarda menos de un segundo y crea productos con imágenes.",
+      "evidence": [
+        "E4",
+        "E5",
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E10",
+        "E11"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Documentar",
+      "code": "Ejecutar SEED\nhttp://localhost:3000/api/seed",
+      "why": "Paso necesario para levantar el proyecto con datos.",
+      "check": "El README lo muestra.",
+      "evidence": [
+        "E12",
+        "E13"
+      ],
+      "language": "md"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { ProductsService } from '../products/products.service';\nimport { initialData } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  constructor(private readonly productsService: ProductsService) {}\n\n  async runSeed() {\n    await this.insertNewProducts();\n    return 'SEED EXECUTED';\n  }\n\n  private async insertNewProducts() {\n    await this.productsService.deleteAllProducts();\n\n    const products = initialData.products;\n\n    const insertPromises = [];\n\n    products.forEach((product) => {\n      insertPromises.push(this.productsService.create(product));\n    });\n\n    await Promise.all(insertPromises);\n\n    return true;\n  }\n}",
+      "provenance": "E5–E9"
+    },
+    {
+      "path": "src/seed/data/seed-data.ts — esqueleto del adjunto",
+      "language": "ts",
+      "code": "// Adjunto del curso (gist): su contenido no aparece en la transcripción.\n// Se recupera que solo se exporta initialData y que cada producto\n// se parece al DTO de creación (título, descripción, imágenes...).\nexport const initialData = {\n  products: [\n    // ...productos del adjunto\n  ],\n};",
+      "provenance": "E1–E3; contenido ausente"
+    },
+    {
+      "path": "README.md — paso de la semilla",
+      "language": "md",
+      "code": "Ejecutar SEED\nhttp://localhost:3000/api/seed",
+      "provenance": "E13"
+    }
+  ],
+  "temporary": "",
+  "mental": "La semilla no inserta por su cuenta: llama al servicio de creación del dominio para que los datos sembrados pasen por las mismas reglas."
+}

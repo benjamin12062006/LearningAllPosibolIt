@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 10 Paginaciones, paginaciones anidadas y filtros/121. Paginar resultados - Args.md"
+  ],
+  "source": "Sección 10 Paginaciones, paginaciones anidadas y filtros/122. Aplicar la paginación.md",
+  "objective": "Aplicar limit y offset en ItemsService.findAll con take y skip de TypeORM, conservando el filtro por usuario.",
+  "initial": "ItemsResolver recibe PaginationArgs pero no lo usa (lección 121).",
+  "certainty": "Transcripción por reconocimiento de voz (\"page nation\" = pagination, \"Arc Type\" = ArgsType). Proyecto Anylist con TypeORM (curso de 2022). El código se ensambla desde las explicaciones. El instructor anuncia que esta forma se rehará más adelante (QueryBuilder) al añadir búsqueda.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "lo voy a mandar como otro argumento",
+      "change": "El resolver pasa paginationArgs al servicio.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 17,
+      "phrase": "no les puse aquí símbolo de interrogación",
+      "change": "limit y offset siempre tienen valor gracias a los defaults.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "podemos usar el Take",
+      "change": "take: limit (LIMIT en SQL).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "con el skip",
+      "change": "skip: offset.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 25,
+      "phrase": "no está definido en nuestro esquema",
+      "change": "La paginación no se aplica a los items anidados en users (pendiente).",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Pasar los args al servicio",
+      "code": "@Query(() => [Item], { name: 'items' })\nasync findAll(\n  @CurrentUser() user: User,\n  @Args() paginationArgs: PaginationArgs,\n): Promise<Item[]> {\n  return this.itemsService.findAll(user, paginationArgs);\n}",
+      "why": "El resolver solo traduce; el servicio aplica la paginación.",
+      "check": "Compila.",
+      "evidence": [
+        "E1"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Aplicar take y skip",
+      "code": "async findAll(user: User, paginationArgs: PaginationArgs): Promise<Item[]> {\n  const { limit, offset } = paginationArgs;\n  // TODO: filtrar\n\n  return this.itemsRepository.find({\n    take: limit,\n    skip: offset,\n    where: {\n      user: {\n        id: user.id,\n      },\n    },\n  });\n}",
+      "why": "take limita el número de filas y skip salta las primeras; el filtro por usuario se mantiene.",
+      "check": "items(limit: 2) devuelve dos; offset 2, 4… avanza por páginas.",
+      "evidence": [
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/items/items.resolver.ts (método findAll)",
+      "language": "ts",
+      "code": "@Query(() => [Item], { name: 'items' })\nasync findAll(\n  @CurrentUser() user: User,\n  @Args() paginationArgs: PaginationArgs,\n): Promise<Item[]> {\n  return this.itemsService.findAll(user, paginationArgs);\n}",
+      "provenance": "E1"
+    },
+    {
+      "path": "src/items/items.service.ts (método findAll)",
+      "language": "ts",
+      "code": "async findAll(user: User, paginationArgs: PaginationArgs): Promise<Item[]> {\n  const { limit, offset } = paginationArgs;\n  // TODO: filtrar\n\n  return this.itemsRepository.find({\n    take: limit,\n    skip: offset,\n    where: {\n      user: {\n        id: user.id,\n      },\n    },\n  });\n}",
+      "provenance": "Lección 102; E2–E4"
+    }
+  ],
+  "temporary": "Pruebas con distintos offset (2, 4, 7, 8) sobre los datos de la semilla.",
+  "mental": "PaginationArgs → servicio → take/skip. Los campos anidados (users { items }) no heredan la paginación: hay que declararla en su propio resolver de campo."
+}

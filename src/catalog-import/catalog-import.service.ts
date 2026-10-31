@@ -3,6 +3,12 @@ import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { apiError } from '../common/http/api-error.js';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
+import {
+  fetchWindow,
+  resolvePage,
+  toPage,
+  type PageRequest,
+} from '../common/http/pagination.js';
 import { UsersService } from '../users/users.service.js';
 import { ArtifactStore } from './artifact.store.js';
 import { CatalogImportRepository } from './catalog-import.repository.js';
@@ -86,6 +92,22 @@ export class CatalogImportService {
       status: 'queued' as const,
       statusUrl: `/api/v1/projects/${projectId}/jobs/${input.jobId}`,
     };
+  }
+
+  async list(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    query?: Partial<PageRequest>,
+  ) {
+    const owner = await this.users.findCurrent(identity);
+    const page = resolvePage(query);
+    const rows = await this.repository.listSnapshots(
+      owner.id,
+      projectId,
+      fetchWindow(page),
+    );
+    const { items, page: info } = toPage(rows, page);
+    return { imports: items, page: info };
   }
 
   async findJob(

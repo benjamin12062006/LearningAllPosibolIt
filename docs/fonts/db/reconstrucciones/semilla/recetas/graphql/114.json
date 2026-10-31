@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 9 Seed Data - Cargar y purgar base de datos/114. Seed - Paso 3 Crear usuarios.md",
+  "previous": [
+    "Sección 9 Seed Data - Cargar y purgar base de datos/113. Seed - Paso 2 Borrar registros anteriores.md"
+  ],
+  "objective": "Crear los usuarios de la semilla reutilizando UsersService.create (que hashea la contraseña) y devolver el primero para asociarle los items.",
+  "initial": "SeedService protegido por STATE=prod y con deleteDatabase que borra items y usuarios (lección 113).",
+  "certainty": "seed-data.ts es un adjunto: se muestra solo como esqueleto con los nombres de sus constantes. SEED_USERS se deduce de «side y on bajo users».",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "dentro de data donde vamos a colocar este archivo",
+      "change": "Archivo seed/data/seed-data.ts del material adjunto.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "Tenemos el name y el password, los roles",
+      "change": "Los usuarios sembrados tienen nombre, contraseña y roles.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 15,
+      "phrase": "load users",
+      "change": "Método loadUsers(): Promise<User>.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 17,
+      "phrase": "necesito un usuario que exista en la base de datos",
+      "change": "Los items necesitan un propietario ya guardado.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 17,
+      "phrase": "Hagámoslo mediante un foro off",
+      "change": "for (const user of SEED_USERS).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 17,
+      "phrase": "side y on bajo users",
+      "change": "Constante SEED_USERS importada de seed-data.",
+      "certainty": "media"
+    },
+    {
+      "id": "E7",
+      "line": 19,
+      "phrase": "encripta la contraseña y lo guarda",
+      "change": "UsersService.create ya hashea y guarda: se reutiliza.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 19,
+      "phrase": "Private Read Only va a ser users service",
+      "change": "Inyección de UsersService en SeedService.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 21,
+      "phrase": "Vamos a mandarle a Mac create",
+      "change": "users.push(await this.usersService.create(user)).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 21,
+      "phrase": "el primer usuario insertado",
+      "change": "return users[0].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 23,
+      "phrase": "constante user, va a ser igual a eso",
+      "change": "const user = await this.loadUsers() en executeSeed.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 27,
+      "phrase": "van a tener que ejecutar un nuevo JSON",
+      "change": "Cada ejecución regenera IDs: hay que volver a iniciar sesión para obtener un JWT válido.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Añadir los datos de semilla",
+      "code": "// Adjunto del curso (seed-data.ts). Su contenido no aparece en la transcripción.\n// Se recupera que exporta constantes: SEED_USERS (nombre, email, password, roles)\n// y SEED_ITEMS (nombre, unidades, categoría...). El primer usuario es el del instructor.\nexport const SEED_USERS = [\n  // ...usuarios del adjunto\n];\n\nexport const SEED_ITEMS = [\n  // ...items del adjunto\n];",
+      "why": "Los datos viven en constantes TypeScript fuera del servicio.",
+      "check": "seed-data.ts compila.",
+      "evidence": [
+        "E1",
+        "E2"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Cargar usuarios con el servicio",
+      "code": "  async loadUsers(): Promise<User> {\n    const users = [];\n\n    for (const user of SEED_USERS) {\n      users.push(await this.usersService.create(user));\n    }\n\n    return users[0];\n  }",
+      "why": "Reutilizar create aplica el hash de contraseña sin duplicar lógica; se espera cada creación y se devuelve el primero.",
+      "check": "Tras executeSeed la tabla users tiene los usuarios con contraseña hasheada.",
+      "evidence": [
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Conectar con executeSeed",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { Item } from '../items/entities/item.entity';\nimport { User } from '../users/entities/user.entity';\nimport { UsersService } from '../users/users.service';\nimport { SEED_USERS } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(\n    private readonly configService: ConfigService,\n\n    @InjectRepository(Item)\n    private readonly itemsRepository: Repository<Item>,\n\n    @InjectRepository(User)\n    private readonly usersRepository: Repository<User>,\n\n    private readonly usersService: UsersService,\n  ) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n    await this.deleteDatabase();\n\n    // Crear usuarios\n    const user = await this.loadUsers();\n\n    // Crear items\n\n    return true;\n  }\n\n  async deleteDatabase() {\n    // borrar items\n    await this.itemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // borrar users\n    await this.usersRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n  }\n\n  async loadUsers(): Promise<User> {\n    const users = [];\n\n    for (const user of SEED_USERS) {\n      users.push(await this.usersService.create(user));\n    }\n\n    return users[0];\n  }\n}",
+      "why": "El usuario devuelto será el propietario de los items en la siguiente lección.",
+      "check": "La mutation executeSeed responde true; hay que hacer login de nuevo para consultar.",
+      "evidence": [
+        "E8",
+        "E11",
+        "E12"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { Item } from '../items/entities/item.entity';\nimport { User } from '../users/entities/user.entity';\nimport { UsersService } from '../users/users.service';\nimport { SEED_USERS } from './data/seed-data';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(\n    private readonly configService: ConfigService,\n\n    @InjectRepository(Item)\n    private readonly itemsRepository: Repository<Item>,\n\n    @InjectRepository(User)\n    private readonly usersRepository: Repository<User>,\n\n    private readonly usersService: UsersService,\n  ) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n    await this.deleteDatabase();\n\n    // Crear usuarios\n    const user = await this.loadUsers();\n\n    // Crear items\n\n    return true;\n  }\n\n  async deleteDatabase() {\n    // borrar items\n    await this.itemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // borrar users\n    await this.usersRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n  }\n\n  async loadUsers(): Promise<User> {\n    const users = [];\n\n    for (const user of SEED_USERS) {\n      users.push(await this.usersService.create(user));\n    }\n\n    return users[0];\n  }\n}",
+      "provenance": "Lección 113; E3–E11"
+    },
+    {
+      "path": "src/seed/data/seed-data.ts — esqueleto del adjunto",
+      "language": "ts",
+      "code": "// Adjunto del curso (seed-data.ts). Su contenido no aparece en la transcripción.\n// Se recupera que exporta constantes: SEED_USERS (nombre, email, password, roles)\n// y SEED_ITEMS (nombre, unidades, categoría...). El primer usuario es el del instructor.\nexport const SEED_USERS = [\n  // ...usuarios del adjunto\n];\n\nexport const SEED_ITEMS = [\n  // ...items del adjunto\n];",
+      "provenance": "E1, E2, E6; contenido ausente"
+    }
+  ],
+  "temporary": "Consulta GraphQL de users con itemCount para comprobar que todos tienen cero items.",
+  "mental": "Sembrar padres primero con el servicio de dominio y conservar el primero guardado para crear los hijos."
+}

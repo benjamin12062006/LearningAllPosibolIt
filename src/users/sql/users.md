@@ -5,7 +5,7 @@ Este documento explica las consultas de [`users.sql`](./users.sql).
 El archivo `users.sql` no se ejecuta como migración ni sustituye a
 `users.repository.ts`. El repositorio es la única fuente ejecutable; este SQL
 sirve para revisar sus sentencias. El destino es la base configurada para la
-API: PostgreSQL de Cloud SQL, esquema `estadistica_forms`.
+API: PostgreSQL de Neon, esquema `estadistica_forms`.
 
 ## Origen en el proyecto
 

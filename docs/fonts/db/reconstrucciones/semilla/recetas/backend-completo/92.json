@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 8 Seed y Paginación/92. Realizar petición http desde Nest.md",
+  "previous": [
+    "Sección 8 Seed y Paginación/90. Crear módulo SEED.md"
+  ],
+  "objective": "Obtener los datos de la semilla desde PokéAPI con axios, tipar la respuesta y extraer name y número de cada pokémon.",
+  "initial": "SeedService.executeSeed devuelve un texto (lección 90).",
+  "certainty": "La interfaz se genera con la extensión Paste JSON as Code: solo se reconstruyen los campos que la lección usa (count, next, previous, results con name y url). Lo que devuelve executeSeed al final de la lección (data.results) es probable, no literal.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "límite de 650",
+      "change": "Fuente de datos: https://pokeapi.co/api/v2/pokemon?limit=650.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "versión 18 de Node o superior",
+      "change": "fetch nativo solo existe desde Node 18; se usará axios.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 21,
+      "phrase": "Jan at Access",
+      "change": "yarn add axios.",
+      "certainty": "media"
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "esto crea una dependencia oculta",
+      "change": "Evitar llamar axios.get suelto: declarar la dependencia como propiedad.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "Private read only acciones",
+      "change": "private readonly axios: AxiosInstance = axios.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 25,
+      "phrase": "Pero solo me interesan los resultados",
+      "change": "Se usa data.results.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 29,
+      "phrase": "Poke Response Interface Punto TS",
+      "change": "seed/interfaces/poke-response.interface.ts.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 31,
+      "phrase": "el get es un genérico",
+      "change": "this.axios.get<PokeResponse>(...).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 35,
+      "phrase": "desestructurar el name y el url",
+      "change": "forEach(({ name, url }) => ...).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 37,
+      "phrase": "punto split y lo corto por el slash",
+      "change": "segments = url.split('/').",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 39,
+      "phrase": "como quiero la penúltima sería -2",
+      "change": "no = +segments[segments.length - 2].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 41,
+      "phrase": "Dejémoslo todavía con diez",
+      "change": "limit=10 mientras se desarrolla.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Instalar axios",
+      "code": "yarn add axios",
+      "why": "Se usa un cliente HTTP explícito en lugar de fetch.",
+      "check": "axios aparece en package.json.",
+      "evidence": [
+        "E2",
+        "E3"
+      ],
+      "language": "bash"
+    },
+    {
+      "title": "Pedir la lista de pokémon",
+      "code": "private readonly axios: AxiosInstance = axios;\n\nasync executeSeed() {\n  const { data } = await this.axios.get('https://pokeapi.co/api/v2/pokemon?limit=650');\n  return data.results;\n}",
+      "why": "Hacer visible la dependencia como propiedad facilita sustituirla después.",
+      "check": "GET /api/v2/seed devuelve la lista de resultados.",
+      "evidence": [
+        "E1",
+        "E4",
+        "E5",
+        "E6"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Tipar la respuesta",
+      "code": "export interface PokeResponse {\n  count: number;\n  next: string;\n  previous: null;\n  results: Result[];\n}\n\nexport interface Result {\n  name: string;\n  url: string;\n}",
+      "why": "Si PokéAPI cambia, el compilador señala cada uso afectado.",
+      "check": "data.results[0]. ofrece name y url.",
+      "evidence": [
+        "E7",
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Extraer name y número",
+      "code": "import { Injectable } from '@nestjs/common';\nimport axios, { AxiosInstance } from 'axios';\nimport { PokeResponse } from './interfaces/poke-response.interface';\n\n@Injectable()\nexport class SeedService {\n  private readonly axios: AxiosInstance = axios;\n\n  async executeSeed() {\n    const { data } = await this.axios.get<PokeResponse>(\n      'https://pokeapi.co/api/v2/pokemon?limit=10',\n    );\n\n    data.results.forEach(({ name, url }) => {\n      const segments = url.split('/');\n      const no: number = +segments[segments.length - 2];\n\n      console.log({ name, no });\n    });\n\n    return data.results;\n  }\n}",
+      "why": "La base guarda name y no; el número está en el penúltimo segmento de la URL.",
+      "check": "La consola muestra { name, no } con no numérico.",
+      "evidence": [
+        "E9",
+        "E10",
+        "E11",
+        "E12"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport axios, { AxiosInstance } from 'axios';\nimport { PokeResponse } from './interfaces/poke-response.interface';\n\n@Injectable()\nexport class SeedService {\n  private readonly axios: AxiosInstance = axios;\n\n  async executeSeed() {\n    const { data } = await this.axios.get<PokeResponse>(\n      'https://pokeapi.co/api/v2/pokemon?limit=10',\n    );\n\n    data.results.forEach(({ name, url }) => {\n      const segments = url.split('/');\n      const no: number = +segments[segments.length - 2];\n\n      console.log({ name, no });\n    });\n\n    return data.results;\n  }\n}",
+      "provenance": "E5, E6, E8–E12"
+    },
+    {
+      "path": "src/seed/interfaces/poke-response.interface.ts",
+      "language": "ts",
+      "code": "export interface PokeResponse {\n  count: number;\n  next: string;\n  previous: null;\n  results: Result[];\n}\n\nexport interface Result {\n  name: string;\n  url: string;\n}",
+      "provenance": "E7"
+    }
+  ],
+  "temporary": "Demostración con Node 17 donde fetch no existe y cambio a Node 18 con nvm; console.log de segments con limit=1.",
+  "mental": "La semilla obtiene datos crudos, los tipa y los transforma a la forma de la entidad antes de insertar."
+}

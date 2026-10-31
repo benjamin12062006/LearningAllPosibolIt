@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 8 Seed y Paginación/90. Crear módulo SEED.md",
+  "previous": [],
+  "objective": "Crear en el proyecto Pokedex (MongoDB) un SeedModule con GET /api/v2/seed que delega en SeedService.executeSeed.",
+  "initial": "Pokedex con prefijo global api/v2 y PokemonModule con su modelo de Mongoose (sección 7).",
+  "certainty": "El texto de retorno ('Seed Executed') y el nombre del método se recuperan con certeza media por el ruido («sin execute», «execute set»).",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "Epic, Slash dos, slash, sid",
+      "change": "Endpoint GET /api/v2/seed.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "precarga mi base de datos",
+      "change": "Propósito: precargar la base para pruebas y nuevos desarrolladores.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 15,
+      "phrase": "código destructivo",
+      "change": "Recuperar la base de desarrollo tras borrados accidentales; útil para testing.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 17,
+      "phrase": "generamos un recurso o resource",
+      "change": "nest g res seed --no-spec (REST API).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 19,
+      "phrase": "voy a borrar mi Entity",
+      "change": "Sin entity ni DTO: la semilla no se almacena ni recibe datos.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 19,
+      "phrase": "un nombre que tenga sentido",
+      "change": "El GET se renombra a executeSeed.",
+      "certainty": "media"
+    },
+    {
+      "id": "E7",
+      "line": 21,
+      "phrase": "sin execute",
+      "change": "SeedService.executeSeed devuelve un texto provisional.",
+      "certainty": "media"
+    },
+    {
+      "id": "E8",
+      "line": 21,
+      "phrase": "piensen en sus servicios",
+      "change": "La lógica de la semilla va en el servicio.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 23,
+      "phrase": "el controlador no debería de realizar mucha lógica",
+      "change": "El controlador solo recibe la petición y responde.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 27,
+      "phrase": "cómo accedo a mi modelo",
+      "change": "Pendiente: acceder al modelo Pokemon desde otro módulo.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Generar y recortar el recurso",
+      "code": "nest g res seed --no-spec",
+      "why": "Generar y eliminar lo sobrante es más rápido que escribirlo a mano.",
+      "check": "AppModule importa SeedModule.",
+      "evidence": [
+        "E4",
+        "E5"
+      ],
+      "language": "bash"
+    },
+    {
+      "title": "Controlador con un único GET",
+      "code": "import { Controller, Get } from '@nestjs/common';\nimport { SeedService } from './seed.service';\n\n@Controller('seed')\nexport class SeedController {\n  constructor(private readonly seedService: SeedService) {}\n\n  @Get()\n  executeSeed() {\n    return this.seedService.executeSeed();\n  }\n}",
+      "why": "Un solo disparador sin cuerpo.",
+      "check": "GET http://localhost:3000/api/v2/seed responde.",
+      "evidence": [
+        "E1",
+        "E6",
+        "E9"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Servicio con executeSeed",
+      "code": "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class SeedService {\n  executeSeed() {\n    return 'Seed Executed';\n  }\n}",
+      "why": "La lógica de negocio queda fuera del controlador.",
+      "check": "La respuesta es el texto provisional.",
+      "evidence": [
+        "E7",
+        "E8"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.controller.ts",
+      "language": "ts",
+      "code": "import { Controller, Get } from '@nestjs/common';\nimport { SeedService } from './seed.service';\n\n@Controller('seed')\nexport class SeedController {\n  constructor(private readonly seedService: SeedService) {}\n\n  @Get()\n  executeSeed() {\n    return this.seedService.executeSeed();\n  }\n}",
+      "provenance": "E1, E6, E9"
+    },
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class SeedService {\n  executeSeed() {\n    return 'Seed Executed';\n  }\n}",
+      "provenance": "E7, E8"
+    }
+  ],
+  "temporary": "",
+  "mental": "Semilla = módulo propio, controlador delgado y servicio que ejecuta; el reto siguiente es usar el modelo encapsulado en otro módulo."
+}

@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 4 GraphQL TODO - Continuación/33. Services.md",
+    "Sección 4 GraphQL TODO - Continuación/34. Regresar un Todo por ID.md"
+  ],
+  "source": "Sección 4 GraphQL TODO - Continuación/36. Mutation e Inputs.md",
+  "objective": "Declarar la primera Mutation (createTodo) y recibir su información mediante un InputType enviado como variable.",
+  "initial": "TodoResolver con todos y todo (por ID) usando TodoService en memoria (lecciones 33–34).",
+  "certainty": "Transcripción por reconocimiento de voz (\"Toulouse\" = todos, \"don\" = done, \"Graf Jewel\" = GraphQL). El código se ensambla desde las explicaciones del instructor; nombres expuestos y decoradores constan, el formato exacto puede variar. Curso de 2022 (Nest 9). La mutación devuelve null a propósito al final de la lección: el error es esperado.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "Next genera un servicio",
+      "change": "TodoService generado con nest g s todo --no-spec.",
+      "certainty": "alta",
+      "source": "Sección 4 GraphQL TODO - Continuación/33. Services.md"
+    },
+    {
+      "id": "E2",
+      "line": 21,
+      "phrase": "Piedra del alma",
+      "change": "Arreglo privado todos con tres tareas (piedras).",
+      "certainty": "alta",
+      "source": "Sección 4 GraphQL TODO - Continuación/33. Services.md"
+    },
+    {
+      "id": "E3",
+      "line": 25,
+      "phrase": "Private Read only",
+      "change": "TodoService inyectado en TodoResolver.",
+      "certainty": "alta",
+      "source": "Sección 4 GraphQL TODO - Continuación/33. Services.md"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "not found exception",
+      "change": "findOne lanza NotFoundException si no existe.",
+      "certainty": "alta",
+      "source": "Sección 4 GraphQL TODO - Continuación/34. Regresar un Todo por ID.md"
+    },
+    {
+      "id": "E5",
+      "line": 25,
+      "phrase": "se va a llamar Hide",
+      "change": "Query todo con @Args(\"id\", { type: () => Int }) obligatorio.",
+      "certainty": "media",
+      "source": "Sección 4 GraphQL TODO - Continuación/34. Regresar un Todo por ID.md"
+    },
+    {
+      "id": "E6",
+      "line": 15,
+      "phrase": "lo vamos a importar de News Group",
+      "change": "@Mutation importado de @nestjs/graphql.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 21,
+      "phrase": "este name tiene prioridad",
+      "change": "name: \"createTodo\" tiene prioridad sobre el nombre del método.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 25,
+      "phrase": "create menos todo punto input point ts",
+      "change": "Archivo dto/inputs/create-todo.input.ts con CreateTodoInput.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 27,
+      "phrase": "decorador input type",
+      "change": "@InputType y @Field(() => String) en description.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 29,
+      "phrase": "What needs to be done",
+      "change": "description del Field y @Args(\"createTodoInput\").",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 31,
+      "phrase": "console.log del create to input",
+      "change": "Se imprime el input y se devuelve null temporalmente.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 37,
+      "phrase": "un string vacío",
+      "change": "Problema pendiente: el string vacío aún se acepta.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Declarar la mutación",
+      "code": "@Mutation(() => Todo, { name: 'createTodo' })\ncreateTodo() {}",
+      "why": "Query sirve para consultar y Mutation para modificar datos; ambas declaran su tipo de retorno.",
+      "check": "Apollo Studio muestra la sección Mutation con createTodo.",
+      "evidence": [
+        "E6",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Crear el InputType",
+      "code": "import { Field, InputType } from '@nestjs/graphql';\n\n@InputType()\nexport class CreateTodoInput {\n  @Field(() => String, { description: 'What needs to be done' })\n  description: string;\n}",
+      "why": "El input es el equivalente al body de REST: un tipo con los campos que el cliente debe enviar.",
+      "check": "El esquema incluye input CreateTodoInput { description: String! }.",
+      "evidence": [
+        "E8",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Recibir el input como argumento",
+      "code": "@Mutation(() => Todo, { name: 'createTodo' })\ncreateTodo(@Args('createTodoInput') createTodoInput: CreateTodoInput) {\n  console.log({ createTodoInput });\n  return null;\n}",
+      "why": "El nombre de @Args es el que verá el cliente; el input llega como variable desde Apollo Studio.",
+      "check": "mutation($createTodoInput: CreateTodoInput!) imprime el objeto en consola; la respuesta da error porque devuelve null.",
+      "evidence": [
+        "E10",
+        "E11",
+        "E12"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/todo/dto/inputs/create-todo.input.ts",
+      "language": "ts",
+      "code": "import { Field, InputType } from '@nestjs/graphql';\n\n@InputType()\nexport class CreateTodoInput {\n  @Field(() => String, { description: 'What needs to be done' })\n  description: string;\n}",
+      "provenance": "E8–E10"
+    },
+    {
+      "path": "src/todo/todo.resolver.ts",
+      "language": "ts",
+      "code": "import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';\nimport { CreateTodoInput } from './dto/inputs/create-todo.input';\nimport { Todo } from './entity/todo.entity';\nimport { TodoService } from './todo.service';\n\n@Resolver()\nexport class TodoResolver {\n  constructor(private readonly todoService: TodoService) {}\n\n  @Query(() => [Todo], { name: 'todos' })\n  findAll(): Todo[] {\n    return this.todoService.findAll();\n  }\n\n  @Query(() => Todo, { name: 'todo' })\n  findOne(@Args('id', { type: () => Int }) id: number): Todo {\n    return this.todoService.findOne(id);\n  }\n\n  @Mutation(() => Todo, { name: 'createTodo' })\n  createTodo(@Args('createTodoInput') createTodoInput: CreateTodoInput) {\n    console.log({ createTodoInput });\n    return null;\n  }\n}",
+      "provenance": "E3, E5 (contexto), E6–E11"
+    }
+  ],
+  "temporary": "console.log y return null son temporales; la lección 37 implementa la creación.",
+  "mental": "Mutation + InputType + @Args(nombre) = body tipado de GraphQL. Las variables separan la consulta de los datos."
+}

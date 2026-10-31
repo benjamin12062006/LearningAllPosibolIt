@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 7 Usuarios y enumeraciones - Admin Roles/94. Bonus - Bloquear GQLSchema Introducción.md"
+  ],
+  "source": "Sección 7 Usuarios y enumeraciones - Admin Roles/95. Bonus - GraphQLModule forRootAsync.md",
+  "objective": "Configurar GraphQLModule con forRootAsync, importando AuthModule e inyectando JwtService en useFactory, para inspeccionar el token en context y poder bloquear el esquema a peticiones sin token.",
+  "initial": "AppModule con GraphQLModule.forRoot (ApolloDriver, playground false, plugin de Apollo Studio, autoSchemaFile) y AuthModule que exporta JwtModule.",
+  "certainty": "Transcripción por reconocimiento de voz (\"Valley Rolls\"/\"Balay Rol\" = ValidRoles, \"JD Brute Service\" = JwtService). El código se ensambla desde las explicaciones; proyecto Anylist (curso de 2022). Es una lección bonus. El método exacto de JwtService (\"...Service Code\") se interpreta como decode. Al final el instructor comenta las comprobaciones porque bloquean signup/login.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "no debería poder ver la información",
+      "change": "Objetivo: sin token no se debería ver el esquema.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "Un módulo asíncrono no es un módulo",
+      "change": "Módulos asíncronos: se inicializan después de los síncronos.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 21,
+      "phrase": "Apolo Driver",
+      "change": "forRootAsync exige driver (ApolloDriver), imports e inject.",
+      "certainty": "media"
+    },
+    {
+      "id": "E4",
+      "line": 23,
+      "phrase": "uso Factory",
+      "change": "useFactory devuelve el mismo objeto de configuración que forRoot.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 27,
+      "phrase": "se llama el context",
+      "change": "context recibe la request de cada operación.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 33,
+      "phrase": "Elders",
+      "change": "req.headers.authorization contiene el Bearer token.",
+      "certainty": "media"
+    },
+    {
+      "id": "E7",
+      "line": 35,
+      "phrase": "replace parentesis",
+      "change": "Quitar \"Bearer \" (con espacio) del header.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 37,
+      "phrase": "importamos nuestro out motion",
+      "change": "imports: [AuthModule], inject: [JwtService].",
+      "certainty": "media"
+    },
+    {
+      "id": "E9",
+      "line": 39,
+      "phrase": "constante payload",
+      "change": "payload = jwtService.decode(token).",
+      "certainty": "media"
+    },
+    {
+      "id": "E10",
+      "line": 45,
+      "phrase": "throw new logger",
+      "change": "Sin token se lanza un error en context.",
+      "certainty": "media"
+    },
+    {
+      "id": "E11",
+      "line": 49,
+      "phrase": "token needed",
+      "change": "Mensajes \"Token needed\" y \"Token not valid\".",
+      "certainty": "media"
+    },
+    {
+      "id": "E12",
+      "line": 55,
+      "phrase": "comentemos estas líneas",
+      "change": "Se comentan los bloqueos porque signup/login también los requerirían.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Pasar de forRoot a forRootAsync",
+      "code": "GraphQLModule.forRootAsync({\n  driver: ApolloDriver,\n  imports: [],\n  inject: [],\n  useFactory: async () => ({\n    playground: false,\n    autoSchemaFile: join(process.cwd(), 'src/schema.gql'),\n    plugins: [ApolloServerPluginLandingPageLocalDefault],\n  }),\n}),",
+      "why": "El módulo asíncrono espera a otros módulos y permite inyectar servicios en su configuración.",
+      "check": "La aplicación funciona igual que antes.",
+      "evidence": [
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Leer el token en context",
+      "code": "context({ req }) {\n  const token = req.headers.authorization?.replace('Bearer ', '');\n}",
+      "why": "context se ejecuta en cada operación (también en las consultas de introspección que hace Apollo Studio).",
+      "check": "La consola imprime el token cuando se envía el header.",
+      "evidence": [
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Inyectar JwtService y validar",
+      "code": "imports: [AuthModule],\ninject: [JwtService],\nuseFactory: async (jwtService: JwtService) => ({\n  // ...\n  context({ req }) {\n    const token = req.headers.authorization?.replace('Bearer ', '');\n    if (!token) throw Error('Token needed');\n    const payload = jwtService.decode(token);\n    if (!payload) throw Error('Token not valid');\n  },\n}),",
+      "why": "Para usar un servicio de otro módulo hay que importarlo e inyectarlo explícitamente.",
+      "check": "Sin token el esquema no carga (\"Context creation failed: Token needed\").",
+      "evidence": [
+        "E8",
+        "E9",
+        "E10",
+        "E11"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Desactivar el bloqueo",
+      "code": "// Comentar las líneas del token dentro de context",
+      "why": "Bloquear todo el endpoint impide signup/login; el instructor recomienda separar esas operaciones (por ejemplo en REST).",
+      "check": "Signup/login vuelven a funcionar sin token.",
+      "evidence": [
+        "E1",
+        "E12"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/app.module.ts (fragmento GraphQL)",
+      "language": "ts",
+      "code": "import { join } from 'path';\nimport { Module } from '@nestjs/common';\nimport { ConfigModule } from '@nestjs/config';\nimport { GraphQLModule } from '@nestjs/graphql';\nimport { JwtService } from '@nestjs/jwt';\nimport { ApolloDriver } from '@nestjs/apollo';\nimport { ApolloServerPluginLandingPageLocalDefault } from 'apollo-server-core';\nimport { AuthModule } from './auth/auth.module';\n// ... resto de módulos (TypeORM, Items, Users) sin cambios\n\n@Module({\n  imports: [\n    ConfigModule.forRoot(),\n\n    GraphQLModule.forRootAsync({\n      driver: ApolloDriver,\n      imports: [AuthModule],\n      inject: [JwtService],\n      useFactory: async (jwtService: JwtService) => ({\n        playground: false,\n        autoSchemaFile: join(process.cwd(), 'src/schema.gql'),\n        plugins: [ApolloServerPluginLandingPageLocalDefault],\n        context({ req }) {\n          // Bloqueo del esquema desactivado: signup y login también necesitarían token.\n          // const token = req.headers.authorization?.replace('Bearer ', '');\n          // if (!token) throw Error('Token needed');\n          // const payload = jwtService.decode(token);\n          // if (!payload) throw Error('Token not valid');\n        },\n      }),\n    }),\n\n    // GraphQLModule.forRoot<ApolloDriverConfig>({ ... }) // configuración síncrona anterior, comentada\n    AuthModule,\n  ],\n})\nexport class AppModule {}",
+      "provenance": "E3–E12; estado anterior de forRoot"
+    }
+  ],
+  "temporary": "console.log de req, headers, token, jwtService y payload; las comprobaciones de token quedan comentadas al final.",
+  "mental": "forRootAsync = forRoot + imports/inject/useFactory. context ve cada request y permite autenticar a nivel de esquema, pero bloquearía también las operaciones públicas."
+}

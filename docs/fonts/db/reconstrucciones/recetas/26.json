@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 3 Nest + GraphQL - Introducción/24. Generar un nuevo query.md",
+    "Sección 3 Nest + GraphQL - Introducción/25. Tarea - Generar un random entre cero y otro número.md"
+  ],
+  "source": "Sección 3 Nest + GraphQL - Introducción/26. Arguments.md",
+  "objective": "Recibir argumentos en un Query con @Args, fijar su tipo GraphQL (Int), hacerlo opcional con nullable y un valor por defecto, y pedir varios campos con alias en una sola petición.",
+  "initial": "HelloWorldResolver con hello (String), randomNumber (Float, Math.random()*100) y randomFromZeroTo (Int, Math.floor(Math.random()*10)) de las lecciones 24 y 25.",
+  "certainty": "La transcripción es reconocimiento de voz con ruido (\"Graf Jewel\" = GraphQL, \"Apolo\" = Apollo). El instructor no dicta el código carácter a carácter: se ensambla desde sus explicaciones y la documentación de Nest que cita. El curso es de 2022 (Nest 9, Apollo Server 3); las versiones actuales difieren y se contrastan fuera de esta guía. Los nombres de métodos (getRandomNumber, getRandomFromZeroTo) y el texto de las descripciones son inferidos; los nombres expuestos (hello, randomNumber, randomFromZeroTo, argumento to) sí constan.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "solo lo pongo como hello",
+      "change": "name del Query: hello; opciones description y deprecationReason.",
+      "certainty": "alta",
+      "source": "Sección 3 Nest + GraphQL - Introducción/24. Generar un nuevo query.md"
+    },
+    {
+      "id": "E2",
+      "line": 23,
+      "phrase": "name random number",
+      "change": "Query randomNumber de tipo Float con Math.random()*100.",
+      "certainty": "alta",
+      "source": "Sección 3 Nest + GraphQL - Introducción/24. Generar un nuevo query.md"
+    },
+    {
+      "id": "E3",
+      "line": 23,
+      "phrase": "Math más random",
+      "change": "randomFromZeroTo: Int con Math.floor(Math.random()*10).",
+      "certainty": "alta",
+      "source": "Sección 3 Nest + GraphQL - Introducción/25. Tarea - Generar un random entre cero y otro número.md"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "colocarle el decorador con la args",
+      "change": "@Args(\"to\") importado de @nestjs/graphql.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 25,
+      "phrase": "from cero to",
+      "change": "Se añade description al Query.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 29,
+      "phrase": "especificar el Type",
+      "change": "type: () => Int en las opciones de @Args para no aceptar Float.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 31,
+      "phrase": "default seis",
+      "change": "Valor por defecto 6 en el parámetro.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 35,
+      "phrase": "la opción es nula y le vamos a poner un true",
+      "change": "nullable: true hace opcional el argumento.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 39,
+      "phrase": "dado de 20",
+      "change": "Alias para pedir el mismo campo varias veces en una sola petición.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Recibir el argumento to",
+      "code": "@Query(() => Int, { name: 'randomFromZeroTo' })\ngetRandomFromZeroTo(@Args('to') to: number): number {\n  return Math.floor(Math.random() * to);\n}",
+      "why": "GraphQL no adivina nada: el argumento se declara con @Args y su nombre es el que se expone al cliente.",
+      "check": "La consulta exige to; randomFromZeroTo(to: 5) devuelve 0–4.",
+      "evidence": [
+        "E3",
+        "E4"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Forzar el tipo Int y documentar",
+      "code": "@Query(() => Int, { name: 'randomFromZeroTo', description: 'From zero to argument TO (default 6)' })\ngetRandomFromZeroTo(@Args('to', { type: () => Int }) to: number): number {",
+      "why": "TypeScript solo tiene number; sin type GraphQL infiere Float y aceptaría 5.333.",
+      "check": "El esquema muestra to: Int! y 5.333 produce error de validación.",
+      "evidence": [
+        "E5",
+        "E6"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Hacerlo opcional con valor por defecto",
+      "code": "@Args('to', { nullable: true, type: () => Int }) to: number = 6,",
+      "why": "El valor por defecto de TypeScript no basta si el esquema sigue marcándolo obligatorio (!); nullable lo libera.",
+      "check": "randomFromZeroTo sin argumento responde un entero entre 0 y 5.",
+      "evidence": [
+        "E7",
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Varios campos con alias en una petición",
+      "code": "{\n  dadoDe10: randomFromZeroTo(to: 10)\n  dadoDe20: randomFromZeroTo(to: 20)\n  dadoDe5: randomFromZeroTo(to: 5)\n}",
+      "why": "Los alias permiten repetir el mismo campo con argumentos distintos; todo viaja en una sola petición HTTP.",
+      "check": "La respuesta incluye las tres claves con sus números.",
+      "evidence": [
+        "E9"
+      ],
+      "language": "graphql"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/hello-world/hello-world.resolver.ts",
+      "language": "ts",
+      "code": "import { Args, Float, Int, Query, Resolver } from '@nestjs/graphql';\n\n@Resolver()\nexport class HelloWorldResolver {\n  @Query(() => String, { description: 'Hola Mundo es lo que retorna', name: 'hello' })\n  helloWorld(): string {\n    return 'Hola Mundo';\n  }\n\n  @Query(() => Float, { name: 'randomNumber' })\n  getRandomNumber(): number {\n    return Math.random() * 100;\n  }\n\n  @Query(() => Int, { name: 'randomFromZeroTo', description: 'From zero to argument TO (default 6)' })\n  getRandomFromZeroTo(\n    @Args('to', { nullable: true, type: () => Int }) to: number = 6,\n  ): number {\n    return Math.floor(Math.random() * to);\n  }\n}",
+      "provenance": "E1, E2, E3 (estado previo); E4–E8"
+    }
+  ],
+  "temporary": "Los alias de dados son nombres temporales de prueba en Apollo Studio.",
+  "mental": "@Args(nombre, { type, nullable }) define el contrato del argumento en el esquema; el tipo TypeScript y el default solo actúan dentro del método."
+}

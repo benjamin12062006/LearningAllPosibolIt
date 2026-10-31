@@ -349,6 +349,56 @@ describe('CatalogImport HTTP multipart con Nest y persistencia reales', () => {
       .expect(404);
   });
 
+  it('una segunda subida con un trabajo activo devuelve 409 sin almacenar el archivo', async () => {
+    await upload().expect(202);
+    const receive = jest.spyOn(store, 'receive');
+    await upload()
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          code: 'IMPORT_ALREADY_ACTIVE',
+          message: { es: expect.any(String), en: expect.any(String) },
+        }),
+      );
+    expect(receive).not.toHaveBeenCalled();
+    expect(await prisma.catalogSnapshot.count()).toBe(1);
+
+    await worker.runUntilIdle();
+    await upload().expect(202);
+  });
+
+  it('lista las importaciones del proyecto paginadas y solo para su propietario', async () => {
+    await upload().expect(202);
+    await worker.runUntilIdle();
+    await upload().expect(202);
+    const list = (id: string, query = '', session = token) =>
+      request(app.getHttpServer())
+        .get(`/api/v1/projects/${id}/imports${query}`)
+        .auth(session, { type: 'bearer' });
+
+    const all = await list(projectId).expect(200);
+    expect(all.body.imports).toHaveLength(2);
+    expect(all.body.imports[0]).toMatchObject({
+      status: 'pending',
+      job: { status: 'queued' },
+    });
+    expect(all.body.imports[1]).toMatchObject({
+      status: 'ready',
+      rowCount: 1,
+      job: { status: 'succeeded' },
+    });
+    expect(all.body.imports[0]).not.toHaveProperty('sample');
+    expect(all.body.page).toEqual({ limit: 20, offset: 0, hasMore: false });
+
+    const first = await list(projectId, '?limit=1').expect(200);
+    expect(first.body.imports).toHaveLength(1);
+    expect(first.body.page).toEqual({ limit: 1, offset: 0, hasMore: true });
+    await list(projectId, '?limit=101').expect(400);
+
+    await list(projectId, '', 'bob-session').expect(404);
+    await list('no-es-uuid').expect(400);
+  });
+
   it('snapshot aceptado bloquea configuración y permite renombrar', async () => {
     await upload().expect(202);
     await request(app.getHttpServer())

@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { UsersModule } from './users/users.module.js';
 import { CatalogImportModule } from './catalog-import/catalog-import.module.js';
+import { GraphqlApiModule } from './graphql/graphql-api.module.js';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { CatalogImportModule } from './catalog-import/catalog-import.module.js';
     UsersModule,
     ProjectsModule,
     CatalogImportModule,
+    GraphqlApiModule,
   ],
 })
 export class AppModule {}

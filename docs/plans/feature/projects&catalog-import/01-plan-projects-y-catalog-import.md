@@ -15,7 +15,7 @@ Un usuario autenticado crea o configura un proyecto propio, sube un CSV, elige s
 
 La [bitácora auth/05](../../../../bitacora-construccion/auth/05-espacios-del-usuario.md) aporta propiedad desde la sesión y aislamiento. [Settings/02](../../../../bitacora-construccion/settings/02-prisma-migrate-y-statistical-spaces.md) registra Prisma y espacios persistentes. [Settings/06](../../../../bitacora-construccion/settings/06-conectar-nest-a-cloud-sql-postgresql.md), [07](../../../../bitacora-construccion/settings/07-aplicar-migraciones-y-verificar-cloud-sql.md) y [09](../../../../bitacora-construccion/settings/09-retirar-turso-tras-guardar-restauracion.md) registran PostgreSQL y la retirada del proveedor anterior.
 
-En la revisión inicial existían `auth`, `users`, `database` y espacios con nombre y GET/POST. Plan 02 añadió `projects` con configuración, detalle y PATCH y retiró la API anterior por instrucción del usuario. Plan 03 incorpora ahora la importación privada con snapshots y trabajos. Prisma 7.10.0 usa PostgreSQL y schema `estadistica_forms`; las claves y fechas siguen siendo texto. Nuxt resuelve acceso/cuenta; conectar allí proyectos y carga de CSV es la continuación U1.
+En la revisión inicial existían `auth`, `users`, `database` y espacios con nombre y GET/POST. Plan 02 añadió `projects` con configuración, detalle y PATCH y retiró la API anterior por instrucción del usuario. Plan 03 incorpora ahora la importación privada con snapshots y trabajos. Prisma 7.10.0 usa PostgreSQL y schema `estadistica_forms`; las claves y fechas siguen siendo texto. El alcance es solo el backend; cualquier interfaz queda fuera de este plan.
 
 ## Decisiones propuestas para implementar
 
@@ -42,7 +42,7 @@ La tabla física se renombra en la migración nueva y requiere despliegue coordi
 | C1 — Entrada y persistencia | Archivo privado, snapshot y trabajo `queued`; consultas de estado autorizadas. | `202` solo después de persistir; límites, configuración y propiedad controlados. | [03 — Catalog import](03-plan-catalog-import.md) |
 | C2 — Procesamiento | Parser, filas originales, unicidad, estado `ready` y muestra. | CSV con ceros, comillas y saltos; duplicados y exceso fallan sin contenido parcial accesible. | [03 — Catalog import](03-plan-catalog-import.md) |
 | C3 — Cierre operativo | Interrupciones, fallos de almacenamiento/DB, medición y documentación real. | Reinicio no deja trabajos eternamente `running`; estado/error estable; proceso de una instancia documentado. | [03 — Catalog import](03-plan-catalog-import.md) |
-| U1 — Continuación web | Selector/configuración de proyectos, carga y estado en Nuxt. | Recorrido real con sesión y CSV autorizado. Se planifica en la raíz web al abordar ese incremento. | [Fases](../../../../../docs-diagrams/03-fases-y-diagramas.md) |
+| U1 — Continuación web | Fuera del alcance del backend; se retoma por separado, si se decide. | — | [Fases](../../../../../docs-diagrams/03-fases-y-diagramas.md) |
 
 Se puede implementar la pantalla de proyectos tras P1. La secuencia de código será P0 → T0 de configuración de testing → P1 con sus pruebas nuevas; después C1–C3. El usuario pide seguir el curso de testing de Fernando Herrera y reconstruir las lecciones pertinentes antes de adaptar su código.
 

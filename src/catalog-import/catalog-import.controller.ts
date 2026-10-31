@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
   UseInterceptors,
@@ -15,6 +16,7 @@ import { CatalogImportService } from './catalog-import.service.js';
 import { ImportAccessGuard } from './import-access.guard.js';
 import { ImportCatalogDto } from './import.dto.js';
 import { apiError } from '../common/http/api-error.js';
+import { PaginationQueryDto } from '../common/http/pagination.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
 import { ImportUploadInterceptor } from './import-upload.interceptor.js';
 import type { ImportRequest } from './import.types.js';
@@ -42,6 +44,15 @@ export class CatalogImportController {
       input,
       req.importRequestId,
     );
+  }
+
+  @Get('imports')
+  list(
+    @Req() req: ImportRequest,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.imports.list(identityOf(req), projectId, query);
   }
 
   @Get('jobs/:jobId')

@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 8 Items + Usuarios - Peticiones autenticadas/102. findAll por usuario.md"
+  ],
+  "source": "Sección 8 Items + Usuarios - Peticiones autenticadas/106. ResolveField con información del padre.md",
+  "objective": "Añadir al tipo User un campo calculado itemCount con @ResolveField, usando @Parent para saber qué usuario se está resolviendo y contando sus items desde ItemsService.",
+  "initial": "UsersResolver protegido con roles; ItemsService con findAll por usuario (lección 102); User e Item relacionados.",
+  "certainty": "Transcripción por reconocimiento de voz (\"fin o\" = findAll, \"Parent\"/\"pan\" = @Parent). Proyecto Anylist con TypeORM y PostgreSQL (curso de 2022). El código se ensambla desde las explicaciones. Las listas exactas de providers/exports de los módulos y el nombre adminUser son reconstruidos. Exportar TypeOrmModule se menciona para la siguiente sección.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "esto es algo calculado",
+      "change": "El campo no se guarda en la base: se calcula al pedirlo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 19,
+      "phrase": "resolve field",
+      "change": "@ResolveField declara un campo nuevo en el tipo del resolver.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 21,
+      "phrase": "Coloquemos el name como item count",
+      "change": "@ResolveField(() => Int, { name: \"itemCount\" }).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 25,
+      "phrase": "se llama Parent",
+      "change": "@Parent() user: User da acceso al objeto padre.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 27,
+      "phrase": "aparece tres veces",
+      "change": "Se ejecuta una vez por cada usuario devuelto (una consulta por padre).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 31,
+      "phrase": "item count by user",
+      "change": "ItemsService.itemCountByUser(user) con repository.count + where.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 35,
+      "phrase": "va a ser el items service",
+      "change": "ItemsModule exporta ItemsService (y TypeOrmModule).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 37,
+      "phrase": "Vamos a importar nuestro items módulo",
+      "change": "UsersModule importa ItemsModule e inyecta ItemsService.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 39,
+      "phrase": "admin, user",
+      "change": "@CurrentUser([ValidRoles.admin]) aplica la regla de rol al campo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 41,
+      "phrase": "no se va a ejecutar la sentencia SQL",
+      "change": "Si el cliente no pide itemCount no se consulta.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Declarar el campo calculado",
+      "code": "@ResolveField(() => Int, { name: 'itemCount' })\nasync itemCount(): Promise<number> {\n  return 10;\n}",
+      "why": "Un campo resuelto amplía el esquema sin tocar la entidad ni la base.",
+      "check": "users { fullName itemCount } devuelve 10 para todos.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Recibir el padre",
+      "code": "async itemCount(@Parent() user: User): Promise<number> {\n  console.log(user);\n  return 10;\n}",
+      "why": "@Parent entrega el objeto User que se está resolviendo.",
+      "check": "La consola imprime cada usuario de la lista.",
+      "evidence": [
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Contar en ItemsService",
+      "code": "  async itemCountByUser(user: User): Promise<number> {\n    return this.itemsRepository.count({\n      where: {\n        user: {\n          id: user.id,\n        },\n      },\n    });\n  }",
+      "why": "El conteo es responsabilidad del servicio de items.",
+      "check": "Compila.",
+      "evidence": [
+        "E6"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Compartir el servicio entre módulos",
+      "code": "// items.module.ts\n@Module({\n  providers: [ItemsResolver, ItemsService],\n  imports: [TypeOrmModule.forFeature([Item])],\n  exports: [ItemsService, TypeOrmModule],\n})\nexport class ItemsModule {}\n\n// users.module.ts\n@Module({\n  providers: [UsersResolver, UsersService],\n  imports: [TypeOrmModule.forFeature([User]), ItemsModule],\n  exports: [TypeOrmModule, UsersService],\n})\nexport class UsersModule {}",
+      "why": "Para inyectar un servicio de otro módulo hay que exportarlo allí e importar el módulo aquí.",
+      "check": "UsersResolver recibe ItemsService sin errores de dependencia.",
+      "evidence": [
+        "E7",
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Usar el servicio y proteger con rol",
+      "code": "async itemCount(\n  @CurrentUser([ValidRoles.admin]) adminUser: User,\n  @Parent() user: User,\n): Promise<number> {\n  return this.itemsService.itemCountByUser(user);\n}",
+      "why": "El campo hereda la protección del resolver y además exige rol admin.",
+      "check": "Cada usuario muestra su conteo real; si no se pide itemCount no hay consulta SQL; también funciona al pedir item { user { itemCount } }.",
+      "evidence": [
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/users/users.resolver.ts (fragmento)",
+      "language": "ts",
+      "code": "import { UseGuards } from '@nestjs/common';\nimport { Int, Parent, ResolveField, Resolver } from '@nestjs/graphql';\nimport { UsersService } from './users.service';\nimport { User } from './entities/user.entity';\nimport { ItemsService } from '../items/items.service';\nimport { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';\nimport { CurrentUser } from '../auth/decorators/current-user.decorator';\nimport { ValidRoles } from '../auth/enums/valid-roles.enum';\n\n@Resolver(() => User)\n@UseGuards(JwtAuthGuard)\nexport class UsersResolver {\n  constructor(\n    private readonly usersService: UsersService,\n    private readonly itemsService: ItemsService,\n  ) {}\n\n  // users, user, updateUser y blockUser (sección 7) sin cambios.\n\n  @ResolveField(() => Int, { name: 'itemCount' })\n  async itemCount(\n    @CurrentUser([ValidRoles.admin]) adminUser: User,\n    @Parent() user: User,\n  ): Promise<number> {\n    return this.itemsService.itemCountByUser(user);\n  }\n}",
+      "provenance": "E2–E4, E8, E9"
+    },
+    {
+      "path": "src/items/items.service.ts (método itemCountByUser)",
+      "language": "ts",
+      "code": "  async itemCountByUser(user: User): Promise<number> {\n    return this.itemsRepository.count({\n      where: {\n        user: {\n          id: user.id,\n        },\n      },\n    });\n  }",
+      "provenance": "E6"
+    },
+    {
+      "path": "src/items/items.module.ts y src/users/users.module.ts",
+      "language": "ts",
+      "code": "// items.module.ts\n@Module({\n  providers: [ItemsResolver, ItemsService],\n  imports: [TypeOrmModule.forFeature([Item])],\n  exports: [ItemsService, TypeOrmModule],\n})\nexport class ItemsModule {}\n\n// users.module.ts\n@Module({\n  providers: [UsersResolver, UsersService],\n  imports: [TypeOrmModule.forFeature([User]), ItemsModule],\n  exports: [TypeOrmModule, UsersService],\n})\nexport class UsersModule {}",
+      "provenance": "E7, E8"
+    }
+  ],
+  "temporary": "return 10 y console.log del padre son pasos de demostración; también se cambia a mano el dueño de un artículo en la base.",
+  "mental": "@ResolveField + @Parent = campo calculado por objeto. Solo se ejecuta si se pide, pero se ejecuta una vez por padre (N consultas)."
+}

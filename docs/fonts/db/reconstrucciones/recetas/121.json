@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [],
+  "source": "Sección 10 Paginaciones, paginaciones anidadas y filtros/121. Paginar resultados - Args.md",
+  "objective": "Crear un ArgsType reutilizable PaginationArgs (offset y limit opcionales con valores por defecto y validación) en un módulo common, y recibirlo en el Query items.",
+  "initial": "items devuelve todos los artículos del usuario autenticado (lección 102) tras cargar la semilla.",
+  "certainty": "Transcripción por reconocimiento de voz (\"page nation\" = pagination, \"Arc Type\" = ArgsType). Proyecto Anylist con TypeORM (curso de 2022). El código se ensambla desde las explicaciones. La ruta common/dto/args/pagination.args.ts sigue la estructura recomendada del curso.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "volcado completo",
+      "change": "No devolver toda la data: paginar con valores por defecto.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "offset de Twenty",
+      "change": "Semántica de limit y offset.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "la paginación es algo que no está relacionado únicamente a los items",
+      "change": "Args reutilizable para cualquier módulo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "se va a llamar Common",
+      "change": "nest g mo common (vacío) para agrupar lo compartido.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 23,
+      "phrase": "page nation args args",
+      "change": "common/dto/args/pagination.args.ts.",
+      "certainty": "media"
+    },
+    {
+      "id": "E6",
+      "line": 25,
+      "phrase": "el offset va a ser en cero",
+      "change": "offset: number = 0.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 27,
+      "phrase": "por defecto, voy a ponerlo de diez",
+      "change": "limit: number = 10, mínimo 1.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 29,
+      "phrase": "Arc Arc Type",
+      "change": "@ArgsType y @Field(() => Int).",
+      "certainty": "media"
+    },
+    {
+      "id": "E9",
+      "line": 31,
+      "phrase": "no voy a aceptar valores negativos",
+      "change": "nullable: true y @Min(0) en offset.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 33,
+      "phrase": "valor mínimo aquí voy a colocarle uno",
+      "change": "@IsOptional y @Min(1) en limit; uso en ItemsResolver con @Args().",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 37,
+      "phrase": "Offset cero límite de diez",
+      "change": "Sin argumentos llegan los valores por defecto.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 41,
+      "phrase": "no menor a uno",
+      "change": "limit: 0 se rechaza antes de ejecutar.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Módulo common",
+      "code": "nest g mo common",
+      "why": "Lo que comparten varios módulos se agrupa en common.",
+      "check": "AppModule importa CommonModule.",
+      "evidence": [
+        "E3",
+        "E4"
+      ],
+      "language": "bash"
+    },
+    {
+      "title": "Definir PaginationArgs",
+      "code": "import { ArgsType, Field, Int } from '@nestjs/graphql';\nimport { IsOptional, Min } from 'class-validator';\n\n@ArgsType()\nexport class PaginationArgs {\n  @Field(() => Int, { nullable: true })\n  @IsOptional()\n  @Min(0)\n  offset: number = 0;\n\n  @Field(() => Int, { nullable: true })\n  @IsOptional()\n  @Min(1)\n  limit: number = 10;\n}",
+      "why": "ArgsType agrupa argumentos de Query; Int evita decimales; nullable + valores por defecto lo hacen opcional; class-validator impone mínimos.",
+      "check": "El esquema documenta offset: Int = 0 y limit: Int = 10.",
+      "evidence": [
+        "E5",
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Recibirlo en items",
+      "code": "@Query(() => [Item], { name: 'items' })\nasync findAll(\n  @CurrentUser() user: User,\n  @Args() paginationArgs: PaginationArgs,\n): Promise<Item[]> {\n  console.log({ paginationArgs });\n  return this.itemsService.findAll(user);\n}",
+      "why": "Con @Args() sin nombre, las propiedades del ArgsType se exponen como argumentos sueltos.",
+      "check": "items sin argumentos imprime { offset: 0, limit: 10 }; items(limit: 0) da Bad Request.",
+      "evidence": [
+        "E10",
+        "E11",
+        "E12"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/common/dto/args/pagination.args.ts",
+      "language": "ts",
+      "code": "import { ArgsType, Field, Int } from '@nestjs/graphql';\nimport { IsOptional, Min } from 'class-validator';\n\n@ArgsType()\nexport class PaginationArgs {\n  @Field(() => Int, { nullable: true })\n  @IsOptional()\n  @Min(0)\n  offset: number = 0;\n\n  @Field(() => Int, { nullable: true })\n  @IsOptional()\n  @Min(1)\n  limit: number = 10;\n}",
+      "provenance": "E5–E10"
+    },
+    {
+      "path": "src/items/items.resolver.ts (método findAll)",
+      "language": "ts",
+      "code": "@Query(() => [Item], { name: 'items' })\nasync findAll(\n  @CurrentUser() user: User,\n  @Args() paginationArgs: PaginationArgs,\n): Promise<Item[]> {\n  console.log({ paginationArgs });\n  return this.itemsService.findAll(user);\n}",
+      "provenance": "E10; lección 102"
+    }
+  ],
+  "temporary": "console.log de paginationArgs; todavía no se aplica la paginación (lección 122).",
+  "mental": "ArgsType reutilizable = contrato de paginación del esquema + validación. Los defaults hacen que el servicio siempre reciba valores."
+}

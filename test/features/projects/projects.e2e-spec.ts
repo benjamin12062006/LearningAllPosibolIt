@@ -87,7 +87,7 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
 
     expect(validateSession).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
-    expect(await projects.findAll(alice)).toEqual([]);
+    expect((await projects.findAll(alice)).items).toEqual([]);
   });
 
   it('rechaza un token inválido sin escribir proyectos', async () => {
@@ -104,7 +104,7 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
 
     expect(validateSession).toHaveBeenCalledWith('invalid');
     expect(create).not.toHaveBeenCalled();
-    expect(await projects.findAll(alice)).toEqual([]);
+    expect((await projects.findAll(alice)).items).toEqual([]);
   });
 
   it('crea, lista y consulta un proyecto con nombre y códigos normalizados', async () => {
@@ -129,7 +129,10 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
     await request(app.getHttpServer())
       .get(api)
       .auth('alice-session', { type: 'bearer' })
-      .expect(200, { projects: [body.project] });
+      .expect(200, {
+        projects: [body.project],
+        page: { limit: 20, offset: 0, hasMore: false },
+      });
     await request(app.getHttpServer())
       .get(`${api}/${body.project.id}`)
       .auth('alice-session', { type: 'bearer' })
@@ -137,7 +140,10 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
     await request(app.getHttpServer())
       .get(api)
       .auth('bob-session', { type: 'bearer' })
-      .expect(200, { projects: [] });
+      .expect(200, {
+        projects: [],
+        page: { limit: 20, offset: 0, hasMore: false },
+      });
   });
 
   it('Alice no puede leer ni modificar el ID de Bob; la fila queda intacta', async () => {
@@ -157,7 +163,7 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
       .expect(404);
 
     expect(await projects.findOwned(bob, foreign.id)).toEqual(foreign);
-    expect(await projects.findAll(alice)).toEqual([]);
+    expect((await projects.findAll(alice)).items).toEqual([]);
   });
 
   it('POST autenticado sin cuerpo devuelve 400 y no escribe', async () => {
@@ -165,7 +171,7 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
       .post(api)
       .auth('alice-session', { type: 'bearer' })
       .expect(400);
-    expect(await projects.findAll(alice)).toEqual([]);
+    expect((await projects.findAll(alice)).items).toEqual([]);
   });
 
   it('el perfil ausente conserva 404 y el contrato bilingüe', async () => {
@@ -197,7 +203,7 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
       .send(input)
       .expect(400);
 
-    expect(await projects.findAll(alice)).toEqual([]);
+    expect((await projects.findAll(alice)).items).toEqual([]);
   });
 
   it.each([
@@ -294,7 +300,7 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
       .auth('alice-session', { type: 'bearer' })
       .send({ name: 'Retirado' })
       .expect(404);
-    expect(await projects.findAll(alice)).toEqual([]);
+    expect((await projects.findAll(alice)).items).toEqual([]);
   });
 
   it('valida UUID y devuelve 404 para un ID válido ausente', async () => {
@@ -319,5 +325,43 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
       .set('Access-Control-Request-Method', 'PATCH')
       .expect('Access-Control-Allow-Origin', 'http://localhost:3000')
       .expect(204);
+  });
+  it('pagina el listado con limit/offset, hasMore y rechaza valores fuera de rango', async () => {
+    for (const name of ['Uno', 'Dos', 'Tres']) {
+      await request(app.getHttpServer())
+        .post(api)
+        .auth('alice-session', { type: 'bearer' })
+        .send({ ...projectInput, name })
+        .expect(201);
+    }
+    const list = (query: string) =>
+      request(app.getHttpServer())
+        .get(`${api}${query}`)
+        .auth('alice-session', { type: 'bearer' });
+
+    const first = await list('?limit=2').expect(200);
+    expect(first.body.projects.map(({ name }: Project) => name)).toEqual([
+      'Tres',
+      'Dos',
+    ]);
+    expect(first.body.page).toEqual({ limit: 2, offset: 0, hasMore: true });
+
+    const second = await list('?limit=2&offset=2').expect(200);
+    expect(second.body.projects.map(({ name }: Project) => name)).toEqual([
+      'Uno',
+    ]);
+    expect(second.body.page).toEqual({ limit: 2, offset: 2, hasMore: false });
+
+    for (const query of [
+      '?limit=0',
+      '?limit=101',
+      '?limit=abc',
+      '?offset=-1',
+      '?orden=name',
+    ]) {
+      await list(query)
+        .expect(400)
+        .expect(({ body }) => expect(body.code).toBe('VALIDATION_FAILED'));
+    }
   });
 });

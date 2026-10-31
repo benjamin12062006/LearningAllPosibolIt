@@ -1,4 +1,3 @@
-import { Connector, IpAddressTypes } from '@google-cloud/cloud-sql-connector';
 import { Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import type { DatabaseConnection } from './database-connection.js';
@@ -10,39 +9,27 @@ export type PostgreSqlConnection = Readonly<{
   close(): Promise<void>;
 }>;
 
-export async function createPostgreSqlConnection(
+export function createPostgreSqlConnection(
   config: DatabaseConnection,
-): Promise<PostgreSqlConnection> {
-  const connector = new Connector();
-  try {
-    const options = await connector.getOptions({
-      instanceConnectionName: config.instanceConnectionName,
-      ipType: IpAddressTypes.PUBLIC,
-    });
-    const pool = new Pool({
-      ...options,
-      database: config.database,
-      user: config.user,
-      password: config.password,
-      max: 5,
-      connectionTimeoutMillis: 10_000,
-      query_timeout: 10_000,
-    });
-    const logger = new Logger('PostgreSQL');
-    pool.on('error', () => {
-      logger.error('Se cerró una conexión PostgreSQL inactiva del pool.');
-    });
+): PostgreSqlConnection {
+  const pool = new Pool({
+    connectionString: config.url,
+    max: 5,
+    // Neon suspende el cómputo inactivo: la primera conexión puede tardar.
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 10_000,
+  });
+  const logger = new Logger('PostgreSQL');
+  pool.on('error', () => {
+    logger.error('Se cerró una conexión PostgreSQL inactiva del pool.');
+  });
 
-    let closing: Promise<void> | undefined;
-    return {
-      pool,
-      close() {
-        closing ??= pool.end().finally(() => connector.close());
-        return closing;
-      },
-    };
-  } catch (error) {
-    connector.close();
-    throw error;
-  }
+  let closing: Promise<void> | undefined;
+  return {
+    pool,
+    close() {
+      closing ??= pool.end();
+      return closing;
+    },
+  };
 }

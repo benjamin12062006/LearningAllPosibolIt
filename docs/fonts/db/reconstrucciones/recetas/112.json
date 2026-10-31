@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 9 Seed Data - Cargar y purgar base de datos/111. Seed Resolver.md"
+  ],
+  "source": "Sección 9 Seed Data - Cargar y purgar base de datos/112. Seed - Paso 1 Protección.md",
+  "objective": "Impedir que la semilla se ejecute en producción comprobando la variable de entorno STATE con ConfigService.",
+  "initial": "SeedResolver.executeSeed delega en SeedService.executeSeed, que solo devuelve true (lección 111).",
+  "certainty": "Transcripción por reconocimiento de voz (\"Cid\"/\"sid\"/\"zed\" = seed, \"Sprout\"/\"Broad\" = isProd/prod). Proyecto Anylist con TypeORM y PostgreSQL (curso de 2022). El código se ensambla desde las explicaciones. El texto exacto del error y el nombre isProd son reconstruidos; la variable STATE con valores dev/prod sí consta.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "círculo vicioso",
+      "change": "No se protege con token: el seed crea los usuarios que harían falta para autenticarse.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "producción esto no lo voy a ejecutar",
+      "change": "El seed no debe correr en producción.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "Debería estar en prod",
+      "change": "Variable STATE: dev en desarrollo, prod en producción; ConfigModule en SeedModule.",
+      "certainty": "media"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "Private y Sprout es de tipo boolean",
+      "change": "private isProd: boolean calculado en el constructor con configService.get.",
+      "certainty": "media"
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "Not ron set on Broad",
+      "change": "Si isProd, lanzar UnauthorizedException y no seguir.",
+      "certainty": "media"
+    },
+    {
+      "id": "E6",
+      "line": 23,
+      "phrase": "hay que venir aquí, bajarlo y volverlo a subir",
+      "change": "Cambiar .env exige reiniciar el servidor.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Importar ConfigModule en SeedModule",
+      "code": "@Module({\n  providers: [SeedResolver, SeedService],\n  imports: [ConfigModule],\n})\nexport class SeedModule {}",
+      "why": "ConfigService permite leer STATE desde el servicio.",
+      "check": "Compila.",
+      "evidence": [
+        "E3"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Calcular isProd y bloquear",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(private readonly configService: ConfigService) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n\n    // Crear usuarios\n\n    // Crear items\n\n    return true;\n  }\n}",
+      "why": "No hay usuario que autenticar antes del primer seed; la salvaguarda es el entorno.",
+      "check": "Con STATE=prod (tras reiniciar) executeSeed responde \"We cannot run SEED on Prod\"; con dev devuelve true.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E4",
+        "E5",
+        "E6"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(private readonly configService: ConfigService) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n\n    // Crear usuarios\n\n    // Crear items\n\n    return true;\n  }\n}",
+      "provenance": "Lección 111; E3–E5"
+    }
+  ],
+  "temporary": "Cambio temporal de STATE a prod en .env para probar el bloqueo.",
+  "mental": "La semilla destructiva se protege por entorno (STATE=prod) porque no puede depender de usuarios que ella misma crea."
+}

@@ -5,6 +5,7 @@ import {
   localizeStoredError,
   publicError,
 } from '../common/http/public-error.js';
+import type { PageRequest } from '../common/http/pagination.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
@@ -35,6 +36,12 @@ export class CatalogImportRepository {
       if (!project) throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
       if (!project.country || !project.currency || !project.channelProfile)
         throw apiError(ErrorCodes.PROJECT_CONFIGURATION_REQUIRED);
+      // La fila del proyecto está bloqueada (FOR UPDATE): dos peticiones
+      // simultáneas no pueden pasar esta comprobación a la vez.
+      const active = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM estadistica_forms.catalog_import_jobs
+        WHERE project_id=${input.projectId} AND status IN ('queued','running') LIMIT 1`;
+      if (active[0]) throw apiError(ErrorCodes.IMPORT_ALREADY_ACTIVE);
       const now = new Date().toISOString();
       await tx.catalogSnapshot.create({
         data: {
@@ -62,6 +69,55 @@ export class CatalogImportRepository {
         },
       });
     });
+  }
+
+  async hasActiveJob(ownerId: string, projectId: string) {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT j.id FROM estadistica_forms.catalog_import_jobs j
+      JOIN estadistica_forms.projects p ON p.id=j.project_id
+      WHERE p.id=${projectId} AND p.owner_id=${ownerId} AND j.status IN ('queued','running') LIMIT 1`;
+    return rows.length > 0;
+  }
+
+  /** Metadatos y estado del trabajo de cada importación; sin la muestra de filas. */
+  async listSnapshots(ownerId: string, projectId: string, window: PageRequest) {
+    const owned = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM estadistica_forms.projects WHERE id=${projectId} AND owner_id=${ownerId}`;
+    if (!owned[0]) throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+    const rows = await this.prisma.$queryRaw<
+      {
+        id: string;
+        projectId: string;
+        idColumn: string;
+        delimiter: string;
+        byteSize: number;
+        originalName: string;
+        status: string;
+        rowCount: number | null;
+        createdAt: string;
+        finishedAt: string | null;
+        error: unknown;
+        jobId: string | null;
+        jobStatus: string | null;
+        processedRows: number | null;
+      }[]
+    >`SELECT s.id,s.project_id AS "projectId",s.id_column AS "idColumn",s.delimiter,s.byte_size AS "byteSize",
+      s.original_name AS "originalName",s.status,s.row_count AS "rowCount",s.created_at AS "createdAt",
+      s.finished_at AS "finishedAt",s.error,j.id AS "jobId",j.status AS "jobStatus",j.processed_rows AS "processedRows"
+      FROM estadistica_forms.catalog_snapshots s
+      LEFT JOIN estadistica_forms.catalog_import_jobs j ON j.snapshot_id=s.id
+      WHERE s.project_id=${projectId}
+      ORDER BY s.created_at DESC, s.id DESC
+      LIMIT ${window.limit} OFFSET ${window.offset}`;
+    return rows.map(
+      ({ jobId, jobStatus, processedRows, error, ...snapshot }) => ({
+        ...snapshot,
+        error: localizeStoredError(error),
+        job: jobId
+          ? { id: jobId, status: jobStatus, processedRows: processedRows ?? 0 }
+          : null,
+      }),
+    );
   }
 
   async acceptanceExists(input: Acceptance) {

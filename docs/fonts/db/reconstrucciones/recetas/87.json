@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [],
+  "source": "Sección 7 Usuarios y enumeraciones - Admin Roles/87. GraphQL Enumerations.md",
+  "objective": "Usar una enumeración TypeScript (ValidRoles) como tipo de argumento GraphQL registrándola con registerEnumType, para que el esquema valide y sugiera los valores.",
+  "initial": "UsersResolver.findAll recibe ValidRolesArgs (lección 86) con roles tipado como string[]; el enum ValidRoles existe en auth/enums.",
+  "certainty": "Transcripción por reconocimiento de voz (\"Valley Rolls\"/\"Balay Rol\" = ValidRoles, \"JD Brute Service\" = JwtService). El código se ensambla desde las explicaciones; proyecto Anylist (curso de 2022). La ubicación de registerEnumType (archivo del enum) y @IsArray proceden de la lección 86/estructura del curso; el argumento queda obligatorio al final de esta lección.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "no puede determinar el input type",
+      "change": "Cambiar [String] por [ValidRoles] da error: GraphQL no conoce el enum.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 17,
+      "phrase": "asegúrese de que la clase esté anotada",
+      "change": "Los argumentos GraphQL solo aceptan tipos o enums registrados.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "register enum type",
+      "change": "Los enums no llevan decorador: se registran con registerEnumType.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "vale Rolls",
+      "change": "registerEnumType(ValidRoles, { name: \"ValidRoles\" }).",
+      "certainty": "media"
+    },
+    {
+      "id": "E5",
+      "line": 23,
+      "phrase": "admin, super user y user",
+      "change": "Valores del enum; un valor inexistente se rechaza antes de ejecutar.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 25,
+      "phrase": "lorem ipsum",
+      "change": "description del enum visible en la documentación del esquema.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 31,
+      "phrase": "lo estoy poniendo obligatorio",
+      "change": "El argumento roles queda obligatorio por ahora.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Tipar el argumento con el enum",
+      "code": "@Field(() => [ValidRoles])\nroles: ValidRoles[] = [];",
+      "why": "Se quiere que el esquema ofrezca solo roles válidos en vez de cualquier string.",
+      "check": "Al guardar aparece el error \"cannot determine a GraphQL input type\".",
+      "evidence": [
+        "E1",
+        "E2"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Registrar el enum",
+      "code": "import { registerEnumType } from '@nestjs/graphql';\n\nexport enum ValidRoles {\n  admin = 'admin',\n  user = 'user',\n  superUser = 'superUser',\n}\n\nregisterEnumType(ValidRoles, {\n  name: 'ValidRoles',\n  description: 'Lorem ipsum: roles permitidos',\n});",
+      "why": "A diferencia de clases (decoradores), los enums se registran una vez con nombre y descripción.",
+      "check": "Apollo Studio sugiere admin, superUser y user; un valor como user2 se rechaza sin ejecutar el resolver.",
+      "evidence": [
+        "E3",
+        "E4",
+        "E5",
+        "E6"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Consultar con roles",
+      "code": "{\n  users(roles: [superUser]) {\n    fullName\n    email\n    roles\n  }\n}",
+      "why": "El filtro real con QueryBuilder llega en la lección 88.",
+      "check": "La consulta valida; el resultado aún no filtra.",
+      "evidence": [
+        "E7"
+      ],
+      "language": "graphql"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/auth/enums/valid-roles.enum.ts",
+      "language": "ts",
+      "code": "import { registerEnumType } from '@nestjs/graphql';\n\nexport enum ValidRoles {\n  admin = 'admin',\n  user = 'user',\n  superUser = 'superUser',\n}\n\nregisterEnumType(ValidRoles, {\n  name: 'ValidRoles',\n  description: 'Lorem ipsum: roles permitidos',\n});",
+      "provenance": "E3–E6"
+    },
+    {
+      "path": "src/users/dto/args/roles.arg.ts",
+      "language": "ts",
+      "code": "import { ArgsType, Field } from '@nestjs/graphql';\nimport { IsArray } from 'class-validator';\nimport { ValidRoles } from '../../../auth/enums/valid-roles.enum';\n\n@ArgsType()\nexport class ValidRolesArgs {\n  @Field(() => [ValidRoles])\n  @IsArray()\n  roles: ValidRoles[] = [];\n}",
+      "provenance": "E1, E7; lección 86"
+    }
+  ],
+  "temporary": "El texto lorem ipsum de la descripción es relleno de demostración.",
+  "mental": "Enum TS → registerEnumType → tipo GraphQL. Así el esquema valida y documenta los valores permitidos antes de llegar al resolver."
+}

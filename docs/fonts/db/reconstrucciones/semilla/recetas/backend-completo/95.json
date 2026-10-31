@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 8 Seed y Paginación/95. Insertar multiples registros simultáneamente.md",
+  "previous": [
+    "Sección 8 Seed y Paginación/94. Resolución - Insertar Pokemons por lote.md"
+  ],
+  "objective": "Acelerar la semilla: borrar la colección antes de insertar, comparar Promise.all con insertMany y quedarse con una única inserción masiva de 650 registros.",
+  "initial": "SeedService inserta 10 pokémon uno a uno con create (lección 94).",
+  "certainty": "La transcripción dice «punto, delete»; se reconstruye deleteMany({}), el método de Mongoose que borra sin condición, con certeza media. El texto exacto del paso del README es aproximado.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "Insert Promises",
+      "change": "Arreglo de promesas, sin await dentro del bucle.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 17,
+      "phrase": "wait de promise, punto o paréntesis",
+      "change": "await Promise.all(insertPromisesArray).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "ya tenemos registros duplicados",
+      "change": "Repetir la semilla choca con los índices únicos.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "no le mando ninguna condición",
+      "change": "Borrado previo sin filtro: deleteMany({}).",
+      "certainty": "media"
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "Asterisco from pokémons",
+      "change": "Equivalente SQL: delete * from pokemons.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 23,
+      "phrase": "Pokémon Tú Insert",
+      "change": "pokemonToInsert: { name: string; no: number }[].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 25,
+      "phrase": "insert, many",
+      "change": "await this.pokemonModel.insertMany(pokemonToInsert).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 25,
+      "phrase": "lo que yo les recomendaría que hicieran para insertar sus semillas",
+      "change": "Recomendación del instructor: una sola inserción masiva.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 25,
+      "phrase": "regresar esto a 650",
+      "change": "limit=650.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 29,
+      "phrase": "Insert into pokemons",
+      "change": "insertMany equivale a un INSERT con múltiples filas.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 31,
+      "phrase": "Recargar o reconstruir la base de datos con la semilla",
+      "change": "Nuevo paso en el README.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 31,
+      "phrase": "condiciones de que esto solo se ejecute si estamos en desarrollo",
+      "change": "Sugerencia: restringir por entorno, por datos vacíos o por rol.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Inserciones simultáneas con Promise.all",
+      "code": "const insertPromisesArray = [];\n\ndata.results.forEach(({ name, url }) => {\n  const segments = url.split('/');\n  const no: number = +segments[segments.length - 2];\n\n  insertPromisesArray.push(this.pokemonModel.create({ name, no }));\n});\n\nawait Promise.all(insertPromisesArray);",
+      "why": "Se dejan de esperar las inserciones una por una.",
+      "check": "Falla con registros duplicados si ya había datos.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Purgar antes de sembrar",
+      "code": "await this.pokemonModel.deleteMany({}); // delete * from pokemons;",
+      "why": "Una semilla repetible debe partir de un estado conocido.",
+      "check": "Ejecutar la semilla dos veces seguidas ya no falla.",
+      "evidence": [
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Una sola inserción masiva",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { InjectModel } from '@nestjs/mongoose';\nimport axios, { AxiosInstance } from 'axios';\nimport { Model } from 'mongoose';\nimport { Pokemon } from '../pokemon/entities/pokemon.entity';\nimport { PokeResponse } from './interfaces/poke-response.interface';\n\n@Injectable()\nexport class SeedService {\n  private readonly axios: AxiosInstance = axios;\n\n  constructor(\n    @InjectModel(Pokemon.name)\n    private readonly pokemonModel: Model<Pokemon>,\n  ) {}\n\n  async executeSeed() {\n    await this.pokemonModel.deleteMany({}); // delete * from pokemons;\n\n    const { data } = await this.axios.get<PokeResponse>(\n      'https://pokeapi.co/api/v2/pokemon?limit=650',\n    );\n\n    const pokemonToInsert: { name: string; no: number }[] = [];\n\n    data.results.forEach(({ name, url }) => {\n      const segments = url.split('/');\n      const no: number = +segments[segments.length - 2];\n\n      pokemonToInsert.push({ name, no }); // [{ name: bulbasaur, no: 1 }]\n    });\n\n    await this.pokemonModel.insertMany(pokemonToInsert);\n    // insert into pokemons (name, no)\n    // (name: bulbasaur, no: 1)\n    // (name: ivysaur, no: 2)\n\n    return 'Seed Executed';\n  }\n}",
+      "why": "insertMany manda todos los documentos en una única operación.",
+      "check": "650 documentos en la colección tras una petición.",
+      "evidence": [
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Documentar el paso",
+      "code": "5. Reconstruir la base de datos con la semilla\n   GET http://localhost:3000/api/v2/seed",
+      "why": "Quien clone el proyecto sabe cómo reconstruir la base.",
+      "check": "El README muestra el nuevo paso.",
+      "evidence": [
+        "E11",
+        "E12"
+      ],
+      "language": "md"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { InjectModel } from '@nestjs/mongoose';\nimport axios, { AxiosInstance } from 'axios';\nimport { Model } from 'mongoose';\nimport { Pokemon } from '../pokemon/entities/pokemon.entity';\nimport { PokeResponse } from './interfaces/poke-response.interface';\n\n@Injectable()\nexport class SeedService {\n  private readonly axios: AxiosInstance = axios;\n\n  constructor(\n    @InjectModel(Pokemon.name)\n    private readonly pokemonModel: Model<Pokemon>,\n  ) {}\n\n  async executeSeed() {\n    await this.pokemonModel.deleteMany({}); // delete * from pokemons;\n\n    const { data } = await this.axios.get<PokeResponse>(\n      'https://pokeapi.co/api/v2/pokemon?limit=650',\n    );\n\n    const pokemonToInsert: { name: string; no: number }[] = [];\n\n    data.results.forEach(({ name, url }) => {\n      const segments = url.split('/');\n      const no: number = +segments[segments.length - 2];\n\n      pokemonToInsert.push({ name, no }); // [{ name: bulbasaur, no: 1 }]\n    });\n\n    await this.pokemonModel.insertMany(pokemonToInsert);\n    // insert into pokemons (name, no)\n    // (name: bulbasaur, no: 1)\n    // (name: ivysaur, no: 2)\n\n    return 'Seed Executed';\n  }\n}",
+      "provenance": "E4–E10"
+    },
+    {
+      "path": "README.md — paso de la semilla",
+      "language": "md",
+      "code": "5. Reconstruir la base de datos con la semilla\n   GET http://localhost:3000/api/v2/seed",
+      "provenance": "E11"
+    }
+  ],
+  "temporary": "La variante con Promise.all se muestra y se descarta en favor de insertMany; el instructor sugiere conservarla como referencia.",
+  "mental": "Semilla repetible = borrar todo + insertar en bloque; insertMany es una inserción, Promise.all son muchas en paralelo."
+}

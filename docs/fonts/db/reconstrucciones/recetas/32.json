@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [],
+  "source": "Sección 4 GraphQL TODO - Continuación/32. Todo Resolver y Custom object types.md",
+  "objective": "Crear el módulo y resolver de Todo, exponer el Query todos y definir el tipo de objeto personalizado Todo con @ObjectType y @Field.",
+  "initial": "Proyecto 02-todo con GraphQLModule configurado y HelloWorldModule (sección 3).",
+  "certainty": "Transcripción por reconocimiento de voz (\"Toulouse\" = todos, \"don\" = done, \"Graf Jewel\" = GraphQL). El código se ensambla desde las explicaciones del instructor; nombres expuestos y decoradores constan, el formato exacto puede variar. Curso de 2022 (Nest 9). Los métodos findOne/createTodo/updateTodo/removeTodo quedan como esqueleto sin decorar; su forma exacta no se dicta.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "generar un módulo",
+      "change": "nest g mo todo: TodoModule importado en AppModule.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "Generación resolver",
+      "change": "nest g r todo --no-spec crea TodoResolver.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "encontrar un todo en particular",
+      "change": "Esqueleto CRUD: findAll, findOne, createTodo, updateTodo, removeTodo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 23,
+      "phrase": "asegúrense de haberlo importado",
+      "change": "Query debe venir de @nestjs/graphql, no de @nestjs/common.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 25,
+      "phrase": "va a ser Toulouse",
+      "change": "name: \"todos\" para el Query de listado.",
+      "certainty": "media"
+    },
+    {
+      "id": "E6",
+      "line": 29,
+      "phrase": "Export class Todo",
+      "change": "Archivo entity/todo.entity.ts con la clase Todo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 31,
+      "phrase": "por defecto en falso",
+      "change": "Propiedades id:number, description:string, done:boolean = false.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 33,
+      "phrase": "arroba object type",
+      "change": "@ObjectType convierte la clase en tipo GraphQL.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 37,
+      "phrase": "importar int de graph",
+      "change": "@Field(() => Int) para id; String y Boolean sin importar.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 41,
+      "phrase": "llaves cuadradas",
+      "change": "El Query devuelve [Todo].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 43,
+      "phrase": "sub fields",
+      "change": "Un tipo objeto obliga a pedir subcampos; devolver strings rompe el contrato.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Generar módulo y resolver",
+      "code": "nest g mo todo\nnest g r todo --no-spec",
+      "why": "Cada parte de la aplicación vive en su propio módulo para reutilizar y ordenar el código.",
+      "check": "AppModule importa TodoModule y este registra TodoResolver en providers.",
+      "evidence": [
+        "E1",
+        "E2"
+      ],
+      "language": "bash"
+    },
+    {
+      "title": "Primer Query todos con strings",
+      "code": "@Query(() => [String], { name: 'todos' })\nfindAll(): string[] {\n  return ['a', 'b', 'c'];\n}",
+      "why": "Paso intermedio para ver el Query en Apollo Studio y el error típico de importar Query de @nestjs/common.",
+      "check": "En Apollo Studio aparece todos y devuelve [\"a\",\"b\",\"c\"].",
+      "evidence": [
+        "E3",
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Definir el ObjectType Todo",
+      "code": "import { Field, Int, ObjectType } from '@nestjs/graphql';\n\n@ObjectType()\nexport class Todo {\n  @Field(() => Int)\n  id: number;\n\n  @Field(() => String)\n  description: string;\n\n  @Field(() => Boolean)\n  done: boolean = false;\n}",
+      "why": "GraphQL solo conoce escalares; un tipo personalizado declara qué campos y tipos expone. Int se fija explícito para no inferir Float.",
+      "check": "Tras guardar, el esquema incluye type Todo { id: Int!, description: String!, done: Boolean! }.",
+      "evidence": [
+        "E6",
+        "E7",
+        "E8",
+        "E9"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Devolver [Todo]",
+      "code": "@Query(() => [Todo], { name: 'todos' })\nfindAll(): Todo[] {\n  return [];\n}",
+      "why": "Si el Query declara [Todo] pero devuelve strings, GraphQL no puede resolver los subcampos y falla.",
+      "check": "{ todos { id description done } } responde [].",
+      "evidence": [
+        "E10",
+        "E11"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/todo/entity/todo.entity.ts",
+      "language": "ts",
+      "code": "import { Field, Int, ObjectType } from '@nestjs/graphql';\n\n@ObjectType()\nexport class Todo {\n  @Field(() => Int)\n  id: number;\n\n  @Field(() => String)\n  description: string;\n\n  @Field(() => Boolean)\n  done: boolean = false;\n}",
+      "provenance": "E6–E9"
+    },
+    {
+      "path": "src/todo/todo.resolver.ts",
+      "language": "ts",
+      "code": "import { Query, Resolver } from '@nestjs/graphql';\nimport { Todo } from './entity/todo.entity';\n\n@Resolver()\nexport class TodoResolver {\n  @Query(() => [Todo], { name: 'todos' })\n  findAll(): Todo[] {\n    return [];\n  }\n\n  findOne() {\n    return null;\n  }\n\n  createTodo() {}\n\n  updateTodo() {}\n\n  removeTodo() {}\n}",
+      "provenance": "E2, E3, E5, E10"
+    }
+  ],
+  "temporary": "El arreglo [\"a\",\"b\",\"c\"] y el tipo [String] se sustituyen por [Todo] al final.",
+  "mental": "Resolver = punto de entrada; ObjectType + Field = contrato de salida. Un Query de objetos obliga al cliente a pedir subcampos."
+}

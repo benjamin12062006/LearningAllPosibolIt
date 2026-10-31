@@ -20,11 +20,16 @@ const projection = Prisma.sql`
 export class ProjectsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAllByOwner(ownerId: string): Promise<Project[]> {
+  /** Siempre acotado: el llamador decide la ventana (`limit`/`offset`). */
+  async findAllByOwner(
+    ownerId: string,
+    page: { limit: number; offset: number },
+  ): Promise<Project[]> {
     const rows = await this.prisma.$queryRaw<ProjectRow[]>(Prisma.sql`
       SELECT ${projection} FROM estadistica_forms.projects
       WHERE owner_id = ${ownerId}
       ORDER BY created_at DESC, id DESC
+      LIMIT ${page.limit} OFFSET ${page.offset}
     `);
     return rows.map(toProject);
   }

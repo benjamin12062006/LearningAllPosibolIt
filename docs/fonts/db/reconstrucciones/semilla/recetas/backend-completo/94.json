@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 8 Seed y Paginación/94. Resolución - Insertar Pokemons por lote.md",
+  "previous": [
+    "Sección 8 Seed y Paginación/92. Realizar petición http desde Nest.md",
+    "Sección 8 Seed y Paginación/93. Tarea - Insertar Pokemons por lote.md"
+  ],
+  "objective": "Insertar en MongoDB los pokémon obtenidos: inyectar el modelo en SeedService, exportar MongooseModule desde PokemonModule e importarlo en SeedModule.",
+  "initial": "SeedService obtiene y transforma 10 pokémon (lección 92); la lección 93 solo plantea la tarea y recomienda un commit previo.",
+  "certainty": "Se reconstruye forEach(async …) porque el instructor marca como async la función que contiene el await; ese patrón no espera realmente cada inserción antes de devolver la respuesta, aunque el instructor lo describe como inserciones una tras otra. La lección 95 sustituye este bucle.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "voy a venir al set y voy a hacer esa inyección",
+      "change": "Copiar la inyección del modelo desde PokemonService a SeedService.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "inyecte Model aquí importarlo de Mongo",
+      "change": "@InjectModel de @nestjs/mongoose y Model de mongoose.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "no puede resolver toda la dependencia del Seed Service",
+      "change": "Error: el modelo no está disponible en el contexto de SeedModule.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "exportamos únicamente el Mongo Mojo",
+      "change": "PokemonModule exports: [MongooseModule] con su configuración forFeature.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 23,
+      "phrase": "vamos a importar el Pokemon Mojo",
+      "change": "SeedModule imports: [PokemonModule].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 25,
+      "phrase": "tendría que ser un async",
+      "change": "La función con await se marca async; pokemonModel.create({ name, no }).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 25,
+      "phrase": "Voy a poner Shift Execute",
+      "change": "executeSeed devuelve 'Seed Executed' en lugar de data.results.",
+      "certainty": "media"
+    },
+    {
+      "id": "E8",
+      "line": 27,
+      "phrase": "aquí tengo mis diez pokemones insertados",
+      "change": "Resultado comprobado en TablePlus.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 29,
+      "phrase": "tendríamos que esperar a que cada una de esas inserciones termine",
+      "change": "Problema de rendimiento que motiva la lección 95.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Inyectar el modelo en SeedService",
+      "code": "constructor(\n  @InjectModel(Pokemon.name)\n  private readonly pokemonModel: Model<Pokemon>,\n) {}",
+      "why": "La semilla escribe en la colección usando el mismo modelo que PokemonService.",
+      "check": "Nest falla al arrancar: el modelo no existe en SeedModule.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Exportar MongooseModule e importarlo en SeedModule",
+      "code": "import { Module } from '@nestjs/common';\nimport { MongooseModule } from '@nestjs/mongoose';\nimport { Pokemon, PokemonSchema } from './entities/pokemon.entity';\nimport { PokemonController } from './pokemon.controller';\nimport { PokemonService } from './pokemon.service';\n\n@Module({\n  controllers: [PokemonController],\n  providers: [PokemonService],\n  imports: [\n    MongooseModule.forFeature([\n      {\n        name: Pokemon.name,\n        schema: PokemonSchema,\n      },\n    ]),\n  ],\n  exports: [MongooseModule],\n})\nexport class PokemonModule {}\n\n\nimport { Module } from '@nestjs/common';\nimport { PokemonModule } from '../pokemon/pokemon.module';\nimport { SeedController } from './seed.controller';\nimport { SeedService } from './seed.service';\n\n@Module({\n  controllers: [SeedController],\n  providers: [SeedService],\n  imports: [PokemonModule],\n})\nexport class SeedModule {}",
+      "why": "El modelo está encapsulado en PokemonModule; exportando MongooseModule configurado basta.",
+      "check": "La consola muestra SeedModule dependencies initialized.",
+      "evidence": [
+        "E4",
+        "E5"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Crear cada pokémon",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { InjectModel } from '@nestjs/mongoose';\nimport axios, { AxiosInstance } from 'axios';\nimport { Model } from 'mongoose';\nimport { Pokemon } from '../pokemon/entities/pokemon.entity';\nimport { PokeResponse } from './interfaces/poke-response.interface';\n\n@Injectable()\nexport class SeedService {\n  private readonly axios: AxiosInstance = axios;\n\n  constructor(\n    @InjectModel(Pokemon.name)\n    private readonly pokemonModel: Model<Pokemon>,\n  ) {}\n\n  async executeSeed() {\n    const { data } = await this.axios.get<PokeResponse>(\n      'https://pokeapi.co/api/v2/pokemon?limit=10',\n    );\n\n    data.results.forEach(async ({ name, url }) => {\n      const segments = url.split('/');\n      const no: number = +segments[segments.length - 2];\n\n      const pokemon = await this.pokemonModel.create({ name, no });\n    });\n\n    return 'Seed Executed';\n  }\n}",
+      "why": "Se reutiliza la transformación de la lección 92 y se persiste cada registro.",
+      "check": "Tras GET /api/v2/seed hay 10 documentos en la colección.",
+      "evidence": [
+        "E6",
+        "E7",
+        "E8",
+        "E9"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { InjectModel } from '@nestjs/mongoose';\nimport axios, { AxiosInstance } from 'axios';\nimport { Model } from 'mongoose';\nimport { Pokemon } from '../pokemon/entities/pokemon.entity';\nimport { PokeResponse } from './interfaces/poke-response.interface';\n\n@Injectable()\nexport class SeedService {\n  private readonly axios: AxiosInstance = axios;\n\n  constructor(\n    @InjectModel(Pokemon.name)\n    private readonly pokemonModel: Model<Pokemon>,\n  ) {}\n\n  async executeSeed() {\n    const { data } = await this.axios.get<PokeResponse>(\n      'https://pokeapi.co/api/v2/pokemon?limit=10',\n    );\n\n    data.results.forEach(async ({ name, url }) => {\n      const segments = url.split('/');\n      const no: number = +segments[segments.length - 2];\n\n      const pokemon = await this.pokemonModel.create({ name, no });\n    });\n\n    return 'Seed Executed';\n  }\n}",
+      "provenance": "E1, E2, E6, E7"
+    },
+    {
+      "path": "src/pokemon/pokemon.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { MongooseModule } from '@nestjs/mongoose';\nimport { Pokemon, PokemonSchema } from './entities/pokemon.entity';\nimport { PokemonController } from './pokemon.controller';\nimport { PokemonService } from './pokemon.service';\n\n@Module({\n  controllers: [PokemonController],\n  providers: [PokemonService],\n  imports: [\n    MongooseModule.forFeature([\n      {\n        name: Pokemon.name,\n        schema: PokemonSchema,\n      },\n    ]),\n  ],\n  exports: [MongooseModule],\n})\nexport class PokemonModule {}",
+      "provenance": "E4"
+    },
+    {
+      "path": "src/seed/seed.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { PokemonModule } from '../pokemon/pokemon.module';\nimport { SeedController } from './seed.controller';\nimport { SeedService } from './seed.service';\n\n@Module({\n  controllers: [SeedController],\n  providers: [SeedService],\n  imports: [PokemonModule],\n})\nexport class SeedModule {}",
+      "provenance": "E5"
+    }
+  ],
+  "temporary": "Lección 93: git commit antes de la tarea y git checkout -- . para revertir pruebas fallidas.",
+  "mental": "Para escribir desde la semilla en otra colección hay que exportar el modelo (MongooseModule) desde su módulo dueño e importarlo; insertar uno por uno es lento."
+}

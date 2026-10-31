@@ -2,3 +2,4 @@ node_modules/
 dist/
 .data/
 src/generated/prisma/
+test/features/graphql/schema.expected.graphql

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "date": "2026-10-30",
+  "originals": {
+    "Sección 9 Seed Data - Cargar y purgar base de datos/113. Seed - Paso 2 Borrar registros anteriores.md": "de14b3a3727c8172cbd42830cb7bc226d50044b41c79c0814b40e6a64d34ebd7",
+    "Sección 9 Seed Data - Cargar y purgar base de datos/114. Seed - Paso 3 Crear usuarios.md": "63951cc4327d97961e531db793e9bd3ef03b76f4cb2102e03708ca3951225ed4",
+    "Sección 9 Seed Data - Cargar y purgar base de datos/115. Seed - Paso 4 Crear items.md": "d40b7ce86efecc8d285ba9f2bf5423c02d0427bceb5f4648c6a891f3b9e61f4e",
+    "Sección 11 Entidad para el manejo de listas Maestro Detalle/145. Lists y ListsItems - Seed Limpieza.md": "9a405051abc34a148b93e303fa928f0060604bd7e86d6b2c791282f0ffcec4a8",
+    "Sección 11 Entidad para el manejo de listas Maestro Detalle/146. Lists y ListItems - Seed Inserción.md": "c1fba96720371fd9b442a84813b6f96ecdb29772163c13721530514537566920"
+  },
+  "guides": [
+    {
+      "source": "Sección 9 Seed Data - Cargar y purgar base de datos/114. Seed - Paso 3 Crear usuarios.md",
+      "guide": "Sección 9 Seed Data - Cargar y purgar base de datos/114. Seed - Paso 3 Crear usuarios - Reconstrucción guiada.md",
+      "sha256": "71bc9423136d323186af92da151edf17edd9bf0d57ef7f69bcda899153e313fa"
+    },
+    {
+      "source": "Sección 9 Seed Data - Cargar y purgar base de datos/115. Seed - Paso 4 Crear items.md",
+      "guide": "Sección 9 Seed Data - Cargar y purgar base de datos/115. Seed - Paso 4 Crear items - Reconstrucción guiada.md",
+      "sha256": "005339b22c2958094c0cb20acc4f970b05c66ad72094c81d8288b91ee065dc86"
+    },
+    {
+      "source": "Sección 11 Entidad para el manejo de listas Maestro Detalle/145. Lists y ListsItems - Seed Limpieza.md",
+      "guide": "Sección 11 Entidad para el manejo de listas Maestro Detalle/145. Lists y ListsItems - Seed Limpieza - Reconstrucción guiada.md",
+      "sha256": "19ab04d0b38e6bf46f00f65737fd4dac5b2899351f09aa040db818e86b19d5c7"
+    },
+    {
+      "source": "Sección 11 Entidad para el manejo de listas Maestro Detalle/146. Lists y ListItems - Seed Inserción.md",
+      "guide": "Sección 11 Entidad para el manejo de listas Maestro Detalle/146. Lists y ListItems - Seed Inserción - Reconstrucción guiada.md",
+      "sha256": "7df80510ee7e5e28cd1d7f54ea2a0a5f96f31d7d87a2f79323bd010d36541422"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { ErrorCodes } from '../common/http/error-codes.js';
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-import type { AuthenticatedRequest } from './authenticated-request.js';
 import { DescopeService } from './descope.service.js';
+import { requestOf } from './request-context.js';
 import { apiError } from '../common/http/api-error.js';
 
 @Injectable()
@@ -9,7 +9,7 @@ export class DescopeSessionGuard implements CanActivate {
   constructor(private readonly descopeService: DescopeService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const request = requestOf(context);
     const sessionToken = this.readBearerToken(request.headers.authorization);
 
     try {

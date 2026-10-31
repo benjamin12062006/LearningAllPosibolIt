@@ -74,8 +74,31 @@ describe('ProjectsService con inyección de Nest', () => {
     const result = await service.findAll(alice);
 
     expect(users.findCurrent).toHaveBeenCalledWith(alice);
-    expect(repository.findAllByOwner).toHaveBeenCalledWith(userFixture().id);
-    expect(result).toEqual(expected);
+    // Pide una fila más que el límite para calcular `hasMore` sin COUNT.
+    expect(repository.findAllByOwner).toHaveBeenCalledWith(userFixture().id, {
+      limit: 21,
+      offset: 0,
+    });
+    expect(result).toEqual({
+      items: expected,
+      page: { limit: 20, offset: 0, hasMore: false },
+    });
+  });
+
+  it('recorta la fila extra y marca hasMore cuando hay más páginas', async () => {
+    const rows = Array.from({ length: 3 }, (_, index) =>
+      projectFixture({ id: `00000000-0000-4000-8000-00000000000${index}` }),
+    );
+    repository.findAllByOwner.mockResolvedValue(rows);
+
+    const result = await service.findAll(alice, { limit: 2, offset: 4 });
+
+    expect(repository.findAllByOwner).toHaveBeenCalledWith(userFixture().id, {
+      limit: 3,
+      offset: 4,
+    });
+    expect(result.items).toEqual(rows.slice(0, 2));
+    expect(result.page).toEqual({ limit: 2, offset: 4, hasMore: true });
   });
 
   it('crea la configuración bajo el propietario autenticado', async () => {

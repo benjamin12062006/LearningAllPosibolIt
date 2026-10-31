@@ -181,6 +181,11 @@ export const API_MESSAGES = {
     'No se encontró el recurso de importación.',
     'The import resource was not found.',
   ),
+  [ErrorCodes.IMPORT_ALREADY_ACTIVE]: entry(
+    409,
+    'El proyecto ya tiene una importación en curso. Espera a que termine.',
+    'The project already has an import in progress. Wait for it to finish.',
+  ),
   [ErrorCodes.IMPORT_FILE_REQUIRED]: entry(
     400,
     'Envía un único archivo en el campo file.',

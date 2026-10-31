@@ -1,34 +1,36 @@
 import type { ConfigService } from '@nestjs/config';
 
 export type DatabaseConnection = Readonly<{
-  instanceConnectionName: string;
-  database: string;
-  user: string;
-  password: string;
+  url: string;
 }>;
 
 export const DATABASE_SCHEMA = 'estadistica_forms';
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
 export function resolveDatabaseConnection(
   configService: Pick<ConfigService, 'get'>,
 ): DatabaseConnection {
-  const required = (name: string, trim = true): string => {
-    const raw = configService.get<string>(name);
-    const value = trim ? raw?.trim() : raw;
-    if (!value) throw new Error(`Falta ${name} para conectar con Cloud SQL.`);
-    return value;
-  };
-  const instanceConnectionName = required('INSTANCE_CONNECTION_NAME');
-  if (!/^[^:\s]+:[^:\s]+:[^:\s]+$/.test(instanceConnectionName)) {
-    throw new Error(
-      'INSTANCE_CONNECTION_NAME debe usar proyecto:region:instancia.',
-    );
+  const url = configService.get<string>('DATABASE_URL')?.trim();
+  if (!url) throw new Error('Falta DATABASE_URL para conectar con Neon.');
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('DATABASE_URL no es una URL válida.');
+  }
+  if (!['postgresql:', 'postgres:'].includes(parsed.protocol)) {
+    throw new Error('DATABASE_URL debe usar el protocolo postgresql://.');
+  }
+  if (
+    !LOCAL_HOSTS.has(parsed.hostname) &&
+    !['require', 'verify-ca', 'verify-full'].includes(
+      parsed.searchParams.get('sslmode') ?? '',
+    )
+  ) {
+    throw new Error('DATABASE_URL debe incluir sslmode=require.');
   }
 
-  return {
-    instanceConnectionName,
-    database: required('DB_NAME'),
-    user: required('DB_USER'),
-    password: required('DB_PASSWORD', false),
-  };
+  return { url };
 }

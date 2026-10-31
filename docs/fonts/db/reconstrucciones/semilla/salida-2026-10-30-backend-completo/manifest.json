@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "date": "2026-10-30",
+  "originals": {
+    "Sección 11 Relaciones en TypeORM/146. Eliminación en cascada.md": "5d9a603ef84b84c7ae53594d5a2508ac97a1006d94d5cfd2c80da7df7afe519e",
+    "Sección 11 Relaciones en TypeORM/147. Product Seed.md": "e7b01f0b29f17ade8a9babaeec6048f6316fc19041976276c1634f58bc3d923a",
+    "Sección 11 Relaciones en TypeORM/148. Insertar de forma masiva.md": "46f024325c3024da83565fb0fd286454692e043e529c47cbca1be2f0f94342e1",
+    "Sección 13 Autenticación de autorización/186. SEED de usuarios, productos e imágenes.md": "e9cfbca156d93de8f20de7efc0513c9479fd260c2ea4c6d367c2ca6546d662f3",
+    "Sección 13 Autenticación de autorización/168. Encriptar la contraseña.md": "2de795baf7e1e390b98c44a51c6e76e58cacfd1a256f1ba57272a58dbf23fc2e",
+    "Sección 13 Autenticación de autorización/187. Encriptar contraseña de los usuarios del SEED.md": "683e70d8444e10e16b5fb03ffa49bc107bbfbfa2f3c2f21a3321743253882cec",
+    "Sección 5 Nest CLI Resource - Brands CRUD/61. Crear servicio SEED para cargar datos.md": "c772a6a050fae10b4d7a9fcacbdc308ca146f84550a6eec5d5888285cddb9086",
+    "Sección 5 Nest CLI Resource - Brands CRUD/62. Preparar servicios para insertar SEED.md": "5b8dee984d2a75daf27cf8b083e4a05aa82b15a415d77c93e5fb9d82cb35d3f4",
+    "Sección 5 Nest CLI Resource - Brands CRUD/63. Inyectar servicios en otros servicios.md": "1c3956f9e82198e07eafdd298728aa72fe84143c3a6e28244e349b48b59916da",
+    "Sección 8 Seed y Paginación/90. Crear módulo SEED.md": "64c2c2c711a2de26c7b8095734684a179c40d58e87c172f2205836d4df2332bc",
+    "Sección 8 Seed y Paginación/92. Realizar petición http desde Nest.md": "cf4b421e5ae5c5e7c293d86fc78c91036dffd8dfd43a29f007099269beeae420",
+    "Sección 8 Seed y Paginación/93. Tarea - Insertar Pokemons por lote.md": "6ab30568bc6b4ac6e7495738ca15c652f2d43846b20190ad114d87db4e642edd",
+    "Sección 8 Seed y Paginación/94. Resolución - Insertar Pokemons por lote.md": "76b03247fd7476c89ba28be8f0b212db8f8cd39e7c721ddfe163437d20153db1",
+    "Sección 8 Seed y Paginación/95. Insertar multiples registros simultáneamente.md": "e3bba7fed04019795be64def46cd35ef9c4b578f6c183b68cba16834aeafd8de",
+    "Sección 8 Seed y Paginación/96. Crear un custom provider - opcional.md": "33e469bd6434354386c0ac889c7a4b94d6b75e9441fc4e73a3393ecc7f7be26d"
+  },
+  "guides": [
+    {
+      "source": "Sección 11 Relaciones en TypeORM/147. Product Seed.md",
+      "guide": "Sección 11 Relaciones en TypeORM/147. Product Seed - Reconstrucción guiada.md",
+      "sha256": "febe127d8ccce3eb30de4f2724a965fbfa89256affc15165d9f00ea3b81cb8b5"
+    },
+    {
+      "source": "Sección 11 Relaciones en TypeORM/148. Insertar de forma masiva.md",
+      "guide": "Sección 11 Relaciones en TypeORM/148. Insertar de forma masiva - Reconstrucción guiada.md",
+      "sha256": "3750651991d294339f1c4d1e24e6bdbd08aee4c036a9f7a9209a9587918242b6"
+    },
+    {
+      "source": "Sección 13 Autenticación de autorización/186. SEED de usuarios, productos e imágenes.md",
+      "guide": "Sección 13 Autenticación de autorización/186. SEED de usuarios, productos e imágenes - Reconstrucción guiada.md",
+      "sha256": "3cf3caf14f91813362f6a7e51a51652669100c3da31656dac8af2a1e040f7732"
+    },
+    {
+      "source": "Sección 13 Autenticación de autorización/187. Encriptar contraseña de los usuarios del SEED.md",
+      "guide": "Sección 13 Autenticación de autorización/187. Encriptar contraseña de los usuarios del SEED - Reconstrucción guiada.md",
+      "sha256": "391d3de87c97a6ccd3fa5d195f8be1d5bbd5840e609af776a55afff7bf414553"
+    },
+    {
+      "source": "Sección 5 Nest CLI Resource - Brands CRUD/61. Crear servicio SEED para cargar datos.md",
+      "guide": "Sección 5 Nest CLI Resource - Brands CRUD/61. Crear servicio SEED para cargar datos - Reconstrucción guiada.md",
+      "sha256": "57352ae9ee238f5d76a0c23a0c4a9a060761843ee18cee343708e46cddfd51c5"
+    },
+    {
+      "source": "Sección 5 Nest CLI Resource - Brands CRUD/62. Preparar servicios para insertar SEED.md",
+      "guide": "Sección 5 Nest CLI Resource - Brands CRUD/62. Preparar servicios para insertar SEED - Reconstrucción guiada.md",
+      "sha256": "a31a40054e6675af1db883231a5de88539bea54b74fe722b35797fb4c6c718d8"
+    },
+    {
+      "source": "Sección 5 Nest CLI Resource - Brands CRUD/63. Inyectar servicios en otros servicios.md",
+      "guide": "Sección 5 Nest CLI Resource - Brands CRUD/63. Inyectar servicios en otros servicios - Reconstrucción guiada.md",
+      "sha256": "5768ae15db14fd62ab43f7de5ca1ca06899289eaeb9f877ddc59a90cb9af6ba4"
+    },
+    {
+      "source": "Sección 8 Seed y Paginación/90. Crear módulo SEED.md",
+      "guide": "Sección 8 Seed y Paginación/90. Crear módulo SEED - Reconstrucción guiada.md",
+      "sha256": "4cdb1e40016c40b5246818cad562c5061b4852d968e7df4e35446508d6860b09"
+    },
+    {
+      "source": "Sección 8 Seed y Paginación/92. Realizar petición http desde Nest.md",
+      "guide": "Sección 8 Seed y Paginación/92. Realizar petición http desde Nest - Reconstrucción guiada.md",
+      "sha256": "ca386fd75048175259df801a31a025a328c21de0a60954c73a2dcd5baae7f716"
+    },
+    {
+      "source": "Sección 8 Seed y Paginación/94. Resolución - Insertar Pokemons por lote.md",
+      "guide": "Sección 8 Seed y Paginación/94. Resolución - Insertar Pokemons por lote - Reconstrucción guiada.md",
+      "sha256": "a9edb331f30d84315c0adb5f4ce3371bd08da8717a65f3a3ee9a97b730dff539"
+    },
+    {
+      "source": "Sección 8 Seed y Paginación/95. Insertar multiples registros simultáneamente.md",
+      "guide": "Sección 8 Seed y Paginación/95. Insertar multiples registros simultáneamente - Reconstrucción guiada.md",
+      "sha256": "7d63da07b1491e5e16da1532ace1926aeb551ac327d7429eda560d44733d4cc5"
+    },
+    {
+      "source": "Sección 8 Seed y Paginación/96. Crear un custom provider - opcional.md",
+      "guide": "Sección 8 Seed y Paginación/96. Crear un custom provider - opcional - Reconstrucción guiada.md",
+      "sha256": "3a19b3897cde8c95cb00491a6eac8d5d7619cc42dcf0056a07624666d2259a28"
+    }
+  ]
+}

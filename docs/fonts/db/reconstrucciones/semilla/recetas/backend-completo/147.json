@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 11 Relaciones en TypeORM/147. Product Seed.md",
+  "previous": [
+    "Sección 11 Relaciones en TypeORM/146. Eliminación en cascada.md"
+  ],
+  "objective": "Crear la semilla de teslo-shop: GET /api/seed → SeedService.runSeed, que de momento borra todos los productos llamando a ProductsService.deleteAllProducts desde otro módulo.",
+  "initial": "ProductsService.deleteAllProducts borra todos los productos y, por la cascada, sus imágenes (lección 146). Prefijo global api.",
+  "certainty": "El texto de retorno 'SEED EXECUTED' es aproximado («seed execute»). La clase ProductsModule se muestra parcial; sus imports previos se heredan de la sección.",
+  "evidence": [
+    {
+      "id": "E13",
+      "line": 25,
+      "phrase": "Create Query Builder",
+      "change": "deleteAllProducts: createQueryBuilder('product').delete().where({}).execute().",
+      "certainty": "alta",
+      "source": "Sección 11 Relaciones en TypeORM/146. Eliminación en cascada.md"
+    },
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "Las API Slash Shift",
+      "change": "Endpoint GET /api/seed.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "teníamos que borrar todos los productos anteriores",
+      "change": "Purgar antes de insertar para no chocar con títulos únicos.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 15,
+      "phrase": "generate resource se va a llamar Speed",
+      "change": "nest g res seed --no-spec.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 17,
+      "phrase": "Si voy a ponerle run sin.",
+      "change": "Método runSeed llamado desde el GET.",
+      "certainty": "media"
+    },
+    {
+      "id": "E5",
+      "line": 19,
+      "phrase": "Execute seed return seed execute",
+      "change": "runSeed devuelve un texto de confirmación.",
+      "certainty": "media"
+    },
+    {
+      "id": "E6",
+      "line": 21,
+      "phrase": "Insert New Products",
+      "change": "Método privado insertNewProducts.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E7",
+      "line": 23,
+      "phrase": "voy a poner un return true",
+      "change": "insertNewProducts devuelve true.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 27,
+      "phrase": "exportar mi product service",
+      "change": "ProductsModule exports ProductsService.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 29,
+      "phrase": "exporte el módulo de Type o RM Moller",
+      "change": "También exporta TypeOrmModule para compartir repositorios.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 31,
+      "phrase": "Mi product. Módulo",
+      "change": "SeedModule imports: [ProductsModule].",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 33,
+      "phrase": "Se borró en los dos lugares",
+      "change": "Tras la semilla no quedan productos ni imágenes.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 35,
+      "phrase": "Los módulos son encapsulados",
+      "change": "Cada módulo decide qué compartir.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Generar el recurso y dejar un GET",
+      "code": "import { Controller, Get } from '@nestjs/common';\nimport { SeedService } from './seed.service';\n\n@Controller('seed')\nexport class SeedController {\n  constructor(private readonly seedService: SeedService) {}\n\n  @Get()\n  executeSeed() {\n    return this.seedService.runSeed();\n  }\n}",
+      "why": "Mismo patrón que en el Pokedex: controlador delgado.",
+      "check": "GET http://localhost:3000/api/seed responde.",
+      "evidence": [
+        "E1",
+        "E3",
+        "E4"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Servicio que purga los productos",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { ProductsService } from '../products/products.service';\n\n@Injectable()\nexport class SeedService {\n  constructor(private readonly productsService: ProductsService) {}\n\n  async runSeed() {\n    await this.insertNewProducts();\n    return 'SEED EXECUTED';\n  }\n\n  private async insertNewProducts() {\n    await this.productsService.deleteAllProducts();\n\n    return true;\n  }\n}\n\n\n// Miembro de ProductsService creado en la lección 146\nasync deleteAllProducts() {\n  const query = this.productRepository.createQueryBuilder('product');\n\n  try {\n    return await query.delete().where({}).execute();\n  } catch (error) {\n    this.handleDBExceptions(error);\n  }\n}",
+      "why": "La semilla reutiliza el borrado masivo ya escrito en ProductsService.",
+      "check": "Falla hasta exportar el servicio.",
+      "evidence": [
+        "E13",
+        "E2",
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Exportar e importar",
+      "code": "@Module({\n  controllers: [ProductsController],\n  providers: [ProductsService],\n  imports: [TypeOrmModule.forFeature([Product, ProductImage])],\n  exports: [ProductsService, TypeOrmModule],\n})\nexport class ProductsModule {}\n\n\nimport { Module } from '@nestjs/common';\nimport { ProductsModule } from '../products/products.module';\nimport { SeedController } from './seed.controller';\nimport { SeedService } from './seed.service';\n\n@Module({\n  controllers: [SeedController],\n  providers: [SeedService],\n  imports: [ProductsModule],\n})\nexport class SeedModule {}",
+      "why": "Exportar ProductsService y TypeOrmModule permite usar servicio y repositorios desde otros módulos.",
+      "check": "Tras GET /api/seed las tablas de productos e imágenes quedan vacías.",
+      "evidence": [
+        "E8",
+        "E9",
+        "E10",
+        "E11",
+        "E12"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.controller.ts",
+      "language": "ts",
+      "code": "import { Controller, Get } from '@nestjs/common';\nimport { SeedService } from './seed.service';\n\n@Controller('seed')\nexport class SeedController {\n  constructor(private readonly seedService: SeedService) {}\n\n  @Get()\n  executeSeed() {\n    return this.seedService.runSeed();\n  }\n}",
+      "provenance": "E1, E4"
+    },
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { ProductsService } from '../products/products.service';\n\n@Injectable()\nexport class SeedService {\n  constructor(private readonly productsService: ProductsService) {}\n\n  async runSeed() {\n    await this.insertNewProducts();\n    return 'SEED EXECUTED';\n  }\n\n  private async insertNewProducts() {\n    await this.productsService.deleteAllProducts();\n\n    return true;\n  }\n}",
+      "provenance": "E5–E7"
+    },
+    {
+      "path": "src/seed/seed.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { ProductsModule } from '../products/products.module';\nimport { SeedController } from './seed.controller';\nimport { SeedService } from './seed.service';\n\n@Module({\n  controllers: [SeedController],\n  providers: [SeedService],\n  imports: [ProductsModule],\n})\nexport class SeedModule {}",
+      "provenance": "E10"
+    },
+    {
+      "path": "src/products/products.module.ts — exports",
+      "language": "ts",
+      "code": "@Module({\n  controllers: [ProductsController],\n  providers: [ProductsService],\n  imports: [TypeOrmModule.forFeature([Product, ProductImage])],\n  exports: [ProductsService, TypeOrmModule],\n})\nexport class ProductsModule {}",
+      "provenance": "E8, E9"
+    },
+    {
+      "path": "src/products/products.service.ts — deleteAllProducts (lección 146)",
+      "language": "ts",
+      "code": "// Miembro de ProductsService creado en la lección 146\nasync deleteAllProducts() {\n  const query = this.productRepository.createQueryBuilder('product');\n\n  try {\n    return await query.delete().where({}).execute();\n  } catch (error) {\n    this.handleDBExceptions(error);\n  }\n}",
+      "provenance": "E13"
+    }
+  ],
+  "temporary": "",
+  "mental": "La semilla orquesta servicios de otros módulos: primero purga con el método del dominio y después insertará."
+}

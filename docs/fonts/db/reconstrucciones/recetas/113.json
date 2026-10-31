@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "previous": [
+    "Sección 9 Seed Data - Cargar y purgar base de datos/112. Seed - Paso 1 Protección.md"
+  ],
+  "source": "Sección 9 Seed Data - Cargar y purgar base de datos/113. Seed - Paso 2 Borrar registros anteriores.md",
+  "objective": "Purgar los datos antes de sembrar: inyectar los repositorios de Item y User en SeedService y borrar primero items y luego usuarios para respetar la integridad referencial.",
+  "initial": "SeedService protegido contra producción (lección 112); users e items exportan TypeOrmModule (lección 111).",
+  "certainty": "Transcripción por reconocimiento de voz (\"Cid\"/\"sid\"/\"zed\" = seed, \"Sprout\"/\"Broad\" = isProd/prod). Proyecto Anylist con TypeORM y PostgreSQL (curso de 2022). El código se ensambla desde las explicaciones.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "integridad referencial",
+      "change": "Borrar en el orden que permitan las claves foráneas; deleteDatabase borra filas, no la base.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "borrar primero los E los ítems",
+      "change": "Orden: items y después users; SeedModule importa UsersModule e ItemsModule.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "inyector repositorio",
+      "change": "@InjectRepository de @nestjs/typeorm.",
+      "certainty": "media"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "Items repositorio",
+      "change": "itemsRepository: Repository<Item> y usersRepository: Repository<User>.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "Con un objeto vacío",
+      "change": "createQueryBuilder().delete().where({}).execute() borra todo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 25,
+      "phrase": "desapareció",
+      "change": "El registro basura creado con signup desaparece al ejecutar el seed.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Importar los módulos",
+      "code": "import { Module } from '@nestjs/common';\nimport { ConfigModule } from '@nestjs/config';\nimport { ItemsModule } from '../items/items.module';\nimport { UsersModule } from '../users/users.module';\nimport { SeedResolver } from './seed.resolver';\nimport { SeedService } from './seed.service';\n\n@Module({\n  providers: [SeedResolver, SeedService],\n  imports: [ConfigModule, ItemsModule, UsersModule],\n})\nexport class SeedModule {}",
+      "why": "Importar UsersModule e ItemsModule da acceso a sus servicios y repositorios exportados.",
+      "check": "Compila.",
+      "evidence": [
+        "E2"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Inyectar repositorios",
+      "code": "@InjectRepository(Item)\nprivate readonly itemsRepository: Repository<Item>,\n\n@InjectRepository(User)\nprivate readonly usersRepository: Repository<User>,",
+      "why": "El seed controla las consultas directamente sin ensuciar los servicios de negocio.",
+      "check": "Compila.",
+      "evidence": [
+        "E3",
+        "E4"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Purgar en orden",
+      "code": "async deleteDatabase() {\n  await this.itemsRepository.createQueryBuilder().delete().where({}).execute();\n  await this.usersRepository.createQueryBuilder().delete().where({}).execute();\n}",
+      "why": "Los items dependen de usuarios: borrar usuarios primero viola la FK.",
+      "check": "Crear un usuario basura con signup, ejecutar executeSeed y comprobar que desaparece.",
+      "evidence": [
+        "E1",
+        "E5",
+        "E6"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/seed/seed.service.ts",
+      "language": "ts",
+      "code": "import { Injectable, UnauthorizedException } from '@nestjs/common';\nimport { ConfigService } from '@nestjs/config';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { Item } from '../items/entities/item.entity';\nimport { User } from '../users/entities/user.entity';\n\n@Injectable()\nexport class SeedService {\n  private isProd: boolean;\n\n  constructor(\n    private readonly configService: ConfigService,\n\n    @InjectRepository(Item)\n    private readonly itemsRepository: Repository<Item>,\n\n    @InjectRepository(User)\n    private readonly usersRepository: Repository<User>,\n  ) {\n    this.isProd = configService.get('STATE') === 'prod';\n  }\n\n  async executeSeed() {\n    if (this.isProd) {\n      throw new UnauthorizedException('We cannot run SEED on Prod');\n    }\n\n    // Limpiar la base de datos BORRAR TODO\n    await this.deleteDatabase();\n\n    // Crear usuarios\n\n    // Crear items\n\n    return true;\n  }\n\n  async deleteDatabase() {\n    // borrar items\n    await this.itemsRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n\n    // borrar users\n    await this.usersRepository.createQueryBuilder()\n      .delete()\n      .where({})\n      .execute();\n  }\n}",
+      "provenance": "Lección 112; E1–E6"
+    },
+    {
+      "path": "src/seed/seed.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { ConfigModule } from '@nestjs/config';\nimport { ItemsModule } from '../items/items.module';\nimport { UsersModule } from '../users/users.module';\nimport { SeedResolver } from './seed.resolver';\nimport { SeedService } from './seed.service';\n\n@Module({\n  providers: [SeedResolver, SeedService],\n  imports: [ConfigModule, ItemsModule, UsersModule],\n})\nexport class SeedModule {}",
+      "provenance": "E2; ConfigModule de la lección 112"
+    }
+  ],
+  "temporary": "Usuario \"cualquier cosa\" creado con signup solo para comprobar el borrado.",
+  "mental": "Purgar = borrar hijos antes que padres, desde repositorios inyectados en el módulo seed, solo fuera de producción."
+}

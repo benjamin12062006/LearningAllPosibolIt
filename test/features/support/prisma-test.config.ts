@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'prisma/config';
 
-const url = new URL(process.env.POSTGRES_MIGRATION_DATABASE_URL ?? '');
+const url = new URL(process.env.DATABASE_URL ?? '');
 if (
   url.protocol !== 'postgresql:' ||
   url.hostname !== '127.0.0.1' ||
