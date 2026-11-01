@@ -94,6 +94,8 @@ y regla de profundidad. Los módulos de negocio no conocen GraphQL; solo exporta
 mutation { createProject(input: { name: "Tienda", country: "BO", currency: "BOB", channelProfile: google_merchant }) { id } }
 mutation { updateProject(id: "…", input: { name: "Nuevo" }) { id } }
 mutation { updateMe(input: { displayName: "Ana" }) { id } }
+mutation { deleteImport(projectId: "…", id: "…") }
+mutation { deleteProject(id: "…") }
 ```
 
 Límites: paginación `limit` 1–100 (20 por defecto), profundidad máxima 6, sin batching,
@@ -211,6 +213,16 @@ Los valores permanecen como strings, incluidos `000123`, espacios y precios orig
 
 Al existir cualquier snapshot, cambiar país/moneda/canal responde `409 PROJECT_CONFIGURATION_LOCKED`; renombrar sigue permitido. Repetir POST crea otra importación. Los errores de estas rutas incluyen `code`, `message` y `requestId`; la adopción bilingüe global sigue pendiente de su plan.
 
+### Eliminación
+
+- `DELETE /api/v1/projects/:projectId/imports/:snapshotId` → `204`: borra una importación terminada (`succeeded` o `failed`); sus filas y su trabajo se borran en cascada.
+- `DELETE /api/v1/projects/:projectId` → `204`: borra el proyecto con todas sus importaciones.
+- En GraphQL: `deleteImport(projectId, id)` y `deleteProject(id)`, que devuelven `true` y siguen las mismas reglas.
+- Con una importación en cola o en curso, ambas responden `409 IMPORT_IN_PROGRESS`. Un recurso ajeno o inexistente responde `404`, igual que en las lecturas.
+- El borrado es definitivo. Los archivos se retiran del disco después del commit; si eso falla, el borrado no se deshace y `ArtifactCleanupService` retira los archivos sin referencia (con más de una hora) en el siguiente arranque.
+- Tras borrar la última importación, la configuración del proyecto se puede volver a cambiar.
+- No hay borrado de la cuenta (`DELETE /users/me`) ni retención automática: siguen como decisiones abiertas del [plan db/03](docs/plans/db/03-plan-eliminacion-de-datos.md).
+
 **Operación inicial:** una sola instancia API/worker y una importación activa. El worker consulta trabajos persistidos, espera lotes y reconcilia running interrumpidos al arrancar. Configurar `CATALOG_IMPORT_ROOT` en un volumen privado persistente; por defecto usa `.data/catalog-import`, excluido de Git. No montarlo como estático. La finalización sincroniza archivo y directorio; confirmar persistencia y semántica del volumen elegido antes del piloto.
 
 Los temporales rechazados se retiran. Los archivos referenciados se conservan; un commit incierto con base inaccesible también conserva el final hasta comprobar referencias. No hay borrado automático por antigüedad: acordar retención y revisar `artifact_key` en `catalog_snapshots` antes de retirar un final. Evitar limpieza del volumen durante cargas activas.
@@ -252,15 +264,20 @@ El segundo comando debe responder `204` y permitir ese origen. El frontend todav
 src/
 ├── main.ts
 ├── app.module.ts
-├── auth/
-├── database/
+├── configure-http.ts
+├── auth/            guard de Descope y @CurrentIdentity()
+├── common/http/     códigos y mensajes de error, paginación, validación
+├── database/        conexión a Neon y PrismaService
 ├── users/
-└── projects/
-    ├── projects.module.ts
-    ├── projects.controller.ts
-    ├── projects.service.ts
-    ├── projects.repository.ts
-    └── projects.dto.ts
+├── projects/
+│   ├── projects.module.ts
+│   ├── projects.controller.ts
+│   ├── projects.service.ts
+│   ├── projects.repository.ts
+│   ├── projects.dto.ts
+│   └── projects.types.ts
+├── catalog-import/  subida, cola, worker, parser CSV, archivos y borrado
+└── graphql/         capa GraphQL completa (GraphqlApiModule y resolvers)
 ```
 
 El recorrido para proyectos es `guard de Descope → controller → servicio → usuario local → repositorio → Prisma/pg → Neon PostgreSQL`.
@@ -268,7 +285,7 @@ El recorrido para proyectos es `guard de Descope → controller → servicio →
 - `main.ts` crea la aplicación y configura el puerto; `configure-http.ts` comparte pipes, prefijo, versión y CORS con las pruebas HTTP.
 - `AppModule` reúne los módulos de la aplicación.
 - `ProjectsModule` agrupa proyectos y exporta `ProjectsService` para la futura importación.
-- `ProjectsController` declara `@Controller('projects')`, recibe peticiones y delega el trabajo.
+- `ProjectsController` declara `@Controller('projects')`, recibe peticiones y delega el trabajo. Los controladores leen la identidad con `@CurrentIdentity()`.
 - Los DTOs y el `ValidationPipe` global validan el cuerpo; `ProjectsService` resuelve al usuario local y `ProjectsRepository` consulta PostgreSQL mediante `$queryRaw` parametrizado, filtrando por propietario.
 
 Seguimos con módulos por funcionalidad. Los perfiles y espacios ya son persistentes; formularios, membresías y permisos compartidos vendrán en etapas posteriores.

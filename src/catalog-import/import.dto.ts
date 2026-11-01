@@ -1,11 +1,14 @@
 import { IsIn, IsString, Matches, MaxLength } from 'class-validator';
+import type { ImportDelimiter } from './import.types.js';
+
+const DELIMITERS: ImportDelimiter[] = ['comma', 'semicolon'];
 
 export class ImportCatalogDto {
   @IsString()
-  @Matches(/\S/)
+  @Matches(/\S/) // al menos un carácter que no sea espacio
   @MaxLength(128)
   idColumn!: string;
 
-  @IsIn(['comma', 'semicolon'])
-  delimiter: 'comma' | 'semicolon' = 'comma';
+  @IsIn(DELIMITERS)
+  delimiter: ImportDelimiter = 'comma';
 }

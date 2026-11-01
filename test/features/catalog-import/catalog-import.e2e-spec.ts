@@ -462,4 +462,125 @@ describe('CatalogImport HTTP multipart con Nest y persistencia reales', () => {
       `${JSON.stringify({ benchmark: 'catalog-http-during-import', bytes: content.length, statusLatencyMs })}\n`,
     );
   });
+
+  describe('DELETE', () => {
+    const remove = (path: string, session = token) =>
+      request(app.getHttpServer())
+        .delete(path)
+        .auth(session, { type: 'bearer' });
+    const read = (path: string, session = token) =>
+      request(app.getHttpServer()).get(path).auth(session, { type: 'bearer' });
+    const importPath = (snapshotId: string, project = projectId) =>
+      `/api/v1/projects/${project}/imports/${snapshotId}`;
+    const artifacts = () => readdir(join(root, 'artifacts'));
+
+    async function finishedImport() {
+      const accepted: Accepted = (await upload().expect(202)).body;
+      await worker.runUntilIdle();
+      return accepted;
+    }
+
+    it('borra una importación terminada: 204, después 404 y sin su archivo', async () => {
+      const accepted = await finishedImport();
+      expect(await artifacts()).toHaveLength(1);
+
+      await remove(importPath(accepted.snapshotId))
+        .expect(204)
+        .expect(({ text }) => expect(text).toBe(''));
+      await read(importPath(accepted.snapshotId)).expect(404);
+      await read(accepted.statusUrl).expect(404);
+      expect(await artifacts()).toEqual([]);
+    });
+
+    it('responde 409 mientras la importación está en cola y la borra al terminar', async () => {
+      const accepted: Accepted = (await upload().expect(202)).body;
+      for (const path of [
+        importPath(accepted.snapshotId),
+        `/api/v1/projects/${projectId}`,
+      ]) {
+        await remove(path)
+          .expect(409)
+          .expect(({ body }) =>
+            expect(body).toMatchObject({
+              code: 'IMPORT_IN_PROGRESS',
+              message: { es: expect.any(String), en: expect.any(String) },
+            }),
+          );
+      }
+      expect(await prisma.catalogSnapshot.count()).toBe(1);
+
+      await worker.runUntilIdle();
+      await remove(importPath(accepted.snapshotId)).expect(204);
+    });
+
+    it('Bob recibe 404 al intentar borrar recursos de Alice', async () => {
+      const accepted = await finishedImport();
+      await remove(importPath(accepted.snapshotId), 'bob-session')
+        .expect(404)
+        .expect(({ body }) => expect(body.code).toBe('IMPORT_NOT_FOUND'));
+      await remove(
+        importPath(accepted.snapshotId, bobProjectId),
+        'bob-session',
+      ).expect(404);
+      await remove(`/api/v1/projects/${projectId}`, 'bob-session')
+        .expect(404)
+        .expect(({ body }) => expect(body.code).toBe('PROJECT_NOT_FOUND'));
+      expect(await prisma.catalogSnapshot.count()).toBe(1);
+      expect(await artifacts()).toHaveLength(1);
+    });
+
+    it('borra el proyecto con sus importaciones y archivos sin tocar otros proyectos', async () => {
+      await finishedImport();
+      await finishedImport();
+      expect(await artifacts()).toHaveLength(2);
+
+      await remove(`/api/v1/projects/${projectId}`).expect(204);
+      await read(`/api/v1/projects/${projectId}`).expect(404);
+      expect(await artifacts()).toEqual([]);
+      expect(await prisma.catalogSnapshot.count()).toBe(0);
+      await read(`/api/v1/projects/${bobProjectId}`, 'bob-session').expect(200);
+    });
+
+    it('tras borrar la última importación se puede volver a cambiar la configuración', async () => {
+      const accepted = await finishedImport();
+      await remove(importPath(accepted.snapshotId)).expect(204);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/projects/${projectId}`)
+        .auth(token, { type: 'bearer' })
+        .send({
+          country: 'BO',
+          currency: 'BOB',
+          channelProfile: 'google_merchant',
+        })
+        .expect(200)
+        .expect(({ body }) =>
+          expect(body.project).toMatchObject({
+            country: 'BO',
+            currency: 'BOB',
+            configurationStatus: 'ready',
+          }),
+        );
+    });
+
+    it('valida los UUID, exige sesión y CORS permite DELETE', async () => {
+      await remove('/api/v1/projects/no-es-uuid')
+        .expect(400)
+        .expect(({ body }) => expect(body.code).toBe('INVALID_UUID'));
+      await remove(importPath('no-es-uuid'))
+        .expect(400)
+        .expect(({ body }) => expect(body.code).toBe('INVALID_UUID'));
+      await request(app.getHttpServer())
+        .delete(`/api/v1/projects/${projectId}`)
+        .expect(401);
+      await request(app.getHttpServer())
+        .options(`/api/v1/projects/${projectId}`)
+        .set('Origin', 'http://localhost:4321')
+        .set('Access-Control-Request-Method', 'DELETE')
+        .expect(204)
+        .expect(({ headers }) =>
+          expect(headers['access-control-allow-methods']).toContain('DELETE'),
+        );
+    });
+  });
 });

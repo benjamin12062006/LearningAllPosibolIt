@@ -56,3 +56,14 @@ Authorization: Bearer {{TEST_SESSION_JWT}}
 {
   "name": "Mi tienda renovada"
 }
+
+### Borrar el proyecto con todas sus importaciones y archivos (204). Irreversible.
+# Con una importación en cola o en curso responde 409 IMPORT_IN_PROGRESS.
+# @name deleteProject
+DELETE {{apiUrl}}/projects/{{projectId}}
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+> {%
+  client.assert(response.status === 204, "No se borró el proyecto (se esperaba HTTP 204)");
+%}

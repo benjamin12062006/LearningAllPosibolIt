@@ -6,13 +6,19 @@ import {
   it,
   jest,
 } from '@jest/globals';
+import { Logger } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { apiError } from '../../../src/common/http/api-error.js';
 import { CatalogImportService } from '../../../src/catalog-import/catalog-import.service.js';
 import { CatalogImportRepository } from '../../../src/catalog-import/catalog-import.repository.js';
 import { CatalogImportWorker } from '../../../src/catalog-import/catalog-import.worker.js';
 import { ArtifactStore } from '../../../src/catalog-import/artifact.store.js';
 import { UsersService } from '../../../src/users/users.service.js';
-import { projectFixture, userFixture } from '../support/project-fixtures.js';
+import {
+  alice,
+  projectFixture,
+  userFixture,
+} from '../support/project-fixtures.js';
 
 describe('Aceptación y compensación de importaciones', () => {
   let module: TestingModule;
@@ -130,5 +136,91 @@ describe('Aceptación y compensación de importaciones', () => {
     });
     expect(repository.accept).not.toHaveBeenCalled();
     expect(store.removeArtifact).not.toHaveBeenCalled();
+  });
+});
+
+describe('Borrado de importaciones y proyectos', () => {
+  let module: TestingModule;
+  let service: CatalogImportService;
+  let repository: jest.Mocked<
+    Pick<CatalogImportRepository, 'deleteSnapshot' | 'deleteProject'>
+  >;
+  let store: jest.Mocked<Pick<ArtifactStore, 'removeArtifact'>>;
+  const steps: string[] = [];
+
+  beforeEach(async () => {
+    steps.length = 0;
+    repository = {
+      deleteSnapshot: jest
+        .fn<CatalogImportRepository['deleteSnapshot']>()
+        .mockImplementation(async (_owner, _project, snapshotId) => {
+          steps.push('commit');
+          return { snapshotId, artifactKey: 'k1.csv' };
+        }),
+      deleteProject: jest
+        .fn<CatalogImportRepository['deleteProject']>()
+        .mockImplementation(async () => {
+          steps.push('commit');
+          return [
+            { snapshotId: 's1', artifactKey: 'k1.csv' },
+            { snapshotId: 's2', artifactKey: 'k2.csv' },
+          ];
+        }),
+    };
+    store = {
+      removeArtifact: jest
+        .fn<ArtifactStore['removeArtifact']>()
+        .mockImplementation(async (key) => {
+          steps.push(`archivo ${key}`);
+        }),
+    };
+    module = await Test.createTestingModule({
+      providers: [
+        CatalogImportService,
+        { provide: CatalogImportRepository, useValue: repository },
+        { provide: ArtifactStore, useValue: store },
+        { provide: CatalogImportWorker, useValue: {} },
+        {
+          provide: UsersService,
+          useValue: { findCurrent: async () => userFixture() },
+        },
+      ],
+    }).compile();
+    service = module.get(CatalogImportService);
+  });
+  afterEach(async () => {
+    await module.close();
+  });
+
+  it('retira los archivos solo después de que la base confirma el borrado', async () => {
+    await service.deleteProject(alice, projectFixture().id);
+    expect(steps).toEqual(['commit', 'archivo k1.csv', 'archivo k2.csv']);
+    expect(repository.deleteProject).toHaveBeenCalledWith(
+      userFixture().id,
+      projectFixture().id,
+    );
+  });
+
+  it('si la base rechaza el borrado no toca ningún archivo', async () => {
+    repository.deleteSnapshot.mockRejectedValue(apiError('IMPORT_IN_PROGRESS'));
+    await expect(
+      service.deleteImport(alice, projectFixture().id, 's1'),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(store.removeArtifact).not.toHaveBeenCalled();
+  });
+
+  it('un fallo al retirar el archivo no deshace el borrado ni falla la petición', async () => {
+    store.removeArtifact.mockRejectedValue(new Error('EIO'));
+    const logError = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(
+      service.deleteImport(alice, projectFixture().id, 's1'),
+    ).resolves.toBeUndefined();
+    expect(logError).toHaveBeenCalledWith({
+      code: 'IMPORT_ORPHAN_RETAINED',
+      snapshotId: 's1',
+    });
   });
 });

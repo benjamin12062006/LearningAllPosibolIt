@@ -10,8 +10,9 @@ import type { INestApplication } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLSchemaHost } from '@nestjs/graphql';
 import { Test } from '@nestjs/testing';
-import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { printSchema } from 'graphql';
 import request from 'supertest';
 import { DescopeService } from '../../../src/auth/descope.service.js';
@@ -329,6 +330,166 @@ describe('GraphQL sobre los servicios, el guard y la persistencia reales', () =>
       'bob-session',
     );
     expect(foreign.extensions.code).toBe('IMPORT_NOT_FOUND');
+  });
+
+  describe('borrado', () => {
+    const artifactsDir = resolve('.test-build/graphql-artifacts/artifacts');
+    const deleteImport = `mutation($p: ID!, $s: ID!) { deleteImport(projectId: $p, id: $s) }`;
+    const deleteProject = `mutation($id: ID!) { deleteProject(id: $id) }`;
+
+    /** Inserta una importación con su archivo; `queued` simula una en curso. */
+    async function insertImport(
+      projectId: string,
+      jobStatus: 'succeeded' | 'queued',
+    ) {
+      const snapshotId = randomUUID();
+      const artifactKey = `${randomUUID()}.csv`;
+      await writeFile(join(artifactsDir, artifactKey), 'id\n1\n');
+      const finished = jobStatus === 'succeeded';
+      await database.connection.pool.query(
+        `INSERT INTO estadistica_forms.catalog_snapshots
+          (id, project_id, id_column, delimiter, headers, source_hash, artifact_key, byte_size,
+           original_name, project_configuration, status, row_count, created_at, finished_at)
+         VALUES ($1, $2, 'id', 'comma', $3, '${'a'.repeat(64)}', $4, 5, 'a.csv', '{}', $5, $6,
+           '2026-10-30T10:00:00.000Z', $7)`,
+        [
+          snapshotId,
+          projectId,
+          finished ? '["id"]' : null,
+          artifactKey,
+          finished ? 'ready' : 'pending',
+          finished ? 1 : null,
+          finished ? '2026-10-30T10:00:01.000Z' : null,
+        ],
+      );
+      if (finished) {
+        await database.connection.pool.query(
+          `INSERT INTO estadistica_forms.catalog_rows (snapshot_id, source_row, external_id, original_values)
+           VALUES ($1, 1, '1', '{"id":"1"}')`,
+          [snapshotId],
+        );
+      }
+      await database.connection.pool.query(
+        `INSERT INTO estadistica_forms.catalog_import_jobs
+          (id, project_id, snapshot_id, request_id, status, processed_rows, created_at, started_at, finished_at)
+         VALUES ($1, $2, $3, 'r', $4, $5, '2026-10-30T10:00:00.000Z', $6, $7)`,
+        [
+          randomUUID(),
+          projectId,
+          snapshotId,
+          jobStatus,
+          finished ? 1 : 0,
+          finished ? '2026-10-30T10:00:00.500Z' : null,
+          finished ? '2026-10-30T10:00:01.000Z' : null,
+        ],
+      );
+      return { snapshotId, artifactKey };
+    }
+
+    it('deleteImport borra una importación terminada, sus filas y su archivo', async () => {
+      const { createProject: project } = await ok(createProject, { input });
+      const { snapshotId, artifactKey } = await insertImport(
+        project.id,
+        'succeeded',
+      );
+
+      const data = await ok(deleteImport, { p: project.id, s: snapshotId });
+      expect(data.deleteImport).toBe(true);
+      expect(await prisma.catalogRow.count({ where: { snapshotId } })).toBe(0);
+      expect(
+        await prisma.catalogImportJob.count({ where: { snapshotId } }),
+      ).toBe(0);
+      expect(await readdir(artifactsDir)).not.toContain(artifactKey);
+
+      const gone = await failure(
+        'query($p: ID!, $s: ID!) { importSnapshot(projectId: $p, id: $s) { id } }',
+        { p: project.id, s: snapshotId },
+      );
+      expect(gone.extensions.code).toBe('IMPORT_NOT_FOUND');
+      await request(app.getHttpServer())
+        .get(`/api/v1/projects/${project.id}/imports/${snapshotId}`)
+        .auth('alice-session', { type: 'bearer' })
+        .expect(404);
+    });
+
+    it('deleteProject borra el proyecto con sus importaciones y archivos', async () => {
+      const { createProject: project } = await ok(createProject, { input });
+      const { createProject: other } = await ok(createProject, { input });
+      const first = await insertImport(project.id, 'succeeded');
+      const second = await insertImport(project.id, 'succeeded');
+
+      expect((await ok(deleteProject, { id: project.id })).deleteProject).toBe(
+        true,
+      );
+      const gone = await failure(
+        'query($id: ID!) { project(id: $id) { id } }',
+        {
+          id: project.id,
+        },
+      );
+      expect(gone.extensions.code).toBe('PROJECT_NOT_FOUND');
+      const files = await readdir(artifactsDir);
+      expect(files).not.toContain(first.artifactKey);
+      expect(files).not.toContain(second.artifactKey);
+      expect(
+        (
+          await ok('query($id: ID!) { project(id: $id) { id } }', {
+            id: other.id,
+          })
+        ).project.id,
+      ).toBe(other.id);
+    });
+
+    it('con una importación en curso responde IMPORT_IN_PROGRESS y no borra nada', async () => {
+      const { createProject: project } = await ok(createProject, { input });
+      const { snapshotId, artifactKey } = await insertImport(
+        project.id,
+        'queued',
+      );
+
+      const importError = await failure(deleteImport, {
+        p: project.id,
+        s: snapshotId,
+      });
+      expect(importError.extensions).toMatchObject({
+        code: 'IMPORT_IN_PROGRESS',
+        message: { es: expect.any(String), en: expect.any(String) },
+      });
+      const projectError = await failure(deleteProject, { id: project.id });
+      expect(projectError.extensions.code).toBe('IMPORT_IN_PROGRESS');
+      expect(
+        await prisma.catalogSnapshot.count({ where: { id: snapshotId } }),
+      ).toBe(1);
+      expect(await readdir(artifactsDir)).toContain(artifactKey);
+    });
+
+    it('no permite borrar recursos de otro usuario y valida los UUID', async () => {
+      const { createProject: project } = await ok(createProject, { input });
+      const { snapshotId } = await insertImport(project.id, 'succeeded');
+
+      const foreignImport = await failure(
+        deleteImport,
+        { p: project.id, s: snapshotId },
+        'bob-session',
+      );
+      expect(foreignImport.extensions.code).toBe('IMPORT_NOT_FOUND');
+      const foreignProject = await failure(
+        deleteProject,
+        { id: project.id },
+        'bob-session',
+      );
+      expect(foreignProject.extensions.code).toBe('PROJECT_NOT_FOUND');
+      expect(
+        await prisma.catalogSnapshot.count({ where: { id: snapshotId } }),
+      ).toBe(1);
+
+      const uuid = await failure(
+        'mutation { deleteProject(id: "no-es-uuid") }',
+      );
+      expect(uuid.extensions.code).toBe('INVALID_UUID');
+      const missing = await failure(deleteProject, { id: project.id }, '');
+      expect(missing.extensions.code).toBe('AUTH_SESSION_REQUIRED');
+    });
   });
 
   it('normaliza errores de análisis y desactiva el batching', async () => {

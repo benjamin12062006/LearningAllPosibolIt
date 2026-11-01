@@ -1,4 +1,3 @@
-import { ErrorCodes } from '../common/http/error-codes.js';
 import {
   Body,
   Controller,
@@ -7,17 +6,20 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
+import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
-import { CreateProjectDto, UpdateProjectDto } from './projects.dto.js';
-import { ProjectsService } from './projects.service.js';
-import { apiError } from '../common/http/api-error.js';
 import { PaginationQueryDto } from '../common/http/pagination.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
+import { CreateProjectDto, UpdateProjectDto } from './projects.dto.js';
+import { ProjectsService } from './projects.service.js';
 
+/**
+ * `DELETE /projects/:id` está en `CatalogImportController`: borrar un proyecto
+ * también borra sus importaciones y sus archivos, que son de ese módulo.
+ */
 @Controller('projects')
 @UseGuards(DescopeSessionGuard)
 export class ProjectsController {
@@ -25,51 +27,35 @@ export class ProjectsController {
 
   @Get()
   async findAll(
-    @Req() request: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
     @Query() query: PaginationQueryDto,
   ) {
-    const { items, page } = await this.projectsService.findAll(
-      identityOf(request),
-      query,
-    );
+    const { items, page } = await this.projectsService.findAll(identity, query);
     return { projects: items, page };
   }
 
   @Post()
   async create(
-    @Req() request: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
     @Body() body: CreateProjectDto,
   ) {
-    return {
-      project: await this.projectsService.create(identityOf(request), body),
-    };
+    return { project: await this.projectsService.create(identity, body) };
   }
 
   @Get(':id')
   async findOne(
-    @Req() request: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
     @Param('id', uuidParamPipe('id')) id: string,
   ) {
-    return {
-      project: await this.projectsService.findOwned(identityOf(request), id),
-    };
+    return { project: await this.projectsService.findOwned(identity, id) };
   }
 
   @Patch(':id')
   async update(
-    @Req() request: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
     @Param('id', uuidParamPipe('id')) id: string,
     @Body() body: UpdateProjectDto,
   ) {
-    return {
-      project: await this.projectsService.update(identityOf(request), id, body),
-    };
+    return { project: await this.projectsService.update(identity, id, body) };
   }
-}
-
-function identityOf(request: AuthenticatedRequest) {
-  if (!request.authenticatedIdentity) {
-    throw apiError(ErrorCodes.INTERNAL_ERROR);
-  }
-  return request.authenticatedIdentity;
 }

@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 13 Autenticación de autorización/177. Custom Property Decorator - GetUser.md",
+  "previous": [
+    "Sección 13 Autenticación de autorización/175. Private Route - General.md"
+  ],
+  "objective": "Obtener el usuario autenticado en una ruta con un decorador de parámetro propio (GetUser) en lugar de leer la request completa, y lanzar un 500 si el guard no lo dejó en la request.",
+  "initial": "AuthController con la ruta GET /api/auth/private protegida por @UseGuards(AuthGuard()), que devuelve ok y un mensaje (lección 175). La estrategia JWT deja el usuario en request.user.",
+  "certainty": "Transcripción con ruido («Gry User» = GetUser, «Gard» = guard, «execute context» = ExecutionContext). El texto exacto del error es aproximado («user not found … request»). La ruta del archivo (auth/decorators/get-user.decorator.ts) se deduce de la narración.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "tengo que crearme un decorador de propiedad",
+      "change": "El CLI no genera decoradores de parámetro: se escribe a mano.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "primero tomemos la request",
+      "change": "Prueba temporal con @Req() para ver dónde está el usuario.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "en la request está el usuario",
+      "change": "La estrategia deja el usuario en request.user.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "si no pasamos por el Gard",
+      "change": "Sin guard no hay usuario: hace falta validarlo.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E5",
+      "line": 19,
+      "phrase": "custom property decorador",
+      "change": "Se prefiere un decorador propio a leer la request.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E6",
+      "line": 21,
+      "phrase": "Get user decorador",
+      "change": "Archivo auth/decorators/get-user.decorator.ts.",
+      "certainty": "media"
+    },
+    {
+      "id": "E7",
+      "line": 21,
+      "phrase": "sería muy fácil confundirse con la entidad",
+      "change": "Se llama GetUser y no User para no confundirlo con la entidad.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E8",
+      "line": 21,
+      "phrase": "create param decorador",
+      "change": "export const GetUser = createParamDecorator(...).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E9",
+      "line": 25,
+      "phrase": "lo que sea que retorne este param decorador",
+      "change": "El valor devuelto por el callback es el que recibe el parámetro.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E10",
+      "line": 27,
+      "phrase": "execute context",
+      "change": "El callback recibe (data, ctx: ExecutionContext).",
+      "certainty": "alta"
+    },
+    {
+      "id": "E11",
+      "line": 29,
+      "phrase": "idealmente ustedes van a querer mandarlo como un arreglo",
+      "change": "data recibe los argumentos del decorador.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E12",
+      "line": 33,
+      "phrase": "switch to http",
+      "change": "ctx.switchToHttp().getRequest() y user = req.user.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E13",
+      "line": 35,
+      "phrase": "Sería un error 500",
+      "change": "Si falta el usuario es un error del desarrollador del backend: 500.",
+      "certainty": "alta"
+    },
+    {
+      "id": "E14",
+      "line": 35,
+      "phrase": "user not found",
+      "change": "throw new InternalServerErrorException('User not found (request)').",
+      "certainty": "media"
+    },
+    {
+      "id": "E15",
+      "line": 37,
+      "phrase": "el desarrollador del backend cometió el error",
+      "change": "El 500 señala un uso del decorador fuera de una ruta autenticada.",
+      "certainty": "alta"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Ver dónde está el usuario",
+      "code": "@Get('private')\n@UseGuards(AuthGuard())\ntestingPrivateRoute(\n  @Req() request: Express.Request,\n) {\n  console.log({ user: request.user });\n\n  return {\n    ok: true,\n    message: 'Hola Mundo Private',\n  };\n}",
+      "why": "Antes de abstraer, se comprueba qué deja el guard en la request.",
+      "check": "La consola muestra request.user con los datos del usuario.",
+      "evidence": [
+        "E2",
+        "E3"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Crear el decorador de parámetro",
+      "code": "export const GetUser = createParamDecorator(\n  (data, ctx: ExecutionContext) => {\n    console.log({ data });\n    return 'Hola Mundo';\n  },\n);",
+      "why": "Muestra que lo que devuelve el callback es lo que llega al parámetro y qué contiene data.",
+      "check": "La respuesta muestra 'Hola Mundo'; con @GetUser('email') la consola muestra data = 'email'.",
+      "evidence": [
+        "E1",
+        "E5",
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E10",
+        "E11"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Devolver el usuario o lanzar un 500",
+      "code": "import {\n  createParamDecorator,\n  ExecutionContext,\n  InternalServerErrorException,\n} from '@nestjs/common';\n\nexport const GetUser = createParamDecorator(\n  (data, ctx: ExecutionContext) => {\n    const req = ctx.switchToHttp().getRequest();\n    const user = req.user;\n\n    if (!user)\n      throw new InternalServerErrorException('User not found (request)');\n\n    return user;\n  },\n);\n\n@Get('private')\n@UseGuards(AuthGuard())\ntestingPrivateRoute(\n  @GetUser() user: User,\n) {\n  return {\n    ok: true,\n    message: 'Hola Mundo Private',\n    user,\n  };\n}",
+      "why": "Usar el decorador fuera de una ruta con guard es un error de programación del backend, no del cliente.",
+      "check": "Con token válido la respuesta incluye al usuario; con otro usuario cambia la información.",
+      "evidence": [
+        "E4",
+        "E12",
+        "E13",
+        "E14",
+        "E15"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/auth/decorators/get-user.decorator.ts",
+      "language": "ts",
+      "code": "import {\n  createParamDecorator,\n  ExecutionContext,\n  InternalServerErrorException,\n} from '@nestjs/common';\n\nexport const GetUser = createParamDecorator(\n  (data, ctx: ExecutionContext) => {\n    const req = ctx.switchToHttp().getRequest();\n    const user = req.user;\n\n    if (!user)\n      throw new InternalServerErrorException('User not found (request)');\n\n    return user;\n  },\n);",
+      "provenance": "E6–E15"
+    },
+    {
+      "path": "src/auth/auth.controller.ts — ruta privada",
+      "language": "ts",
+      "code": "@Get('private')\n@UseGuards(AuthGuard())\ntestingPrivateRoute(\n  @GetUser() user: User,\n) {\n  return {\n    ok: true,\n    message: 'Hola Mundo Private',\n    user,\n  };\n}",
+      "provenance": "Lección 175; E9, E15"
+    }
+  ],
+  "temporary": "Lectura de @Req() con console.log y el retorno 'Hola Mundo' del decorador para entender data y ExecutionContext.",
+  "mental": "Un decorador de parámetro esconde de dónde sale el usuario y convierte su ausencia en un error explícito del backend (500)."
+}

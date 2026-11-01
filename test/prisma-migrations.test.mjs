@@ -21,6 +21,7 @@ test('Prisma despliega las migraciones PostgreSQL y no las repite', async () => 
         '20261025000100_configure_projects',
         '20261026000100_create_catalog_import',
         '20261030000100_index_catalog_snapshots_project',
+        '20261030000200_cascade_catalog_import_children',
       ],
     );
     assert.ok(migrations.every((migration) => migration.finished_at));

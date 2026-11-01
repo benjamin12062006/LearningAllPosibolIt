@@ -1,7 +1,7 @@
-import { ErrorCodes } from '../common/http/error-codes.js';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -11,14 +11,17 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
-import { CatalogImportService } from './catalog-import.service.js';
-import { ImportAccessGuard } from './import-access.guard.js';
-import { ImportCatalogDto } from './import.dto.js';
 import { apiError } from '../common/http/api-error.js';
+import { ErrorCodes } from '../common/http/error-codes.js';
 import { PaginationQueryDto } from '../common/http/pagination.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
+import { CatalogImportService } from './catalog-import.service.js';
+import { ImportAccessGuard } from './import-access.guard.js';
 import { ImportUploadInterceptor } from './import-upload.interceptor.js';
+import { ImportCatalogDto } from './import.dto.js';
 import type { ImportRequest } from './import.types.js';
 
 @Controller('projects/:projectId')
@@ -26,55 +29,76 @@ import type { ImportRequest } from './import.types.js';
 export class CatalogImportController {
   constructor(private readonly imports: CatalogImportService) {}
 
+  /**
+   * `ImportAccessGuard` comprueba el proyecto antes de recibir el archivo y
+   * `ImportUploadInterceptor` lo guarda en disco; ambos dejan sus datos en la request.
+   */
   @Post('imports')
   @HttpCode(202)
   @UseGuards(ImportAccessGuard)
   @UseInterceptors(ImportUploadInterceptor)
   accept(
-    @Req() req: ImportRequest,
+    @Req() request: ImportRequest,
     @Param('projectId', uuidParamPipe('projectId')) projectId: string,
     @Body() input: ImportCatalogDto,
   ) {
-    if (!req.importOwnerId || !req.file || !req.importRequestId)
+    const { importOwnerId, file, importRequestId } = request;
+    if (!importOwnerId || !file || !importRequestId) {
       throw apiError(ErrorCodes.INTERNAL_ERROR);
+    }
     return this.imports.accept(
-      req.importOwnerId,
+      importOwnerId,
       projectId,
-      req.file,
+      file,
       input,
-      req.importRequestId,
+      importRequestId,
     );
   }
 
   @Get('imports')
   list(
-    @Req() req: ImportRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
     @Param('projectId', uuidParamPipe('projectId')) projectId: string,
     @Query() query: PaginationQueryDto,
   ) {
-    return this.imports.list(identityOf(req), projectId, query);
-  }
-
-  @Get('jobs/:jobId')
-  findJob(
-    @Req() req: ImportRequest,
-    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
-    @Param('jobId', uuidParamPipe('jobId')) jobId: string,
-  ) {
-    return this.imports.findJob(identityOf(req), projectId, jobId);
+    return this.imports.list(identity, projectId, query);
   }
 
   @Get('imports/:snapshotId')
   findSnapshot(
-    @Req() req: ImportRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
     @Param('projectId', uuidParamPipe('projectId')) projectId: string,
     @Param('snapshotId', uuidParamPipe('snapshotId')) snapshotId: string,
   ) {
-    return this.imports.findSnapshot(identityOf(req), projectId, snapshotId);
+    return this.imports.findSnapshot(identity, projectId, snapshotId);
   }
-}
 
-function identityOf(req: ImportRequest) {
-  if (!req.authenticatedIdentity) throw apiError(ErrorCodes.INTERNAL_ERROR);
-  return req.authenticatedIdentity;
+  /** Borra el proyecto y sus importaciones (aquí porque también borra sus archivos). */
+  @Delete()
+  @HttpCode(204)
+  async deleteProject(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+  ) {
+    await this.imports.deleteProject(identity, projectId);
+  }
+
+  @Delete('imports/:snapshotId')
+  @HttpCode(204)
+  async deleteImport(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('snapshotId', uuidParamPipe('snapshotId')) snapshotId: string,
+  ) {
+    await this.imports.deleteImport(identity, projectId, snapshotId);
+  }
+
+  @Get('jobs/:jobId')
+  findJob(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('jobId', uuidParamPipe('jobId')) jobId: string,
+  ) {
+    return this.imports.findJob(identity, projectId, jobId);
+  }
 }

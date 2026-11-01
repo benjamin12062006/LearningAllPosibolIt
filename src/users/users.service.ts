@@ -1,9 +1,9 @@
-import { ErrorCodes } from '../common/http/error-codes.js';
 import { Injectable } from '@nestjs/common';
-import { apiError } from '../common/http/api-error.js';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
-import { UsersRepository } from './users.repository.js';
+import { apiError } from '../common/http/api-error.js';
+import { ErrorCodes } from '../common/http/error-codes.js';
 import type { UpdateProfileDto } from './users.dto.js';
+import { UsersRepository } from './users.repository.js';
 
 @Injectable()
 export class UsersService {

@@ -7,6 +7,7 @@ export type DatabaseConnection = Readonly<{
 export const DATABASE_SCHEMA = 'estadistica_forms';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const SECURE_SSL_MODES = ['require', 'verify-ca', 'verify-full'];
 
 export function resolveDatabaseConnection(
   configService: Pick<ConfigService, 'get'>,
@@ -23,14 +24,18 @@ export function resolveDatabaseConnection(
   if (!['postgresql:', 'postgres:'].includes(parsed.protocol)) {
     throw new Error('DATABASE_URL debe usar el protocolo postgresql://.');
   }
-  if (
-    !LOCAL_HOSTS.has(parsed.hostname) &&
-    !['require', 'verify-ca', 'verify-full'].includes(
-      parsed.searchParams.get('sslmode') ?? '',
-    )
-  ) {
+  if (requiresTls(parsed) && !usesTls(parsed)) {
     throw new Error('DATABASE_URL debe incluir sslmode=require.');
   }
 
   return { url };
+}
+
+/** Fuera de la máquina local, la conexión debe ir cifrada. */
+function requiresTls(url: URL) {
+  return !LOCAL_HOSTS.has(url.hostname);
+}
+
+function usesTls(url: URL) {
+  return SECURE_SSL_MODES.includes(url.searchParams.get('sslmode') ?? '');
 }

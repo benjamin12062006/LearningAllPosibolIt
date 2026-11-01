@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module.js';
 import { PrismaModule } from '../database/prisma.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
 import { UsersModule } from '../users/users.module.js';
+import { ArtifactCleanupService } from './artifact-cleanup.service.js';
 import { ArtifactStore } from './artifact.store.js';
 import { CatalogImportController } from './catalog-import.controller.js';
 import { CatalogImportRepository } from './catalog-import.repository.js';
@@ -21,6 +22,7 @@ import {
   controllers: [CatalogImportController],
   providers: [
     ArtifactStore,
+    ArtifactCleanupService,
     CatalogImportRepository,
     CatalogImportService,
     CatalogImportWorker,

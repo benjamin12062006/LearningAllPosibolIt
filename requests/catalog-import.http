@@ -45,3 +45,13 @@ Authorization: Bearer {{TEST_SESSION_JWT}}
 GET {{apiUrl}}/projects/{{projectId}}/imports/{{snapshotId}}
 Accept: application/json
 Authorization: Bearer {{TEST_SESSION_JWT}}
+
+### Borrar una importación terminada (204). Con el trabajo en cola o en curso: 409 IMPORT_IN_PROGRESS
+# @name deleteImport
+DELETE {{apiUrl}}/projects/{{projectId}}/imports/{{snapshotId}}
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+> {%
+  client.assert(response.status === 204, "No se borró la importación (se esperaba HTTP 204)");
+%}

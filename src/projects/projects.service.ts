@@ -1,17 +1,20 @@
-import { ErrorCodes } from '../common/http/error-codes.js';
 import { Injectable } from '@nestjs/common';
-import { apiError } from '../common/http/api-error.js';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
-import { UsersService } from '../users/users.service.js';
-import type { CreateProjectDto, UpdateProjectDto } from './projects.dto.js';
+import { apiError } from '../common/http/api-error.js';
+import { ErrorCodes } from '../common/http/error-codes.js';
 import {
   fetchWindow,
   resolvePage,
   toPage,
   type PageRequest,
 } from '../common/http/pagination.js';
+import { UsersService } from '../users/users.service.js';
+import type { CreateProjectDto, UpdateProjectDto } from './projects.dto.js';
 import { ProjectsRepository } from './projects.repository.js';
-import type { ConfiguredProject } from './projects.types.js';
+import {
+  hasCompleteConfiguration,
+  type ConfiguredProject,
+} from './projects.types.js';
 
 @Injectable()
 export class ProjectsService {
@@ -42,7 +45,9 @@ export class ProjectsService {
   async findOwned(identity: AuthenticatedIdentity, id: string) {
     const owner = await this.usersService.findCurrent(identity);
     const project = await this.projectsRepository.findByOwner(owner.id, id);
-    if (!project) throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+    if (!project) {
+      throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+    }
     return project;
   }
 
@@ -53,39 +58,49 @@ export class ProjectsService {
   ) {
     const owner = await this.usersService.findCurrent(identity);
     const current = await this.projectsRepository.findByOwner(owner.id, id);
-    if (!current) throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+    if (!current) {
+      throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+    }
 
-    const fields = [input.country, input.currency, input.channelProfile];
-    const count = fields.filter((value) => value !== undefined).length;
-    if (count > 0 && count < 3) {
-      throw apiError(ErrorCodes.PROJECT_CONFIGURATION_INCOMPLETE);
-    }
-    if (input.name === undefined && count === 0) {
-      throw apiError(ErrorCodes.PROJECT_UPDATE_EMPTY);
-    }
+    assertUpdateIsValid(input);
 
     const project = await this.projectsRepository.update(owner.id, id, input);
-    if (!project) throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+    if (!project) {
+      throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+    }
     return project;
   }
 
+  /** Las importaciones necesitan país, moneda y canal. */
   async requireConfigured(
     identity: AuthenticatedIdentity,
     id: string,
   ): Promise<ConfiguredProject> {
     const project = await this.findOwned(identity, id);
-    if (
-      project.country === null ||
-      project.currency === null ||
-      project.channelProfile === null
-    ) {
+    if (!hasCompleteConfiguration(project)) {
       throw apiError(ErrorCodes.PROJECT_CONFIGURATION_REQUIRED);
     }
-    return {
-      ...project,
-      country: project.country,
-      currency: project.currency,
-      channelProfile: project.channelProfile,
-    };
+    return project;
   }
+}
+
+/**
+ * La configuración se cambia completa (los tres campos) o no se cambia, y una
+ * actualización tiene que traer al menos un nombre o una configuración.
+ */
+function assertUpdateIsValid(input: UpdateProjectDto) {
+  const configurationFields = countConfigurationFields(input);
+  const changesConfiguration = configurationFields > 0;
+
+  if (changesConfiguration && configurationFields < 3) {
+    throw apiError(ErrorCodes.PROJECT_CONFIGURATION_INCOMPLETE);
+  }
+  if (input.name === undefined && !changesConfiguration) {
+    throw apiError(ErrorCodes.PROJECT_UPDATE_EMPTY);
+  }
+}
+
+function countConfigurationFields(input: UpdateProjectDto) {
+  const fields = [input.country, input.currency, input.channelProfile];
+  return fields.filter((value) => value !== undefined).length;
 }

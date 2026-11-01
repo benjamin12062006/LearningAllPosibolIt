@@ -1,8 +1,10 @@
-import { ErrorCodes } from '../common/http/error-codes.js';
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import type { AuthenticationInfo } from '@descope/node-sdk';
+import { apiError } from '../common/http/api-error.js';
+import { ErrorCodes } from '../common/http/error-codes.js';
+import type { AuthenticatedIdentity } from './authenticated-request.js';
 import { DescopeService } from './descope.service.js';
 import { requestOf } from './request-context.js';
-import { apiError } from '../common/http/api-error.js';
 
 @Injectable()
 export class DescopeSessionGuard implements CanActivate {
@@ -14,16 +16,7 @@ export class DescopeSessionGuard implements CanActivate {
 
     try {
       const { token } = await this.descopeService.validateSession(sessionToken);
-      const subject = this.readRequiredClaim(token.sub);
-      const issuer = this.readRequiredClaim(token.iss);
-      const email = this.readOptionalClaim(token.email);
-
-      request.authenticatedIdentity = Object.freeze({
-        subject,
-        issuer,
-        ...(email ? { email } : {}),
-      });
-
+      request.authenticatedIdentity = this.buildIdentity(token);
       return true;
     } catch {
       throw apiError(ErrorCodes.AUTH_SESSION_INVALID);
@@ -35,8 +28,22 @@ export class DescopeSessionGuard implements CanActivate {
     if (!match) {
       throw apiError(ErrorCodes.AUTH_SESSION_REQUIRED);
     }
-
     return match[1];
+  }
+
+  private buildIdentity(
+    token: AuthenticationInfo['token'],
+  ): AuthenticatedIdentity {
+    const identity = {
+      subject: this.readRequiredClaim(token.sub),
+      issuer: this.readRequiredClaim(token.iss),
+    };
+
+    const email = this.readOptionalClaim(token.email);
+    if (email) {
+      return Object.freeze({ ...identity, email });
+    }
+    return Object.freeze(identity);
   }
 
   private readRequiredClaim(value: unknown): string {
@@ -47,6 +54,9 @@ export class DescopeSessionGuard implements CanActivate {
   }
 
   private readOptionalClaim(value: unknown): string | undefined {
-    return typeof value === 'string' && value.length > 0 ? value : undefined;
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+    return undefined;
   }
 }

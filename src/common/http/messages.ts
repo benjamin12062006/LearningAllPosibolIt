@@ -186,6 +186,11 @@ export const API_MESSAGES = {
     'El proyecto ya tiene una importación en curso. Espera a que termine.',
     'The project already has an import in progress. Wait for it to finish.',
   ),
+  [ErrorCodes.IMPORT_IN_PROGRESS]: entry(
+    409,
+    'No se puede eliminar mientras hay una importación en curso. Espera a que termine.',
+    'It cannot be deleted while an import is in progress. Wait for it to finish.',
+  ),
   [ErrorCodes.IMPORT_FILE_REQUIRED]: entry(
     400,
     'Envía un único archivo en el campo file.',

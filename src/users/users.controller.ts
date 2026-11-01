@@ -1,18 +1,9 @@
-import { ErrorCodes } from '../common/http/error-codes.js';
-import {
-  Body,
-  Controller,
-  Get,
-  Patch,
-  Put,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
-import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
+import { Body, Controller, Get, Patch, Put, UseGuards } from '@nestjs/common';
+import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
-import { UsersService } from './users.service.js';
 import { UpdateProfileDto } from './users.dto.js';
-import { apiError } from '../common/http/api-error.js';
+import { UsersService } from './users.service.js';
 
 @Controller('users')
 export class UsersController {
@@ -20,38 +11,24 @@ export class UsersController {
 
   @Get('me')
   @UseGuards(DescopeSessionGuard)
-  async getCurrentUser(@Req() request: AuthenticatedRequest) {
-    return {
-      user: await this.usersService.findCurrent(this.requireIdentity(request)),
-    };
+  async getCurrentUser(@CurrentIdentity() identity: AuthenticatedIdentity) {
+    return { user: await this.usersService.findCurrent(identity) };
   }
 
   @Put('me')
   @UseGuards(DescopeSessionGuard)
-  async provisionCurrentUser(@Req() request: AuthenticatedRequest) {
-    return {
-      user: await this.usersService.provision(this.requireIdentity(request)),
-    };
+  async provisionCurrentUser(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+  ) {
+    return { user: await this.usersService.provision(identity) };
   }
 
   @Patch('me')
   @UseGuards(DescopeSessionGuard)
   async updateCurrentUser(
-    @Req() request: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
     @Body() body: UpdateProfileDto,
   ) {
-    return {
-      user: await this.usersService.updateCurrent(
-        this.requireIdentity(request),
-        body,
-      ),
-    };
-  }
-
-  private requireIdentity(request: AuthenticatedRequest) {
-    if (!request.authenticatedIdentity) {
-      throw apiError(ErrorCodes.INTERNAL_ERROR);
-    }
-    return request.authenticatedIdentity;
+    return { user: await this.usersService.updateCurrent(identity, body) };
   }
 }

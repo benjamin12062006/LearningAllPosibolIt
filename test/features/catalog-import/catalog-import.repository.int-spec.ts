@@ -487,4 +487,100 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
       }),
     ).rejects.toMatchObject({ response: publicError('PROJECT_NOT_FOUND') });
   });
+
+  describe('eliminación', () => {
+    it('borrar una importación terminada borra en cascada sus filas y su trabajo', async () => {
+      const input = await accept('id,title\n1,a\n2,b\n');
+      await worker.runUntilIdle();
+
+      await expect(
+        repository.deleteSnapshot(ownerId, projectId, input.snapshotId),
+      ).resolves.toEqual({
+        snapshotId: input.snapshotId,
+        artifactKey: input.artifactKey,
+      });
+      expect(
+        await prisma.catalogRow.count({
+          where: { snapshotId: input.snapshotId },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.catalogImportJob.count({ where: { id: input.jobId } }),
+      ).toBe(0);
+      await expect(
+        repository.findSnapshot(ownerId, projectId, input.snapshotId),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('no borra una importación en curso ni la de otro propietario', async () => {
+      const input = await accept();
+      await expect(
+        repository.deleteSnapshot(ownerId, projectId, input.snapshotId),
+      ).rejects.toMatchObject({ response: publicError('IMPORT_IN_PROGRESS') });
+      await expect(
+        repository.deleteSnapshot(otherOwnerId, projectId, input.snapshotId),
+      ).rejects.toMatchObject({ response: publicError('IMPORT_NOT_FOUND') });
+      await expect(
+        repository.deleteSnapshot(ownerId, otherProjectId, input.snapshotId),
+      ).rejects.toMatchObject({ response: publicError('IMPORT_NOT_FOUND') });
+      expect(await prisma.catalogSnapshot.count()).toBe(1);
+    });
+
+    it('borra el proyecto con todas sus importaciones y devuelve sus archivos', async () => {
+      const first = await accept();
+      await worker.runUntilIdle();
+      const second = await accept('id,title\n9,z\n');
+      await worker.runUntilIdle();
+
+      const deleted = await repository.deleteProject(ownerId, projectId);
+      expect(deleted).toHaveLength(2);
+      expect(deleted).toEqual(
+        expect.arrayContaining([
+          { snapshotId: first.snapshotId, artifactKey: first.artifactKey },
+          { snapshotId: second.snapshotId, artifactKey: second.artifactKey },
+        ]),
+      );
+      expect(await prisma.project.count({ where: { id: projectId } })).toBe(0);
+      expect(await prisma.catalogSnapshot.count()).toBe(0);
+      expect(await prisma.catalogRow.count()).toBe(0);
+      expect(await prisma.catalogImportJob.count()).toBe(0);
+      expect(
+        await prisma.project.count({ where: { id: otherProjectId } }),
+      ).toBe(1);
+    });
+
+    it('no borra un proyecto con una importación en curso ni uno ajeno', async () => {
+      await accept();
+      await expect(
+        repository.deleteProject(ownerId, projectId),
+      ).rejects.toMatchObject({ response: publicError('IMPORT_IN_PROGRESS') });
+      await expect(
+        repository.deleteProject(otherOwnerId, projectId),
+      ).rejects.toMatchObject({ response: publicError('PROJECT_NOT_FOUND') });
+      expect(await prisma.project.count({ where: { id: projectId } })).toBe(1);
+    });
+
+    it('RESTRICT sigue impidiendo borrar un proyecto con importaciones fuera de la transacción prevista', async () => {
+      await accept();
+      await worker.runUntilIdle();
+      await expect(
+        database.connection.pool.query(
+          'DELETE FROM estadistica_forms.projects WHERE id = $1',
+          [projectId],
+        ),
+        // 23001: restrict_violation (ON DELETE RESTRICT).
+      ).rejects.toMatchObject({ code: '23001' });
+    });
+
+    it('distingue las claves de archivo que siguen referenciadas', async () => {
+      const input = await accept();
+      const unknown = `${randomUUID()}.csv`;
+      await expect(
+        repository.findReferencedArtifactKeys([input.artifactKey, unknown]),
+      ).resolves.toEqual(new Set([input.artifactKey]));
+      await expect(repository.findReferencedArtifactKeys([])).resolves.toEqual(
+        new Set(),
+      );
+    });
+  });
 });

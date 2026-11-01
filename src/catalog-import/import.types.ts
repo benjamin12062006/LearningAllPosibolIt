@@ -14,18 +14,26 @@ export const IMPORT_LIMITS = {
   sampleRows: 20,
 } as const;
 
+export type ImportDelimiter = 'comma' | 'semicolon';
+
 export type ImportError = PublicError;
+
 export type ImportRow = {
   sourceRow: number;
   externalId: string;
   originalValues: Record<string, string>;
 };
+
+/** Archivo ya guardado en `tmp/` por `ArtifactStore.receive`. */
 export type StoredUpload = { filename: string; size: number; hash: string };
+
+/** Datos que el guard y el interceptor añaden a la request de subida. */
 export type ImportRequest = AuthenticatedRequest & {
   importOwnerId?: string;
   importRequestId?: string;
   file?: Express.Multer.File & StoredUpload;
 };
+
 export type Acceptance = {
   snapshotId: string;
   jobId: string;
@@ -36,9 +44,14 @@ export type Acceptance = {
   byteSize: number;
   originalName: string;
   idColumn: string;
-  delimiter: 'comma' | 'semicolon';
+  delimiter: ImportDelimiter;
   requestId: string;
 };
+
+/** Importación borrada en la base cuyo archivo falta retirar del disco. */
+export type DeletedImport = { snapshotId: string; artifactKey: string };
+
+/** Trabajo que el worker ha reclamado y está procesando. */
 export type ClaimedImport = {
   id: string;
   snapshotId: string;
@@ -48,9 +61,10 @@ export type ClaimedImport = {
   sourceHash: string;
   byteSize: number;
   idColumn: string;
-  delimiter: 'comma' | 'semicolon';
+  delimiter: ImportDelimiter;
 };
 
+/** Fallo esperado de una importación; su `detail` se guarda tal cual. */
 export class ImportFailure extends ApplicationFailure {}
 
 export const CATALOG_IMPORT_OPTIONS = Symbol('CATALOG_IMPORT_OPTIONS');

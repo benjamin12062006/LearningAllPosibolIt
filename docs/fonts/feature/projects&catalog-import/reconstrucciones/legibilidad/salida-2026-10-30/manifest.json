@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "date": "2026-10-30",
+  "originals": {
+    "Sección 13 Autenticación de autorización/175. Private Route - General.md": "0c524a8d4f5be16b32966d807e9e82b676bdff822d57db14c60cd9cfaf280747",
+    "Sección 13 Autenticación de autorización/177. Custom Property Decorator - GetUser.md": "295c5f68367fce2addd2d1959db681db7d6ca9629f30a417f5628e8161df405b"
+  },
+  "guides": [
+    {
+      "source": "Sección 13 Autenticación de autorización/177. Custom Property Decorator - GetUser.md",
+      "guide": "Sección 13 Autenticación de autorización/177. Custom Property Decorator - GetUser - Reconstrucción guiada.md",
+      "sha256": "2ccd717822168567332f38f57bfd2ad66dd6479b31dde2e897f3919e1464cd7d"
+    }
+  ]
+}

@@ -8,11 +8,22 @@ import {
   MaxLength,
   ValidateIf,
 } from 'class-validator';
+import type { ChannelProfile } from './projects.types.js';
 
-const trim = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim() : value;
-const uppercase = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim().toUpperCase() : value;
+const CHANNEL_PROFILES: ChannelProfile[] = ['google_merchant'];
+
+function trim({ value }: { value: unknown }) {
+  return typeof value === 'string' ? value.trim() : value;
+}
+
+function trimAndUppercase({ value }: { value: unknown }) {
+  return typeof value === 'string' ? value.trim().toUpperCase() : value;
+}
+
+/** En una actualización parcial, solo se valida lo que el cliente envía. */
+function whenPresent(_object: object, value: unknown) {
+  return value !== undefined;
+}
 
 export class CreateProjectDto {
   @Transform(trim)
@@ -21,37 +32,37 @@ export class CreateProjectDto {
   @MaxLength(120)
   name!: string;
 
-  @Transform(uppercase)
+  @Transform(trimAndUppercase)
   @IsISO31661Alpha2()
   country!: string;
 
-  @Transform(uppercase)
+  @Transform(trimAndUppercase)
   @IsISO4217CurrencyCode()
   currency!: string;
 
-  @IsIn(['google_merchant'])
-  channelProfile!: 'google_merchant';
+  @IsIn(CHANNEL_PROFILES)
+  channelProfile!: ChannelProfile;
 }
 
 export class UpdateProjectDto {
-  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @ValidateIf(whenPresent)
   @Transform(trim)
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
   name?: string;
 
-  @ValidateIf((_object, value: unknown) => value !== undefined)
-  @Transform(uppercase)
+  @ValidateIf(whenPresent)
+  @Transform(trimAndUppercase)
   @IsISO31661Alpha2()
   country?: string;
 
-  @ValidateIf((_object, value: unknown) => value !== undefined)
-  @Transform(uppercase)
+  @ValidateIf(whenPresent)
+  @Transform(trimAndUppercase)
   @IsISO4217CurrencyCode()
   currency?: string;
 
-  @ValidateIf((_object, value: unknown) => value !== undefined)
-  @IsIn(['google_merchant'])
-  channelProfile?: 'google_merchant';
+  @ValidateIf(whenPresent)
+  @IsIn(CHANNEL_PROFILES)
+  channelProfile?: ChannelProfile;
 }

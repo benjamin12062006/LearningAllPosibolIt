@@ -1,7 +1,9 @@
+export type ChannelProfile = 'google_merchant';
+
 export type ProjectConfiguration = Readonly<{
   country: string;
   currency: string;
-  channelProfile: 'google_merchant';
+  channelProfile: ChannelProfile;
 }>;
 
 export type Project = Readonly<{
@@ -9,7 +11,7 @@ export type Project = Readonly<{
   name: string;
   country: string | null;
   currency: string | null;
-  channelProfile: 'google_merchant' | null;
+  channelProfile: ChannelProfile | null;
   configurationStatus: 'required' | 'ready';
   createdAt: string;
 }>;
@@ -20,5 +22,22 @@ export type ProjectUpdate = Readonly<{
   name?: string;
   country?: string;
   currency?: string;
-  channelProfile?: 'google_merchant';
+  channelProfile?: ChannelProfile;
 }>;
+
+type ConfigurationColumns = Readonly<{
+  country: string | null;
+  currency: string | null;
+  channelProfile: ChannelProfile | null;
+}>;
+
+/** País, moneda y canal se guardan juntos: o están los tres o no hay configuración. */
+export function hasCompleteConfiguration<T extends ConfigurationColumns>(
+  project: T,
+): project is T & ProjectConfiguration {
+  return (
+    project.country !== null &&
+    project.currency !== null &&
+    project.channelProfile !== null
+  );
+}

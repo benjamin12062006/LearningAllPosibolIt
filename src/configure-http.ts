@@ -31,7 +31,7 @@ export function configureHttp(app: INestApplication) {
       'http://localhost:3000',
       'http://127.0.0.1:3000',
     ],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Accept', 'Authorization', 'Content-Type'],
   });
 }

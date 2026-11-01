@@ -86,6 +86,8 @@ type LocalizedMessage {
 
 type Mutation {
   createProject(input: CreateProjectInput!): Project!
+  deleteImport(id: ID!, projectId: ID!): Boolean!
+  deleteProject(id: ID!): Boolean!
   updateMe(input: UpdateMeInput!): User!
   updateProject(id: ID!, input: UpdateProjectInput!): Project!
 }

@@ -1,10 +1,11 @@
 # 03 — Eliminación de datos: proyectos, importaciones, cuenta y retención
 
 Fecha de creación: 2026-10-30  
-Estado: Plan. Investigación ampliada pendiente por indicación del usuario.  
+Última actualización: 2026-10-30  
+Estado: Incrementos 1–6 implementados y verificados el 2026-10-30 ([bitácora 05](../../../bitacora-construccion/feature/projects&catalog-import/05-eliminar-proyectos-e-importaciones.md)); migración aplicada en Neon el mismo día. El incremento 7 (cuenta y retención) sigue abierto.  
 Ámbito: borrado en la base de datos, archivos privados de `ArtifactStore` y rutas HTTP `DELETE`.  
 Relacionada con: [fuente db/02: curso Nest](../../fonts/db/02-curso-nest-semillas-y-eliminacion.md), [fuente db/03: Prisma](../../fonts/db/03-documentacion-prisma-seed-y-acciones-referenciales.md), [plan de catalog-import](../feature/projects&catalog-import/03-plan-catalog-import.md), [plan de semillas](02-plan-semillas-de-desarrollo.md), [arquitectura objetivo](../../../../docs-diagrams/07-arquitectura-y-contratos.md).  
-Revisión de referencia: `78e99f3`.
+Revisión de referencia: `78e99f3`; implementación sobre `1f0be2d` y el refactor de la [bitácora 04](../../../bitacora-construccion/feature/projects&catalog-import/04-legibilidad-modulos.md).
 
 ## Objetivo
 
@@ -29,6 +30,16 @@ Que el propietario pueda eliminar sus importaciones y proyectos, y su cuenta loc
   - **E2 — importación en curso:** con un trabajo `queued` o `running`, responder `409` (propuesto) o cancelar primero.
   - **E3 — cuenta local:** si `DELETE /users/me` borra la cuenta local y todos sus proyectos; qué ocurre con la cuenta de Descope.
   - **E4 — retención:** política de retención automática de snapshots y archivos antiguos.
+
+## Decisiones tomadas al implementar (2026-10-30)
+
+El usuario pidió ejecutar el plan; se tomaron las opciones que el propio plan proponía:
+
+- **E1:** borrado definitivo.
+- **E2:** `409` con un trabajo `queued` o `running`, con el código nuevo `IMPORT_IN_PROGRESS` (el existente `IMPORT_ALREADY_ACTIVE` habla de subir otra importación).
+- **E3 y E4:** no se decidieron; quedan fuera, como indica el incremento 7.
+- **Ubicación de `DELETE /projects/:projectId`:** en `CatalogImportController`, porque `catalog-import` ya depende de `projects` y borrar el proyecto también borra importaciones y archivos. Ponerlo en `ProjectsController` crearía una dependencia circular.
+- **Limpieza (incremento 6):** al arrancar, con `autoStart`, y solo para archivos con más de una hora, por si una aceptación estuviera a medias.
 
 ## Incrementos
 

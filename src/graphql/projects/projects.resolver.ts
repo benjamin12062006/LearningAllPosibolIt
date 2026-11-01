@@ -3,6 +3,7 @@ import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { AuthenticatedIdentity } from '../../auth/authenticated-request.js';
 import { CurrentIdentity } from '../../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../../auth/descope-session.guard.js';
+import { CatalogImportService } from '../../catalog-import/catalog-import.service.js';
 import { PaginationArgs } from '../common/pagination.args.js';
 import { uuidParamPipe } from '../../common/http/validation-errors.js';
 import {
@@ -15,7 +16,10 @@ import { ProjectsService } from '../../projects/projects.service.js';
 @Resolver(() => ProjectType)
 @UseGuards(DescopeSessionGuard)
 export class ProjectsResolver {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(
+    private readonly projectsService: ProjectsService,
+    private readonly imports: CatalogImportService,
+  ) {}
 
   @Query(() => [ProjectType], { name: 'projects' })
   async findAll(
@@ -50,5 +54,18 @@ export class ProjectsResolver {
     input: UpdateProjectInput,
   ) {
     return this.projectsService.update(identity, id, input);
+  }
+
+  /**
+   * Borra el proyecto con todas sus importaciones y archivos, igual que
+   * `DELETE /projects/:id`. Por eso usa `CatalogImportService`.
+   */
+  @Mutation(() => Boolean, { name: 'deleteProject' })
+  async delete(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Args('id', { type: () => ID }, uuidParamPipe('id')) id: string,
+  ) {
+    await this.imports.deleteProject(identity, id);
+    return true;
   }
 }
