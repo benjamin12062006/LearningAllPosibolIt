@@ -1,0 +1,40 @@
+# WebStorm: seleccionar local. Necesita projectId, snapshotId de una importación
+# ready (catalog-import.http) y revision de una versión de reglas (rulesets.http).
+# Antes de arrancar la API hay que aplicar las migraciones (pnpm db:migrate): el
+# worker de evaluaciones consulta su tabla al arrancar.
+
+### Evaluar un snapshot con una revisión (202; el worker la procesa después)
+# @name createEvaluation
+POST {{apiUrl}}/projects/{{projectId}}/evaluations
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+{
+  "snapshotId": "{{snapshotId}}",
+  "rulesetRevision": {{revision}}
+}
+
+> {%
+  client.assert(response.status === 202, "No se aceptó la evaluación (se esperaba HTTP 202)");
+  client.assert(typeof response.body.evaluationId === "string", "Falta evaluationId");
+  client.global.set("evaluationId", response.body.evaluationId);
+%}
+
+### Consultar estado, versiones, conteos y muestra (respuesta { evaluation, sample }); repetir hasta succeeded o failed
+# @name getEvaluation
+GET {{apiUrl}}/projects/{{projectId}}/evaluations/{{evaluationId}}
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+### Informe paginado: filas inválidas con problema y corrección sugerida en es/en (respuesta { rows, page })
+# @name listInvalidRows
+GET {{apiUrl}}/projects/{{projectId}}/evaluations/{{evaluationId}}/rows?outcome=invalid&limit=20&offset=0
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+### Descargar errores.csv (BOM UTF-8, CRLF; lang=es por defecto o lang=en). 409 si la evaluación no terminó bien.
+# @name downloadErrorsCsv
+GET {{apiUrl}}/projects/{{projectId}}/evaluations/{{evaluationId}}/errors.csv?lang=es
+Accept: text/csv
+Authorization: Bearer {{TEST_SESSION_JWT}}

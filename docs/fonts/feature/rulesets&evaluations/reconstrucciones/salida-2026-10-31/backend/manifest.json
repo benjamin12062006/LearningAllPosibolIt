@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "date": "2026-10-31",
+  "originals": {
+    "Sección 10 TypeORM - Postgres/124. Create Product DTO.md": "eddc430028d594efabc46cbee0977a3cdee7d77f23405a46dae59e4cfa0c424e",
+    "Sección 10 TypeORM - Postgres/134. Nueva columna - Tags.md": "c116550956932ad018c9755e8246d873fabf48521c0407262101a2ad408cb2cf"
+  },
+  "guides": [
+    {
+      "source": "Sección 10 TypeORM - Postgres/124. Create Product DTO.md",
+      "guide": "Sección 10 TypeORM - Postgres/124. Create Product DTO - Reconstrucción guiada.md",
+      "sha256": "b8921cd84bd64de853197b761a42e6d6c38976bcb5925e1f95e0263d6f7ba4b4"
+    }
+  ]
+}

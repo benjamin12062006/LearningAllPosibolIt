@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 7 Order Details - Maestro detalle/69. DTOs de creación de orden.md",
+  "previous": [],
+  "objective": "Sustituir el CreateOrderDto plano (totalAmount, totalItems) por uno que reciba un arreglo items de al menos un elemento, cuyos objetos se validan uno a uno con OrderItemDto mediante @ValidateNested y @Type.",
+  "initial": "Microservicio orders-ms con Prisma y modelos Order y OrderItem; client-gateway reenvía la creación de órdenes. CreateOrderDto contenía totalAmount y totalItems; el código anterior está en la sección 6.",
+  "certainty": "Decoradores, nombres de clases y archivo order-item.dto.ts se recuperan con alta confianza. El orden exacto de los decoradores en items y el nombre real del barril no se ven; se ensamblan en el orden narrado. El instructor pronuncia «orden-item.dto.ts» al crear el archivo y después «order-item.dto»; se usa order-item.dto.ts. El retorno temporal del servicio y el @Type(() => Number) de price son experimentos que no quedan en el estado final.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "en lugar de mandar estos valores",
+      "change": "La orden se crea a partir de items con productId, price y quantity.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E2",
+      "line": 19,
+      "phrase": "crearnos nada más los items",
+      "change": "Borrar las propiedades anteriores del CreateOrderDto; solo queda items.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E3",
+      "line": 21,
+      "phrase": "Por lo menos un ítem tiene que venir",
+      "change": "items con @IsArray y @ArrayMinSize(1).",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "No voy a crear una orden vacía",
+      "change": "Justificación del mínimo de un elemento.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E5",
+      "line": 23,
+      "phrase": "para que haga la validación de cada uno de los elementos",
+      "change": "@ValidateNested({ each: true }) valida cada objeto interno.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E6",
+      "line": 23,
+      "phrase": "va a venir como un objeto vacío necesito que lo transforme",
+      "change": "@Type de class-transformer convierte cada objeto plano en instancia del DTO hijo.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E7",
+      "line": 25,
+      "phrase": "export class OrderItemDto",
+      "change": "Nuevo DTO del elemento con productId numérico.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E8",
+      "line": 27,
+      "phrase": "Tiene que ser un número positivo",
+      "change": "productId y quantity con @IsNumber e @IsPositive.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E9",
+      "line": 29,
+      "phrase": "archivo de barril",
+      "change": "price con @IsNumber/@IsPositive y exportación desde index.ts.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E10",
+      "line": 31,
+      "phrase": "Ojo, no es un arreglo",
+      "change": "@Type(() => OrderItemDto) recibe el tipo del elemento, no un arreglo.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E11",
+      "line": 33,
+      "phrase": "lo vamos a reemplazar",
+      "change": "Copiar los mismos DTOs en client-gateway.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E12",
+      "line": 37,
+      "phrase": "items.0",
+      "change": "Los errores anidados indican el índice del elemento que falla.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E13",
+      "line": 43,
+      "phrase": "esto no lo voy a dejar",
+      "change": "@Type(() => Number) en price solo se muestra; no se recomienda.",
+      "certainty": "Explícito: experimento retirado."
+    },
+    {
+      "id": "E14",
+      "line": 45,
+      "phrase": "validar que estos productos existan",
+      "change": "Pendiente: comprobar productos contra products-ms.",
+      "certainty": "Explícito."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Reducir CreateOrderDto a items",
+      "code": "export class CreateOrderDto {\n  items: any;\n}",
+      "why": "El cliente ya no envía totales calculados; envía el detalle y el servidor calcula. any es un marcador temporal hasta crear el DTO hijo.",
+      "check": "Compila; aún no valida el contenido.",
+      "evidence": [
+        "E1",
+        "E2"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "DTO del elemento",
+      "code": "import { IsNumber, IsPositive } from 'class-validator';\n\nexport class OrderItemDto {\n  @IsNumber()\n  @IsPositive()\n  productId: number;\n\n  @IsNumber()\n  @IsPositive()\n  quantity: number;\n\n  @IsNumber()\n  @IsPositive()\n  price: number;\n}",
+      "why": "Cada elemento tiene su propia forma y reglas; separarlo permite reutilizarlo y que la validación anidada sepa qué instancia construir.",
+      "check": "El barril exporta OrderItemDto sin errores de importación.",
+      "evidence": [
+        "E7",
+        "E8",
+        "E9"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Validación anidada del arreglo",
+      "code": "import { Type } from 'class-transformer';\nimport { ArrayMinSize, IsArray, ValidateNested } from 'class-validator';\nimport { OrderItemDto } from './order-item.dto';\n\nexport class CreateOrderDto {\n  @IsArray()\n  @ArrayMinSize(1)\n  @ValidateNested({ each: true })\n  @Type(() => OrderItemDto)\n  items: OrderItemDto[];\n}",
+      "why": "@IsArray y @ArrayMinSize validan el contenedor; @ValidateNested({ each: true }) pide validar cada elemento, y @Type transforma cada objeto plano en OrderItemDto para que sus decoradores existan al validar.",
+      "check": "{} → items debe ser arreglo con al menos un elemento; [{}] → errores items.0.productId…; price \"abc\" → debe ser número; datos correctos → el DTO llega al microservicio.",
+      "evidence": [
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E10",
+        "E12"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Replicar el contrato en el gateway",
+      "code": "// client-gateway/src/orders/dto/index.ts\nexport * from './create-order.dto';\nexport * from './order-item.dto';",
+      "why": "El gateway valida antes de enviar el mensaje; ambos lados deben compartir la misma forma.",
+      "check": "El gateway compila con el CreateOrderDto nuevo.",
+      "evidence": [
+        "E11"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "orders-ms/src/orders/dto/order-item.dto.ts",
+      "language": "ts",
+      "code": "import { IsNumber, IsPositive } from 'class-validator';\n\nexport class OrderItemDto {\n  @IsNumber()\n  @IsPositive()\n  productId: number;\n\n  @IsNumber()\n  @IsPositive()\n  quantity: number;\n\n  @IsNumber()\n  @IsPositive()\n  price: number;\n}",
+      "provenance": "E7 clase; E8 productId/quantity; E9 price."
+    },
+    {
+      "path": "orders-ms/src/orders/dto/create-order.dto.ts",
+      "language": "ts",
+      "code": "import { Type } from 'class-transformer';\nimport { ArrayMinSize, IsArray, ValidateNested } from 'class-validator';\nimport { OrderItemDto } from './order-item.dto';\n\nexport class CreateOrderDto {\n  @IsArray()\n  @ArrayMinSize(1)\n  @ValidateNested({ each: true })\n  @Type(() => OrderItemDto)\n  items: OrderItemDto[];\n}",
+      "provenance": "E2 única propiedad; E3–E4 arreglo mínimo; E5 validación anidada; E6/E10 @Type del elemento. Orden de decoradores ensamblado."
+    },
+    {
+      "path": "orders-ms/src/orders/dto/index.ts",
+      "language": "ts",
+      "code": "// Se conservan las exportaciones existentes de la carpeta dto (no visibles en esta clase).\nexport * from './create-order.dto';\nexport * from './order-item.dto';",
+      "provenance": "E9 barril; el resto de exportaciones previas no se ve. El gateway recibe copias idénticas (E11)."
+    }
+  ],
+  "temporary": "OrdersService.create devuelve temporalmente { service: 'Orders Microservice', createOrderDto } mientras la creación con Prisma queda comentada. Se prueba @Type(() => Number) en price para aceptar \"100\", pero el instructor lo retira y desaconseja aceptar datos en el formato que quiera el cliente (E13). La validación de existencia de productos llega en la clase siguiente (E14).",
+  "mental": "JSON → ValidationPipe → @Type crea una instancia de OrderItemDto por elemento → @ValidateNested({ each: true }) ejecuta sus decoradores → errores con ruta items.N.propiedad. Sin @Type el elemento sigue siendo un objeto plano y sus reglas no se aplican."
+}

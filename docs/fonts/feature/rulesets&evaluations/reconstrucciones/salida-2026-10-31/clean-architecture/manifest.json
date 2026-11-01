@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "date": "2026-10-31",
+  "originals": {
+    "Sección 4 Paradigma Funcional/29. Función Pura.md": "c76882414ac9f4365003f2d4949d725748f97b66e265b8e16deaae337c4f9002",
+    "Sección 4 Paradigma Funcional/34. Función de orden superior.md": "d951955a75062b55e48170b3a5a8ae9f82bc03ff9d9d2c624f2f654f942e0a34",
+    "Sección 4 Paradigma Funcional/35. Tipo Predicate.md": "5adf3a0b70977da7f6b95c547480546bd9bc9a7856e2710a905e51571020cc05"
+  },
+  "guides": [
+    {
+      "source": "Sección 4 Paradigma Funcional/29. Función Pura.md",
+      "guide": "Sección 4 Paradigma Funcional/29. Función Pura - Reconstrucción guiada.md",
+      "sha256": "279254f014af5767173842d830470a3593975803344aaf44729dd3b29b7f54e4"
+    },
+    {
+      "source": "Sección 4 Paradigma Funcional/34. Función de orden superior.md",
+      "guide": "Sección 4 Paradigma Funcional/34. Función de orden superior - Reconstrucción guiada.md",
+      "sha256": "ebcb00dad292e2a35c7bb32fd4116b18a37c70ac750adf4ce688730c9f27a371"
+    },
+    {
+      "source": "Sección 4 Paradigma Funcional/35. Tipo Predicate.md",
+      "guide": "Sección 4 Paradigma Funcional/35. Tipo Predicate - Reconstrucción guiada.md",
+      "sha256": "f9cf4cf1bf4a9515c2198a03c7a0017f3c7a7bcccb3df325d09479724ebe84a9"
+    }
+  ]
+}

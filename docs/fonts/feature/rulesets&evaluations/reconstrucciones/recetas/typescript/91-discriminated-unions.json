@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 7 Advanced Types/91. Discriminated Unions.md",
+  "previous": [
+    "Sección 7 Advanced Types/90. More on Type Guards.md"
+  ],
+  "objective": "Sustituir la guarda basada en la existencia de una propiedad ('path' in source) por una unión discriminada: cada miembro de Source tiene una propiedad type con un literal distinto y loadData decide la rama comparando ese valor, con narrowing completo de TypeScript.",
+  "initial": "Archivo adjunto guards.ts de la clase 90: tipos FileSource { path } y DBSource { connectionUrl }, unión Source y función loadData(source: Source) que comprueba if ('path' in source) y retorna, de modo que después TypeScript sabe que source es DBSource.",
+  "certainty": "La forma de los tipos, los literales 'file' y 'db' y la comprobación source.type === 'file' se recuperan con alta confianza. El archivo adjunto no es visible: los valores de ejemplo de path y connectionUrl y los comentarios internos son marcadores ensamblados, no copia del vídeo. El cuerpo de loadData solo accede a las propiedades para mostrar el narrowing; no abre archivos ni conecta a bases de datos.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "que he creado para usted",
+      "change": "Partir de guards.ts con loadData(source: Source).",
+      "certainty": "Contexto; archivo adjunto no visible.",
+      "source": "Sección 7 Advanced Types/90. More on Type Guards.md"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "propiedad URL de conexión",
+      "change": "FileSource tiene path; DBSource tiene connectionUrl.",
+      "certainty": "Contexto; nombres en inglés normalizados.",
+      "source": "Sección 7 Advanced Types/90. More on Type Guards.md"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "comprobar si la propiedad path existe en source",
+      "change": "Guarda inicial if ('path' in source).",
+      "certainty": "Contexto.",
+      "source": "Sección 7 Advanced Types/90. More on Type Guards.md"
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "TypeScript en realidad ya se ha dado cuenta",
+      "change": "Tras el if con return, source se estrecha a DBSource.",
+      "certainty": "Contexto.",
+      "source": "Sección 7 Advanced Types/90. More on Type Guards.md"
+    },
+    {
+      "id": "E5",
+      "line": 13,
+      "phrase": "las llamadas uniones discriminadas",
+      "change": "Alternativa: no depender de nombres de propiedades que pueden cambiar.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E6",
+      "line": 15,
+      "phrase": "voy a establecer el tipo aquí a archivo",
+      "change": "Añadir type: 'file' a FileSource y type: 'db' a DBSource como tipos literales.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E7",
+      "line": 17,
+      "phrase": "establecer tipo a archivo aquí y establecer tipo a db aquí",
+      "change": "Los objetos de ejemplo incluyen el discriminante.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E8",
+      "line": 19,
+      "phrase": "podemos comprobar si el tipo es archivo",
+      "change": "if (source.type === 'file') con autocompletado de path.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E9",
+      "line": 21,
+      "phrase": "estamos comprobando el caso FileSource dentro de esta primera comprobación",
+      "change": "Después del if, source es DBSource y connectionUrl está disponible.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E10",
+      "line": 23,
+      "phrase": "discriminando en base a esa propiedad compartida",
+      "change": "Resumen del patrón.",
+      "certainty": "Explícito."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Estado heredado: guarda por propiedad",
+      "code": "type FileSource = { path: string };\ntype DBSource = { connectionUrl: string };\ntype Source = FileSource | DBSource;\n\nfunction loadData(source: Source) {\n  if ('path' in source) {\n    source.path;\n    return;\n  }\n  source.connectionUrl;\n}",
+      "why": "Funciona, pero acopla la decisión al nombre de una propiedad que podría cambiar.",
+      "check": "TypeScript permite source.connectionUrl después del if.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Añadir el discriminante literal",
+      "code": "type FileSource = { type: 'file'; path: string };\ntype DBSource = { type: 'db'; connectionUrl: string };",
+      "why": "type no es cualquier string sino un literal; la unión de ambos tipos infiere source.type como 'file' | 'db'.",
+      "check": "Un objeto FileSource sin type: 'file' da error de compilación.",
+      "evidence": [
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Decidir por el discriminante",
+      "code": "function loadData(source: Source) {\n  if (source.type === 'file') {\n    source.path;\n    return;\n  }\n  source.connectionUrl;\n}",
+      "why": "type existe en todos los miembros, así que se puede leer sin guarda; su valor estrecha el tipo en cada rama.",
+      "check": "Dentro del if solo autocompleta path; fuera, connectionUrl.",
+      "evidence": [
+        "E8",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "guards.ts",
+      "language": "ts",
+      "code": "type FileSource = { type: 'file'; path: string };\nconst fileSource: FileSource = {\n  type: 'file',\n  path: 'some/path/to/file.csv',\n};\n\ntype DBSource = { type: 'db'; connectionUrl: string };\nconst dbSource: DBSource = {\n  type: 'db',\n  connectionUrl: 'some-connection-url',\n};\n\ntype Source = FileSource | DBSource;\n\nfunction loadData(source: Source) {\n  if (source.type === 'file') {\n    source.path; // => use that to open the file\n    return;\n  }\n  source.connectionUrl; // => to reach out to database\n}",
+      "provenance": "E2/E6 tipos; E7 objetos (valores de ejemplo ensamblados); E8–E9 loadData."
+    }
+  ],
+  "temporary": "La guarda 'path' in source se sustituye; no se mantiene en el estado final.",
+  "mental": "Unión de tipos con una propiedad común de valor literal distinto → comprobar ese valor → TypeScript estrecha al miembro correspondiente en cada rama. Es más estable que comprobar la existencia de propiedades específicas."
+}

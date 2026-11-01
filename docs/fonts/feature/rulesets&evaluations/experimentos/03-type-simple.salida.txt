@@ -1,0 +1,3 @@
+ERROR null mapping.0:nestedValidation
+ERROR string mapping.0:nestedValidation
+OK valid [ 'MappingDto' ]

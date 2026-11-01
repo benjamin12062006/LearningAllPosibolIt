@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 4 Paradigma Funcional/34. Función de orden superior.md",
+  "previous": [],
+  "objective": "Escribir Filter, una función de orden superior que recibe una lista de enteros y una función condición (Func<int, bool>) y devuelve una lista nueva con los elementos que la cumplen, para reutilizar el mismo recorrido con condiciones distintas mediante lambdas.",
+  "initial": "Proyecto de consola FunctionalProgramming con los ejemplos de las clases previas de la sección (funciones puras, de primera clase, Action, lambdas y Func).",
+  "certainty": "Firma, recorrido, Add y las dos lambdas se recuperan con alta confianza. Los nombres resultList, numbers2 y numbers3 se normalizan desde «Results list», «Number dos» y «Numbers tres». No se reproduce el código de clases anteriores del mismo Program.cs.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "puede recibir parámetros, funciones",
+      "change": "Definición: recibe o devuelve funciones.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "una función que reciba un entero y regrese un booleano",
+      "change": "Parámetro condition de tipo Func<int, bool> y retorno List<int>.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "Results list",
+      "change": "Crear la lista resultado y recorrer la entrada con foreach evaluando condition(element).",
+      "certainty": "Explícito; nombre normalizado."
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "método Add de la clase List",
+      "change": "Agregar el elemento si la condición es true y retornar la lista.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E5",
+      "line": 19,
+      "phrase": "del uno al diez",
+      "change": "Lista numbers con 1..10.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E6",
+      "line": 21,
+      "phrase": "una expresión lambda",
+      "change": "Filter(numbers, number => number % 2 == 0).",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E7",
+      "line": 23,
+      "phrase": "Number dos",
+      "change": "Imprimir numbers2 con foreach: 2, 4, 6, 8, 10.",
+      "certainty": "Explícito; nombre normalizado."
+    },
+    {
+      "id": "E8",
+      "line": 25,
+      "phrase": "mayor a cinco",
+      "change": "Reutilizar Filter con number => number > 5 en numbers3.",
+      "certainty": "Explícito."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Función que recibe la condición",
+      "language": "csharp",
+      "code": "List<int> Filter(List<int> list, Func<int, bool> condition)\n{\n    var resultList = new List<int>();\n    foreach (var element in list)\n    {\n        if (condition(element))\n        {\n            resultList.Add(element);\n        }\n    }\n    return resultList;\n}",
+      "why": "El recorrido y la acumulación quedan fijos; qué elementos pasan lo decide quien llama. No modifica la lista de entrada.",
+      "check": "Compila con la firma Func<int, bool>.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ]
+    },
+    {
+      "title": "Primera condición: pares",
+      "language": "csharp",
+      "code": "var numbers = new List<int> { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };\n\nvar numbers2 = Filter(numbers, number => number % 2 == 0);\nforeach (var number in numbers2)\n{\n    Console.WriteLine(number);\n}",
+      "why": "La lambda es la función que se entrega como argumento.",
+      "check": "Imprime 2, 4, 6, 8 y 10.",
+      "evidence": [
+        "E5",
+        "E6",
+        "E7"
+      ]
+    },
+    {
+      "title": "Reutilizar con otra condición",
+      "language": "csharp",
+      "code": "var numbers3 = Filter(numbers, number => number > 5);\nforeach (var number in numbers3)\n{\n    Console.WriteLine(number);\n}",
+      "why": "Cambia el comportamiento sin reprogramar Filter.",
+      "check": "Imprime 6, 7, 8, 9 y 10.",
+      "evidence": [
+        "E8"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "FunctionalProgramming/Program.cs",
+      "language": "csharp",
+      "code": "// Proyecto FunctionalProgramming; se omiten los ejemplos de clases anteriores de la sección.\n\nvar numbers = new List<int> { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };\n\nvar numbers2 = Filter(numbers, number => number % 2 == 0);\nforeach (var number in numbers2)\n{\n    Console.WriteLine(number);\n}\n\nvar numbers3 = Filter(numbers, number => number > 5);\nforeach (var number in numbers3)\n{\n    Console.WriteLine(number);\n}\n\nList<int> Filter(List<int> list, Func<int, bool> condition)\n{\n    var resultList = new List<int>();\n    foreach (var element in list)\n    {\n        if (condition(element))\n        {\n            resultList.Add(element);\n        }\n    }\n    return resultList;\n}",
+      "provenance": "E2–E4 Filter; E5–E7 pares; E8 mayores que cinco. Código previo del archivo omitido."
+    }
+  ],
+  "temporary": "",
+  "mental": "Una función de orden superior separa el «cómo recorrer» (fijo) del «qué decidir» (función recibida). Las condiciones se convierten en datos que se pasan y combinan."
+}

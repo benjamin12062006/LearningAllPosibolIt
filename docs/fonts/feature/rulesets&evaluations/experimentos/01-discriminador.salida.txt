@@ -1,0 +1,34 @@
+OK    1 válido mixto, keep=true
+      CleanTextRuleDto{"type":"clean_text","attributes":["title"]}
+      BuildTitleRuleDto{"type":"build_title","template":"{brand} {title}"}
+ERROR 2 válido mixto, keep=false
+      rules.0.type:isIn
+      rules.1.type:isIn
+ERROR 3 type desconocido con campo extra
+      rules.0.anything:whitelistValidation
+      rules.0.type:isIn
+ERROR 4 type desconocido sin campos
+      rules.0.type:isIn
+ERROR 5 type ausente
+      rules.0.template:whitelistValidation
+      rules.0.type:isIn
+ERROR 6 campo de otra subclase
+      rules.0.template:whitelistValidation
+ERROR 7 subclase con campo inválido
+      rules.0.template:isLength
+THROW 8 elemento null
+      TypeError: Cannot read properties of null (reading 'type')
+ERROR 9 elemento string
+      rules.0:nestedValidation
+ERROR 10 rules objeto, no arreglo
+      rules:isArray
+      rules:arrayMinSize
+      rules:arrayMaxSize
+      rules.0:whitelistValidation
+      rules.type:isIn
+ERROR 11 type no string (número)
+      rules.0.type:isIn
+ERROR 12 type "__proto__"
+      rules.0.type:isIn
+ERROR 13 21 reglas
+      rules:arrayMaxSize

@@ -20,6 +20,7 @@ export default {
     '<rootDir>/.test-build/src/common/http/**/*.js',
     '<rootDir>/.test-build/src/projects/**/*.js',
     '<rootDir>/.test-build/src/catalog-import/**/*.js',
+    '<rootDir>/.test-build/src/evaluations/**/*.js',
     '!**/*.module.js',
     '!**/*.types.js',
   ],

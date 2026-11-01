@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "date": "2026-10-31",
+  "originals": {
+    "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md": "96cb6922f8bae63714078e732f868d1da9cd415b5c1a819707494f02fbeca4df",
+    "Sección 3 Nuestras primeras pruebas/18. Class Transformer - Pruebas de conversión de tipo.md": "612e20b86aa8e6a14f49a7a8f7d3fb88bbd1966fe036a5fc9c3ee8d244f77207",
+    "Sección 3 Nuestras primeras pruebas/16. Test - Pagination.dto.md": "04f93de13ea7dd5c9e8a7e63d8b24b2c8aa109696798d4b3e138437901490f4e",
+    "Sección 3 Nuestras primeras pruebas/19. Test - Create.dto.md": "c013071b9ae14209b07e5f2d08532cbf085378436659087cd602fe2bb5699b8e",
+    "Sección 3 Nuestras primeras pruebas/20. Otras pruebas sobre Create y Update Dtos.md": "d0b3b7e8baeb498b1804005b99881b8cc0047b0518d38fa060523e6d674026ff"
+  },
+  "guides": [
+    {
+      "source": "Sección 3 Nuestras primeras pruebas/18. Class Transformer - Pruebas de conversión de tipo.md",
+      "guide": "Sección 3 Nuestras primeras pruebas/18. Class Transformer - Pruebas de conversión de tipo - Reconstrucción guiada.md",
+      "sha256": "d79e3f6153f4b5eee8c9a9282468c0db985bd1acd715bfb86e34216d52cad1e9"
+    },
+    {
+      "source": "Sección 3 Nuestras primeras pruebas/19. Test - Create.dto.md",
+      "guide": "Sección 3 Nuestras primeras pruebas/19. Test - Create.dto - Reconstrucción guiada.md",
+      "sha256": "618089f6e37827320261ac8e7439eaa06aab411137b440ce836c1b6b298d4bb1"
+    },
+    {
+      "source": "Sección 3 Nuestras primeras pruebas/20. Otras pruebas sobre Create y Update Dtos.md",
+      "guide": "Sección 3 Nuestras primeras pruebas/20. Otras pruebas sobre Create y Update Dtos - Reconstrucción guiada.md",
+      "sha256": "47fc11ded83955e8d3324034511cea8b915e090d8288c1f82d1ac316b984eecc"
+    }
+  ]
+}

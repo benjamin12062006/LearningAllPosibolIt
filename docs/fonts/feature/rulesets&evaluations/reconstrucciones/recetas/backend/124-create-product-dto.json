@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 10 TypeORM - Postgres/124. Create Product DTO.md",
+  "previous": [
+    "Sección 10 TypeORM - Postgres/134. Nueva columna - Tags.md"
+  ],
+  "objective": "Definir CreateProductDto con class-validator para que POST /api/products rechace con 400 los cuerpos que no cumplen el contrato: título obligatorio, campos opcionales tipados, arreglo de tallas con elementos string y género restringido a una lista cerrada.",
+  "initial": "Proyecto TesloShop con el recurso products generado por Nest CLI (controller, service, DTOs vacíos) y la entidad Product de las clases 122–123. Postman devuelve 404 en /api/products porque todavía no existe el prefijo global.",
+  "certainty": "El mecanismo (prefijo global, ValidationPipe global y decoradores por propiedad) se recupera con alta confianza de la narración. Los nombres de propiedades se normalizan desde la pronunciación: «seises»/«size» → sizes, «stok» → stock, «slack»/«eslogan» → slug. Los valores de gender se transcriben como «Man Woman Kit Unisex»; se usan men/women/kid/unisex, coherentes con el resto del curso, sin certificar la grafía de pantalla. Las opciones whitelist/forbidNonWhitelisted proceden de la hoja de atajos que el instructor pega y de su mención en la clase 134; el texto del bloque pegado no se ve. El instructor dice «Error 401» al ver la respuesta, pero el mensaje que lee es de Bad Request (400).",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 15,
+      "phrase": "vamos a hacer el app Set Global",
+      "change": "Añadir app.setGlobalPrefix('api') antes de app.listen para que exista /api/products.",
+      "certainty": "Explícito; el argumento se fija como 'api' tras la corrección del instructor."
+    },
+    {
+      "id": "E2",
+      "line": 17,
+      "phrase": "hay que usar un global pipe",
+      "change": "Instalar class-validator y class-transformer y registrar ValidationPipe global en main.ts.",
+      "certainty": "Explícito; el bloque se copia de la documentación."
+    },
+    {
+      "id": "E3",
+      "line": 21,
+      "phrase": "Yo no estoy esperando el ID",
+      "change": "El DTO no incluye id; empieza con title string y price number opcional.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E4",
+      "line": 23,
+      "phrase": "la cantidad en stok",
+      "change": "Añadir description, slug y stock como propiedades opcionales.",
+      "certainty": "Explícito; nombres normalizados."
+    },
+    {
+      "id": "E5",
+      "line": 25,
+      "phrase": "mini length de al menos un carácter",
+      "change": "title con @IsString y @MinLength(1).",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E6",
+      "line": 27,
+      "phrase": "es positive, tiene que ser positivo",
+      "change": "price con @IsNumber, @IsPositive e @IsOptional; description y slug con @IsString e @IsOptional.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E7",
+      "line": 29,
+      "phrase": "tiene que ser un entero",
+      "change": "stock con @IsInt, @IsPositive e @IsOptional.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E8",
+      "line": 31,
+      "phrase": "each entry",
+      "change": "sizes con @IsString({ each: true }) e @IsArray, obligatorio; gender con @IsIn([...]).",
+      "certainty": "Explícito; sizes queda obligatorio según la misma línea."
+    },
+    {
+      "id": "E9",
+      "line": 33,
+      "phrase": "El título tiene que ser más de un carácter",
+      "change": "Comprobar en Postman los mensajes de validación con body vacío.",
+      "certainty": "Explícito; el código HTTP pronunciado no coincide con el mensaje."
+    },
+    {
+      "id": "E10",
+      "line": 35,
+      "phrase": "Man Woman Kit Unisex",
+      "change": "Lista de valores admitidos por @IsIn y respuesta Bad Request.",
+      "certainty": "Grafía transcrita; se normaliza."
+    },
+    {
+      "id": "E11",
+      "line": 31,
+      "phrase": "Whitley s Forbidden",
+      "change": "La configuración base del proyecto incluye whitelist y forbidNonWhitelisted en el ValidationPipe.",
+      "certainty": "Contexto posterior del mismo curso; transcripción fonética.",
+      "source": "Sección 10 TypeORM - Postgres/134. Nueva columna - Tags.md"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Prefijo global y ValidationPipe",
+      "code": "import { ValidationPipe } from '@nestjs/common';\nimport { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n\n  app.setGlobalPrefix('api');\n\n  app.useGlobalPipes(\n    new ValidationPipe({\n      whitelist: true,\n      forbidNonWhitelisted: true,\n    }),\n  );\n\n  await app.listen(3000);\n}\nbootstrap();",
+      "why": "Sin prefijo la ruta /api/products no existe (404) y sin el pipe global los decoradores del DTO no se ejecutan: habría que validar a mano en el controlador.",
+      "check": "POST /api/products con body {} responde la acción del servicio en lugar de 404.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E11"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Forma del DTO sin decoradores",
+      "code": "export class CreateProductDto {\n  title: string;\n  price?: number;\n  description?: string;\n  slug?: string;\n  stock?: number;\n  sizes: string[];\n  gender: string;\n}",
+      "why": "Primero se decide qué datos entran por el endpoint. El id lo genera la base de datos, por eso no forma parte de la creación.",
+      "check": "El proyecto compila; todavía no hay validación.",
+      "evidence": [
+        "E3",
+        "E4",
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Decoradores de los campos escalares",
+      "code": "@IsString()\n@MinLength(1)\ntitle: string;\n\n@IsNumber()\n@IsPositive()\n@IsOptional()\nprice?: number;\n\n@IsInt()\n@IsPositive()\n@IsOptional()\nstock?: number;",
+      "why": "El signo ? solo afecta a TypeScript; @IsOptional es lo que permite omitir el campo en tiempo de ejecución. stock usa @IsInt porque no admite decimales, a diferencia de price.",
+      "check": "Enviar title vacío o price negativo produce errores de validación.",
+      "evidence": [
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Arreglos y valores cerrados",
+      "code": "@IsString({ each: true })\n@IsArray()\nsizes: string[];\n\n@IsIn(['men', 'women', 'kid', 'unisex'])\ngender: string;",
+      "why": "each: true aplica la regla a cada elemento del arreglo y @IsIn limita un string a un conjunto conocido, sin crear un enum.",
+      "check": "Body vacío: mensajes de title, sizes (arreglo y cada valor string) y gender; Bad Request.",
+      "evidence": [
+        "E8",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/main.ts",
+      "language": "ts",
+      "code": "import { ValidationPipe } from '@nestjs/common';\nimport { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n\n  app.setGlobalPrefix('api');\n\n  app.useGlobalPipes(\n    new ValidationPipe({\n      whitelist: true,\n      forbidNonWhitelisted: true,\n    }),\n  );\n\n  await app.listen(3000);\n}\nbootstrap();",
+      "provenance": "E1 prefijo; E2 pipe global; E11 opciones whitelist/forbidNonWhitelisted (clase 134, línea 31). Puerto 3000 del proyecto Nest por defecto."
+    },
+    {
+      "path": "src/products/dto/create-product.dto.ts",
+      "language": "ts",
+      "code": "import {\n  IsArray,\n  IsIn,\n  IsInt,\n  IsNumber,\n  IsOptional,\n  IsPositive,\n  IsString,\n  MinLength,\n} from 'class-validator';\n\nexport class CreateProductDto {\n  @IsString()\n  @MinLength(1)\n  title: string;\n\n  @IsNumber()\n  @IsPositive()\n  @IsOptional()\n  price?: number;\n\n  @IsString()\n  @IsOptional()\n  description?: string;\n\n  @IsString()\n  @IsOptional()\n  slug?: string;\n\n  @IsInt()\n  @IsPositive()\n  @IsOptional()\n  stock?: number;\n\n  @IsString({ each: true })\n  @IsArray()\n  sizes: string[];\n\n  @IsIn(['men', 'women', 'kid', 'unisex'])\n  gender: string;\n}",
+      "provenance": "E3–E4 propiedades; E5 title; E6 price/description/slug; E7 stock; E8 sizes y gender; E10 valores normalizados."
+    }
+  ],
+  "temporary": "La clase anticipa una expresión regular para slug, pero la deja para procesarla en código en clases posteriores. Las relaciones (imágenes, usuario) se añaden después; el DTO crecerá.",
+  "mental": "Petición → ValidationPipe global → instancia de CreateProductDto → decoradores por propiedad → 400 con la lista de mensajes o controlador con datos válidos. @IsOptional controla la presencia; each: true aplica una regla a cada elemento; @IsIn cierra los valores admitidos."
+}

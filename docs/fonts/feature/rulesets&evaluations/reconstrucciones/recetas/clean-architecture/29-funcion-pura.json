@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 4 Paradigma Funcional/29. Función Pura.md",
+  "previous": [],
+  "objective": "Distinguir una función pura (misma entrada → misma salida, sin efectos sobre elementos externos) de una que no lo es, en C#: sacar la fecha actual fuera de la función recibiéndola por parámetro y devolver un objeto nuevo en lugar de modificar el recibido por referencia.",
+  "initial": "Solución del curso con proyectos anteriores. Se añade un proyecto de consola nuevo FunctionalProgramming; la versión de .NET es indiferente según el instructor.",
+  "certainty": "Los cuatro mecanismos (Tomorrow/TomorrowPure, ToUpper/ToUpperPure) y la clase Beer se recuperan con confianza alta. La transcripción convierte Tomorrow en «Tumor» y WriteLine en «readline»; se normalizan: Console.WriteLine imprime y Console.ReadLine pausa entre ejecuciones. La fecha concreta de new DateTime no se oye; 2024-01-01 12:00:00 es un marcador. El instructor muestra la cerveza original intacta tras ToUpperPure; para que se observe después de ToUpper se usa una segunda instancia otherBeer, ensamblada. La clase Beer con Name es la mínima que exige el ejemplo.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "siempre dada la misma entrada de datos",
+      "change": "Definición: determinismo y ausencia de efectos colaterales.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "Functional Programming",
+      "change": "Nuevo proyecto de consola para la sección.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "voy a hacer una función que no es pura",
+      "change": "Tomorrow devuelve DateTime.Now más un día.",
+      "certainty": "Explícito; propiedad estática Now descrita."
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "que se ejecute tumor",
+      "change": "Ejecutar dos veces Tomorrow con una pausa muestra valores distintos.",
+      "certainty": "Nombre normalizado a Tomorrow."
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "tumor pura",
+      "change": "TomorrowPure recibe la fecha por parámetro.",
+      "certainty": "Nombre normalizado."
+    },
+    {
+      "id": "E6",
+      "line": 23,
+      "phrase": "new DateTime, el año, el mes, el día",
+      "change": "Llamar con una fecha construida explícitamente; resultado estable.",
+      "certainty": "Explícito; valores no recuperados."
+    },
+    {
+      "id": "E7",
+      "line": 25,
+      "phrase": "convierte las mayúsculas del nombre",
+      "change": "ToUpper(Beer) modifica beer.Name del objeto recibido.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E8",
+      "line": 27,
+      "phrase": "Heineken",
+      "change": "Crear la cerveza Heineken y mostrar el original después de la llamada.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E9",
+      "line": 29,
+      "phrase": "toupper pure",
+      "change": "ToUpperPure crea un Beer nuevo con el nombre en mayúsculas.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E10",
+      "line": 33,
+      "phrase": "Los struct pasan valores",
+      "change": "AddDays no altera el DateTime recibido porque DateTime es struct; las clases y arrays se pasan por referencia.",
+      "certainty": "Explícito."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Función no pura por depender del reloj",
+      "language": "csharp",
+      "code": "Console.WriteLine(Tomorrow());\nConsole.ReadLine();\nConsole.WriteLine(Tomorrow());\n\nDateTime Tomorrow() => DateTime.Now.AddDays(1);",
+      "why": "Sin parámetros, la entrada es siempre la misma, pero el resultado cambia con la hora: viola el determinismo.",
+      "check": "Las dos líneas impresas difieren en minutos/segundos.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ]
+    },
+    {
+      "title": "Recibir el tiempo como parámetro",
+      "language": "csharp",
+      "code": "Console.WriteLine(TomorrowPure(new DateTime(2024, 1, 1, 12, 0, 0)));\n\nDateTime TomorrowPure(DateTime time) => time.AddDays(1);",
+      "why": "La función deja de decidir qué día es hoy; quien la llama lo aporta y la salida solo depende de la entrada.",
+      "check": "Con la misma fecha, el resultado es igual en cualquier ejecución.",
+      "evidence": [
+        "E5",
+        "E6",
+        "E10"
+      ]
+    },
+    {
+      "title": "Efecto colateral al modificar un objeto",
+      "language": "csharp",
+      "code": "var beer = new Beer() { Name = \"Heineken\" };\nConsole.WriteLine(ToUpper(beer).Name);\nConsole.WriteLine(beer.Name);\n\nBeer ToUpper(Beer beer)\n{\n    beer.Name = beer.Name.ToUpper();\n    return beer;\n}",
+      "why": "Un objeto se pasa por referencia: cambiar beer.Name dentro cambia el objeto de fuera.",
+      "check": "Ambas líneas muestran HEINEKEN.",
+      "evidence": [
+        "E7",
+        "E8"
+      ]
+    },
+    {
+      "title": "Devolver un objeto nuevo",
+      "language": "csharp",
+      "code": "Beer ToUpperPure(Beer beer)\n{\n    var newBeer = new Beer() { Name = beer.Name.ToUpper() };\n    return newBeer;\n}",
+      "why": "La función produce su resultado sin tocar la entrada.",
+      "check": "El resultado está en mayúsculas y el original conserva Heineken.",
+      "evidence": [
+        "E9"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "FunctionalProgramming/Program.cs",
+      "language": "csharp",
+      "code": "// Programa de consola FunctionalProgramming (.NET, instrucciones de nivel superior).\n// La ejecución va arriba; funciones y clases, debajo.\n\nConsole.WriteLine(Tomorrow());\nConsole.ReadLine();\nConsole.WriteLine(Tomorrow()); // valor distinto: no es pura\n\nConsole.WriteLine(TomorrowPure(new DateTime(2024, 1, 1, 12, 0, 0)));\nConsole.ReadLine();\nConsole.WriteLine(TomorrowPure(new DateTime(2024, 1, 1, 12, 0, 0))); // mismo valor\n\nvar beer = new Beer() { Name = \"Heineken\" };\nConsole.WriteLine(ToUpper(beer).Name);\nConsole.WriteLine(beer.Name); // también en mayúsculas: se modificó el original\n\nvar otherBeer = new Beer() { Name = \"Heineken\" };\nConsole.WriteLine(ToUpperPure(otherBeer).Name);\nConsole.WriteLine(otherBeer.Name); // sin cambios\n\n// Funciones no puras\nDateTime Tomorrow() => DateTime.Now.AddDays(1);\n\nBeer ToUpper(Beer beer)\n{\n    beer.Name = beer.Name.ToUpper();\n    return beer;\n}\n\n// Funciones puras\nDateTime TomorrowPure(DateTime time) => time.AddDays(1);\n\nBeer ToUpperPure(Beer beer)\n{\n    var newBeer = new Beer() { Name = beer.Name.ToUpper() };\n    return newBeer;\n}\n\nclass Beer\n{\n    public string Name { get; set; }\n}",
+      "provenance": "E2 proyecto; E3–E6 fechas; E7–E9 cervezas; E10 explicación de struct. otherBeer y la fecha de ejemplo son ensamblados."
+    }
+  ],
+  "temporary": "Las pausas con Console.ReadLine solo sirven para observar el cambio de hora entre ejecuciones.",
+  "mental": "Pura = depende solo de sus parámetros y no cambia nada fuera. Lo variable (reloj) entra por parámetro; los objetos recibidos no se modifican: se devuelve uno nuevo. Eso hace la función repetible, fácil de probar y reutilizable."
+}

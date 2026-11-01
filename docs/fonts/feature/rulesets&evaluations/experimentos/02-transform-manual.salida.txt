@@ -1,0 +1,39 @@
+OK    1 válido mixto
+      CleanTextRuleDto{"type":"clean_text","attributes":["title"]}
+      BuildTitleRuleDto{"type":"build_title","template":"{brand} {title}"}
+ERROR 3 type desconocido con campo extra
+      rules.0.anything:whitelistValidation
+      rules.0.type:isIn
+ERROR 5 type ausente
+      rules.0.template:whitelistValidation
+      rules.0.type:isIn
+ERROR 6 campo de otra subclase
+      rules.0.template:whitelistValidation
+ERROR 7 subclase con campo inválido
+      rules.0.template:isLength
+ERROR 8 elemento null
+      rules:isObject
+      rules.0:nestedValidation
+ERROR 9 elemento string
+      rules:isObject
+      rules.0:nestedValidation
+ERROR 9b elemento arreglo
+      rules:isObject
+      rules.0.0.type:whitelistValidation
+      rules.0.0.attributes:whitelistValidation
+ERROR 10 rules objeto
+      rules:isArray
+      rules:arrayMinSize
+      rules:arrayMaxSize
+      rules.0:whitelistValidation
+ERROR 12 type "__proto__"
+      rules.0.type:isIn
+ERROR 12b type "constructor"
+      rules.0.type:isIn
+ERROR 13 21 reglas
+      rules:arrayMaxSize
+ERROR 14 rules ausente
+      rules:isArray
+      rules:arrayMinSize
+      rules:arrayMaxSize
+      rules:isObject

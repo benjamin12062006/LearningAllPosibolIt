@@ -109,14 +109,21 @@ function resolveErrorCode(code: unknown, status: number): ErrorCode {
   return fallbackCodesByStatus[status] ?? ErrorCodes.HTTP_ERROR;
 }
 
+/**
+ * Códigos cuya respuesta puede llevar `issues`. `EVALUATION_COLUMN_MISSING` los
+ * usa para decir qué atributos del mapeo apuntan a columnas inexistentes.
+ */
+const CODES_WITH_ISSUES: ReadonlySet<ErrorCode> = new Set([
+  ErrorCodes.VALIDATION_FAILED,
+  ErrorCodes.INVALID_UUID,
+  ErrorCodes.EVALUATION_COLUMN_MISSING,
+]);
+
 function readValidationIssues(
   code: ErrorCode,
   body: Record<string, unknown>,
 ): ValidationIssue[] {
-  if (
-    code !== ErrorCodes.VALIDATION_FAILED &&
-    code !== ErrorCodes.INVALID_UUID
-  ) {
+  if (!CODES_WITH_ISSUES.has(code)) {
     return [];
   }
   if (!Array.isArray(body.issues)) return [];

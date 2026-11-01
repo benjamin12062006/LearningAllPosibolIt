@@ -34,9 +34,28 @@ model Project {
   channelProfile String?           @map("channel_profile")
   owner          AppUser           @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   snapshots      CatalogSnapshot[]
+  rulesets       RulesetVersion[]
 
   @@index([ownerId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_projects_owner_created")
   @@map("projects")
+  @@schema("estadistica_forms")
+}
+
+/// Versión inmutable de mapeo y reglas de un proyecto. `mapping` y `rules` son
+/// arreglos JSON: el orden de `rules` es el orden de aplicación.
+model RulesetVersion {
+  id          String       @id
+  projectId   String       @map("project_id")
+  revision    Int
+  mapping     Json
+  rules       Json
+  createdAt   String       @map("created_at")
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  evaluations Evaluation[]
+
+  @@unique([projectId, revision])
+  @@unique([projectId, id])
+  @@map("ruleset_versions")
   @@schema("estadistica_forms")
 }
 
@@ -59,6 +78,7 @@ model CatalogSnapshot {
   project              Project            @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   rows                 CatalogRow[]
   jobs                 CatalogImportJob[]
+  evaluations          Evaluation[]
 
   @@unique([projectId, id])
   @@index([projectId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_catalog_snapshots_project_created")
@@ -94,5 +114,53 @@ model CatalogImportJob {
 
   @@index([status, createdAt, id], map: "idx_catalog_jobs_queue")
   @@map("catalog_import_jobs")
+  @@schema("estadistica_forms")
+}
+
+/// Evaluación de un snapshot con una versión de reglas; hace también de trabajo
+/// (cola `queued → running → succeeded | failed`). Los conteos y la suma solo
+/// existen cuando termina bien. La migración añade un índice único parcial que
+/// Prisma no expresa: una sola evaluación activa por proyecto.
+model Evaluation {
+  id               String          @id
+  projectId        String          @map("project_id")
+  snapshotId       String          @map("snapshot_id")
+  rulesetVersionId String          @map("ruleset_version_id")
+  engineVersion    String          @map("engine_version")
+  profileVersion   String          @map("profile_version")
+  status           String
+  totalCount       Int?            @map("total_count")
+  validCount       Int?            @map("valid_count")
+  invalidCount     Int?            @map("invalid_count")
+  excludedCount    Int?            @map("excluded_count")
+  resultChecksum   String?         @map("result_checksum")
+  createdAt        String          @map("created_at")
+  startedAt        String?         @map("started_at")
+  finishedAt       String?         @map("finished_at")
+  error            Json?
+  snapshot         CatalogSnapshot @relation(fields: [projectId, snapshotId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
+  ruleset          RulesetVersion  @relation(fields: [projectId, rulesetVersionId], references: [projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  rows             EvaluationRow[]
+
+  @@unique([projectId, id])
+  @@index([status, createdAt, id], map: "idx_evaluations_queue")
+  @@map("evaluations")
+  @@schema("estadistica_forms")
+}
+
+/// Resultado de una fila. `productValues` es nulo en las excluidas.
+model EvaluationRow {
+  evaluationId   String     @map("evaluation_id")
+  sourceRow      Int        @map("source_row")
+  externalId     String     @map("external_id")
+  outcome        String
+  productValues  Json?      @map("product_values")
+  problems       Json
+  excludedByRule Int?       @map("excluded_by_rule")
+  evaluation     Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([evaluationId, sourceRow])
+  @@index([evaluationId, outcome, sourceRow], map: "idx_evaluation_rows_outcome")
+  @@map("evaluation_rows")
   @@schema("estadistica_forms")
 }

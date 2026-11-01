@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 3 Nuestras primeras pruebas/20. Otras pruebas sobre Create y Update Dtos.md",
+  "previous": [
+    "Sección 3 Nuestras primeras pruebas/19. Test - Create.dto.md",
+    "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md"
+  ],
+  "objective": "Completar las pruebas de CreatePokemonDto con hp negativo (incluidas sus constraints, comparadas con toEqual) y sprites no string/string, y crear las pruebas de UpdatePokemonDto limitadas a lo que lo distingue: todo opcional pero con las mismas reglas.",
+  "initial": "create-pokemon.dto.spec.ts con el caso válido y los inválidos por name y type de la clase 19. UpdatePokemonDto extiende PartialType(CreatePokemonDto).",
+  "certainty": "La estructura de las pruebas, find por property, toEqual para objetos y toBeUndefined se recuperan con alta confianza. Los títulos se normalizan desde la pronunciación («HP Mosby, Positivo Number»). El texto del mensaje de la constraint min no se lee en la transcripción; se usa el mensaje por defecto de class-validator y se marca en un comentario. Los valores 123/456 y los nombres sprite1.png/sprite2.png se ensamblan de «123456» y «sprite uno punto png». PartialType se importa de @nestjs/mapped-types, el paquete que genera el CLI de recursos; la clase no muestra el import.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "Positivo Number",
+      "change": "Nueva prueba para hp con valor inválido partiendo de name y type válidos.",
+      "certainty": "Título normalizado."
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "el HP va a ser igual a -10",
+      "change": "Asignar hp = -10 y validar.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E3",
+      "line": 17,
+      "phrase": "cuya property sea exactamente igual a HP",
+      "change": "Buscar hpError y exigir toBeDefined.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E4",
+      "line": 19,
+      "phrase": "Constraints va a ser igual a nuestro HP",
+      "change": "Extraer hpError?.constraints con encadenamiento opcional.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E5",
+      "line": 21,
+      "phrase": "esto no nos va a funcionar de la manera esperada",
+      "change": "toBe falla con un objeto literal nuevo: compara referencia o primitivos.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E6",
+      "line": 23,
+      "phrase": "Tiene que ser un objeto igual a este otro objeto",
+      "change": "Usar toEqual para comparar el objeto de constraints.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E7",
+      "line": 27,
+      "phrase": "Invalid with none string",
+      "change": "Prueba de sprites con números forzados con as unknown as.",
+      "certainty": "Explícito; título normalizado."
+    },
+    {
+      "id": "E8",
+      "line": 29,
+      "phrase": "each value de los sprites tiene que ser un string",
+      "change": "El error aparece en la property sprites.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E9",
+      "line": 31,
+      "phrase": "valid string sprites",
+      "change": "Prueba válida con strings de imagen.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E10",
+      "line": 33,
+      "phrase": "Lo que podríamos hacer es sprites to be undefined",
+      "change": "Preferir toBeUndefined a not.toBeDefined por legibilidad.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E11",
+      "line": 37,
+      "phrase": "Update Pokémon",
+      "change": "Copiar el spec para UpdatePokemonDto.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E12",
+      "line": 39,
+      "phrase": "Podríamos obligar, por ejemplo el HP",
+      "change": "En Update se conservan el caso vacío válido y hp negativo inválido.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E13",
+      "line": 41,
+      "phrase": "lo que realmente hace único",
+      "change": "No duplicar pruebas ya cubiertas por Create.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E14",
+      "line": 37,
+      "phrase": "esto extiende del Partial Create",
+      "change": "UpdatePokemonDto extiende PartialType(CreatePokemonDto).",
+      "certainty": "Contexto de la clase 13.",
+      "source": "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md"
+    }
+  ],
+  "phases": [
+    {
+      "title": "hp negativo y su constraint",
+      "code": "it('should hp must be positive number', async () => {\n  const dto = new CreatePokemonDto();\n  dto.name = 'Pikachu';\n  dto.type = 'Electric';\n  dto.hp = -10;\n\n  const errors = await validate(dto);\n  const hpError = errors.find((error) => error.property === 'hp');\n  const constraints = hpError?.constraints;\n\n  expect(hpError).toBeDefined();\n  expect(constraints).toEqual({ min: 'hp must not be less than 0' });\n});",
+      "why": "constraints es un objeto regla → mensaje. Para compararlo con un literal recién creado hace falta igualdad estructural (toEqual), no de referencia (toBe).",
+      "check": "Con toBe la prueba falla aunque el contenido coincida; con toEqual pasa. Cambiar el mensaje esperado muestra el diff.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "sprites inválidos y válidos",
+      "code": "dto.sprites = [123, 456] as unknown as string[];\n// ...\nexpect(spritesError).toBeDefined();\n\ndto.sprites = ['sprite1.png', 'sprite2.png'];\n// ...\nexpect(spritesError).toBeUndefined();",
+      "why": "@IsString({ each: true }) se comprueba en ambos sentidos. toBeUndefined se lee mejor que not.toBeDefined.",
+      "check": "Ambas pruebas pasan; quitar each: true hace fallar la de números.",
+      "evidence": [
+        "E7",
+        "E8",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Pruebas mínimas de UpdatePokemonDto",
+      "code": "import 'reflect-metadata';\nimport { validate } from 'class-validator';\nimport { UpdatePokemonDto } from './update-pokemon.dto';\n\ndescribe('UpdatePokemonDto', () => {\n  it('should be valid with correct data', async () => {\n    const dto = new UpdatePokemonDto();\n\n    const errors = await validate(dto);\n\n    expect(errors.length).toBe(0);\n  });\n\n  it('should hp must be positive number', async () => {\n    const dto = new UpdatePokemonDto();\n    dto.hp = -10;\n\n    const errors = await validate(dto);\n    const hpError = errors.find((error) => error.property === 'hp');\n\n    expect(hpError).toBeDefined();\n  });\n});",
+      "why": "Update hereda las reglas con todo opcional: un DTO vacío es válido y una regla heredada sigue aplicando. No se repite el resto.",
+      "check": "Las dos pruebas pasan.",
+      "evidence": [
+        "E11",
+        "E12",
+        "E13",
+        "E14"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/pokemons/dto/create-pokemon.dto.spec.ts",
+      "language": "ts",
+      "code": "import 'reflect-metadata';\nimport { validate } from 'class-validator';\nimport { CreatePokemonDto } from './create-pokemon.dto';\n\ndescribe('CreatePokemonDto', () => {\n  it('should be valid with correct data', async () => {\n    const dto = new CreatePokemonDto();\n    dto.name = 'Pikachu';\n    dto.type = 'Electric';\n\n    const errors = await validate(dto);\n\n    expect(errors.length).toBe(0);\n  });\n\n  it('should be invalid if name is not present', async () => {\n    const dto = new CreatePokemonDto();\n    dto.type = 'Electric';\n\n    const errors = await validate(dto);\n    const nameError = errors.find((error) => error.property === 'name');\n\n    expect(nameError).toBeDefined();\n  });\n\n  it('should be invalid if type is not present', async () => {\n    const dto = new CreatePokemonDto();\n    dto.name = 'Pikachu';\n\n    const errors = await validate(dto);\n    const typeError = errors.find((error) => error.property === 'type');\n\n    expect(typeError).toBeDefined();\n  });\n\n\n  it('should hp must be positive number', async () => {\n    const dto = new CreatePokemonDto();\n    dto.name = 'Pikachu';\n    dto.type = 'Electric';\n    dto.hp = -10;\n\n    const errors = await validate(dto);\n    const hpError = errors.find((error) => error.property === 'hp');\n    const constraints = hpError?.constraints;\n\n    expect(hpError).toBeDefined();\n    // Mensaje por defecto de class-validator; el texto exacto de pantalla no se recupera.\n    expect(constraints).toEqual({ min: 'hp must not be less than 0' });\n  });\n\n  it('should be invalid with non string sprites', async () => {\n    const dto = new CreatePokemonDto();\n    dto.name = 'Pikachu';\n    dto.type = 'Electric';\n    dto.sprites = [123, 456] as unknown as string[];\n\n    const errors = await validate(dto);\n    const spritesError = errors.find((error) => error.property === 'sprites');\n\n    expect(spritesError).toBeDefined();\n  });\n\n  it('should be valid with string sprites', async () => {\n    const dto = new CreatePokemonDto();\n    dto.name = 'Pikachu';\n    dto.type = 'Electric';\n    dto.sprites = ['sprite1.png', 'sprite2.png'];\n\n    const errors = await validate(dto);\n    const spritesError = errors.find((error) => error.property === 'sprites');\n\n    expect(spritesError).toBeUndefined();\n  });\n});",
+      "provenance": "Pruebas de la clase 19 (contexto) más E1–E6 para hp y E7–E10 para sprites. Mensaje de constraint por defecto, no literal."
+    },
+    {
+      "path": "src/pokemons/dto/update-pokemon.dto.ts",
+      "language": "ts",
+      "code": "import { PartialType } from '@nestjs/mapped-types';\nimport { CreatePokemonDto } from './create-pokemon.dto';\n\nexport class UpdatePokemonDto extends PartialType(CreatePokemonDto) {}",
+      "provenance": "E14 (clase 13). Import de @nestjs/mapped-types asumido por el CLI de recursos."
+    },
+    {
+      "path": "src/pokemons/dto/update-pokemon.dto.spec.ts",
+      "language": "ts",
+      "code": "import 'reflect-metadata';\nimport { validate } from 'class-validator';\nimport { UpdatePokemonDto } from './update-pokemon.dto';\n\ndescribe('UpdatePokemonDto', () => {\n  it('should be valid with correct data', async () => {\n    const dto = new UpdatePokemonDto();\n\n    const errors = await validate(dto);\n\n    expect(errors.length).toBe(0);\n  });\n\n  it('should hp must be positive number', async () => {\n    const dto = new UpdatePokemonDto();\n    dto.hp = -10;\n\n    const errors = await validate(dto);\n    const hpError = errors.find((error) => error.property === 'hp');\n\n    expect(hpError).toBeDefined();\n  });\n});",
+      "provenance": "E11–E13."
+    }
+  ],
+  "temporary": "Se eliminan los console.log de errores y constraints, la primera aserción con toBe sobre un objeto (E5) y el valor 10 usado para provocar un diff. En Update se comentan y descartan las pruebas de name/type obligatorios, que no aplican.",
+  "mental": "Buscar el ValidationError por property → comprobar que existe → si importa la regla concreta, comparar constraints con toEqual. Probar cada regla en los dos sentidos y no duplicar pruebas que un DTO heredado ya cubre."
+}

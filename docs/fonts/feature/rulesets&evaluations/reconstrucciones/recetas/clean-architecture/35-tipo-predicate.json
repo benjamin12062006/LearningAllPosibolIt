@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 4 Paradigma Funcional/35. Tipo Predicate.md",
+  "previous": [
+    "Sección 4 Paradigma Funcional/34. Función de orden superior.md"
+  ],
+  "objective": "Sustituir Func<int, bool> por Predicate<int>, el delegado de un único parámetro que siempre devuelve bool, y guardar las condiciones en variables con nombre para pasarlas a Filter.",
+  "initial": "Filter(List<int>, Func<int, bool>) de la clase 34 llamado con lambdas en línea para pares y mayores que cinco.",
+  "certainty": "Declaración de condition1/condition2, cambio de tipo del parámetro y llamadas con variables se recuperan con alta confianza. La ubicación exacta de las declaraciones («aquí arriba») y el resto del archivo se ensamblan desde la clase 34.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "solamente puede recibir un parámetro",
+      "change": "Predicate recibe un solo argumento y devuelve bool.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E2",
+      "line": 13,
+      "phrase": "la condición uno",
+      "change": "Predicate<int> condition1 = x => x % 2 == 0.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E3",
+      "line": 15,
+      "phrase": "vamos a evaluar si x es mayor a cinco",
+      "change": "Predicate<int> condition2 = x => x > 5.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E4",
+      "line": 15,
+      "phrase": "vamos a cambiar nuestra func por predicado",
+      "change": "Filter recibe Predicate<int> en lugar de Func<int, bool>.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E5",
+      "line": 17,
+      "phrase": "mandando la variable condición uno",
+      "change": "Llamar Filter con condition1 y condition2.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E6",
+      "line": 23,
+      "phrase": "foreach para recorrer Number dos",
+      "change": "Estado previo de Filter y de la impresión de resultados.",
+      "certainty": "Contexto de la clase 34.",
+      "source": "Sección 4 Paradigma Funcional/34. Función de orden superior.md"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Condiciones como predicados con nombre",
+      "language": "csharp",
+      "code": "Predicate<int> condition1 = x => x % 2 == 0;\nPredicate<int> condition2 = x => x > 5;",
+      "why": "Predicate expresa en el tipo que la función es una condición: un argumento y respuesta true/false.",
+      "check": "Compila; no se puede declarar un Predicate con dos parámetros.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ]
+    },
+    {
+      "title": "Filter recibe un Predicate",
+      "language": "csharp",
+      "code": "List<int> Filter(List<int> list, Predicate<int> condition)\n{\n    // mismo cuerpo que en la clase 34\n}\n\nvar numbers2 = Filter(numbers, condition1);\nvar numbers3 = Filter(numbers, condition2);",
+      "why": "El cuerpo no cambia: solo el tipo del parámetro. Las llamadas pasan variables en lugar de lambdas en línea.",
+      "check": "La salida coincide con la clase 34.",
+      "evidence": [
+        "E4",
+        "E5"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "FunctionalProgramming/Program.cs",
+      "language": "csharp",
+      "code": "// Proyecto FunctionalProgramming; continúa el ejemplo de la clase 34.\n\nPredicate<int> condition1 = x => x % 2 == 0;\nPredicate<int> condition2 = x => x > 5;\n\nvar numbers = new List<int> { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };\n\nvar numbers2 = Filter(numbers, condition1);\nforeach (var number in numbers2)\n{\n    Console.WriteLine(number);\n}\n\nvar numbers3 = Filter(numbers, condition2);\nforeach (var number in numbers3)\n{\n    Console.WriteLine(number);\n}\n\nList<int> Filter(List<int> list, Predicate<int> condition)\n{\n    var resultList = new List<int>();\n    foreach (var element in list)\n    {\n        if (condition(element))\n        {\n            resultList.Add(element);\n        }\n    }\n    return resultList;\n}",
+      "provenance": "E2–E3 condiciones; E4 firma; E5 llamadas. Lista, bucles y cuerpo de Filter desde la clase 34."
+    }
+  ],
+  "temporary": "",
+  "mental": "Predicate<T> = Func<T, bool> con intención explícita. Nombrar las condiciones las vuelve reutilizables y combinables sin tocar el recorrido."
+}

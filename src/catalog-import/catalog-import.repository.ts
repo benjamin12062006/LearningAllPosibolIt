@@ -308,6 +308,9 @@ export class CatalogImportRepository {
       if (isActiveStatus(snapshot.jobStatus)) {
         throw apiError(ErrorCodes.IMPORT_IN_PROGRESS);
       }
+      if (await hasActiveEvaluation(tx, { projectId, snapshotId })) {
+        throw apiError(ErrorCodes.EVALUATION_IN_PROGRESS);
+      }
 
       await tx.$executeRaw`
         DELETE FROM estadistica_forms.catalog_snapshots
@@ -337,6 +340,9 @@ export class CatalogImportRepository {
       }
       if (await this.hasActiveJobLocked(tx, projectId)) {
         throw apiError(ErrorCodes.IMPORT_IN_PROGRESS);
+      }
+      if (await hasActiveEvaluation(tx, { projectId })) {
+        throw apiError(ErrorCodes.EVALUATION_IN_PROGRESS);
       }
 
       const deleted = await tx.$queryRaw<DeletedImport[]>`
@@ -559,6 +565,23 @@ function isActiveJob(row: JobStatusRow | undefined) {
 
 function isActiveStatus(status: string | null) {
   return status !== null && ACTIVE_JOB_STATUSES.includes(status);
+}
+
+/**
+ * Una evaluación en cola o en curso lee las filas del snapshot: no se borra
+ * hasta que termine (plan rulesets&evaluations, D8). La tabla es del módulo
+ * `evaluations`, pero la comprobación vive aquí porque el borrado es de este
+ * módulo. Solo es fiable con el proyecto o el snapshot bloqueados en `tx`.
+ */
+async function hasActiveEvaluation(
+  tx: Prisma.TransactionClient,
+  where: { projectId: string; snapshotId?: string },
+) {
+  const active = await tx.evaluation.findFirst({
+    where: { ...where, status: { in: ACTIVE_JOB_STATUSES } },
+    select: { id: true },
+  });
+  return active !== null;
 }
 
 /** Las filas guardadas, el hash y el tamaño deben coincidir con el archivo aceptado. */

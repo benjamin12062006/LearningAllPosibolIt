@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "date": "2026-10-31",
+  "originals": {
+    "Sección 7 Advanced Types/90. More on Type Guards.md": "2862ba17ca87812290f4b33c2db656f512ba2ce2bc99f69f380196b7aa0876d6",
+    "Sección 7 Advanced Types/91. Discriminated Unions.md": "5131a406799ec94df3e3db747b487b812cf342a96e72ed83bb78af98fa32cc6c"
+  },
+  "guides": [
+    {
+      "source": "Sección 7 Advanced Types/91. Discriminated Unions.md",
+      "guide": "Sección 7 Advanced Types/91. Discriminated Unions - Reconstrucción guiada.md",
+      "sha256": "e5ecfd2e29fc03a685f57ae5b798ae5b6ad553187b02b7af3eabc82c5f79e48c"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+# WebStorm: seleccionar local. Necesita projectId de un proyecto configurado
+# (ejecutar antes createProject de projects.http).
+
+### Guardar una versión de mapeo y reglas (201, revisión siguiente)
+# @name createRuleset
+POST {{apiUrl}}/projects/{{projectId}}/rulesets
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+{
+  "mapping": [
+    { "attribute": "title", "column": "Nombre" },
+    { "attribute": "description", "column": "Descripción" },
+    { "attribute": "link", "column": "URL" },
+    { "attribute": "image_link", "column": "Imagen" },
+    { "attribute": "price", "column": "Precio" },
+    { "attribute": "availability", "column": "Stock" },
+    { "attribute": "brand", "column": "Marca" }
+  ],
+  "rules": [
+    { "type": "clean_text", "attributes": ["title", "brand"] },
+    { "type": "build_title", "template": "{brand} {title}" },
+    { "type": "exclude_when", "attribute": "brand", "operator": "is_empty" }
+  ]
+}
+
+> {%
+  client.assert(response.status === 201, "No se guardó la versión (se esperaba HTTP 201)");
+  client.assert(Number.isInteger(response.body.ruleset.revision), "Falta ruleset.revision");
+  client.global.set("revision", String(response.body.ruleset.revision));
+%}
+
+### Versión incoherente: 400 VALIDATION_FAILED con un issue RULESET_* por problema
+# @name createInvalidRuleset
+POST {{apiUrl}}/projects/{{projectId}}/rulesets
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+{
+  "mapping": [{ "attribute": "title", "column": "Nombre" }],
+  "rules": [{ "type": "build_title", "template": "{color}" }]
+}
+
+### Listar versiones, de la más reciente a la más antigua (respuesta { rulesets, page })
+# @name listRulesets
+GET {{apiUrl}}/projects/{{projectId}}/rulesets?limit=20
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
+### Consultar una revisión (respuesta { ruleset }); ausente o no numérica responde 404
+# @name getRuleset
+GET {{apiUrl}}/projects/{{projectId}}/rulesets/{{revision}}
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}

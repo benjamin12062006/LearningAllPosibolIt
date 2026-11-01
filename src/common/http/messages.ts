@@ -291,4 +291,74 @@ export const API_MESSAGES = {
     'El CSV debe incluir cabeceras y al menos un registro.',
     'The CSV must include headers and at least one data record.',
   ),
+  [ErrorCodes.RULESET_NOT_FOUND]: entry(
+    404,
+    'No se encontró la versión de reglas.',
+    'The ruleset version was not found.',
+  ),
+  [ErrorCodes.RULESET_MAPPING_DUPLICATE]: entry(
+    400,
+    'Cada atributo del canal solo puede mapearse una vez. El campo indica cuál se repite.',
+    'Each channel attribute can be mapped only once. The field shows which one is repeated.',
+  ),
+  [ErrorCodes.RULESET_REQUIRED_ATTRIBUTE_MISSING]: entry(
+    400,
+    'Falta un atributo obligatorio del canal: mapéalo o genéralo con una regla. El campo indica cuál.',
+    'A required channel attribute is missing: map it or produce it with a rule. The field shows which one.',
+  ),
+  [ErrorCodes.RULESET_REFERENCE_INVALID]: entry(
+    400,
+    'La regla usa un atributo que no está mapeado ni lo produce una regla anterior. El campo indica la regla y el atributo.',
+    'The rule uses an attribute that is neither mapped nor produced by an earlier rule. The field shows the rule and the attribute.',
+  ),
+  [ErrorCodes.RULESET_REVISION_CONFLICT]: entry(
+    409,
+    'Otra versión de reglas se guardó al mismo tiempo. Vuelve a intentarlo.',
+    'Another ruleset version was saved at the same time. Try again.',
+  ),
+  [ErrorCodes.EVALUATION_NOT_FOUND]: entry(
+    404,
+    'No se encontró la evaluación.',
+    'The evaluation was not found.',
+  ),
+  [ErrorCodes.EVALUATION_SNAPSHOT_NOT_READY]: entry(
+    409,
+    'La importación todavía no está lista para evaluarse.',
+    'The import is not ready to be evaluated yet.',
+  ),
+  [ErrorCodes.EVALUATION_COLUMN_MISSING]: entry(
+    409,
+    'El mapeo usa columnas que no existen en esta importación. Los campos indican qué atributos están afectados.',
+    'The mapping uses columns that do not exist in this import. The fields show which attributes are affected.',
+  ),
+  [ErrorCodes.EVALUATION_ALREADY_ACTIVE]: entry(
+    409,
+    'El proyecto ya tiene una evaluación en curso. Espera a que termine.',
+    'The project already has an evaluation in progress. Wait for it to finish.',
+  ),
+  [ErrorCodes.EVALUATION_IN_PROGRESS]: entry(
+    409,
+    'No se puede eliminar mientras hay una evaluación en curso. Espera a que termine.',
+    'It cannot be deleted while an evaluation is in progress. Wait for it to finish.',
+  ),
+  [ErrorCodes.EVALUATION_PROCESSING_FAILED]: entry(
+    400,
+    'La evaluación no pudo completarse.',
+    'The evaluation could not be completed.',
+  ),
+  [ErrorCodes.EVALUATION_INTERRUPTED]: entry(
+    400,
+    'La evaluación fue interrumpida antes de terminar.',
+    'The evaluation was interrupted before completion.',
+  ),
+  [ErrorCodes.EVALUATION_INTEGRITY_FAILED]: entry(
+    400,
+    'La evaluación no pudo confirmar que sus resultados estén completos.',
+    'The evaluation could not verify that its results are complete.',
+  ),
+  [ErrorCodes.EVALUATION_RESULTS_UNAVAILABLE]: entry(
+    409,
+    'La evaluación no tiene resultados: todavía no terminó o falló.',
+    'The evaluation has no results: it has not finished yet or it failed.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

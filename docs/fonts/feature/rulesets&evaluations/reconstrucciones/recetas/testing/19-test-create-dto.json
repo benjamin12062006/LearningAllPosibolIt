@@ -1,0 +1,173 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 3 Nuestras primeras pruebas/19. Test - Create.dto.md",
+  "previous": [
+    "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md",
+    "Sección 3 Nuestras primeras pruebas/16. Test - Pagination.dto.md"
+  ],
+  "objective": "Escribir las pruebas unitarias de CreatePokemonDto con validate() de class-validator: un caso válido con los datos mínimos y un caso inválido por cada propiedad obligatoria, buscando el error por su property para que la prueba no dependa del orden ni del número de errores.",
+  "initial": "CreatePokemonDto con name y type obligatorios (@IsNotEmpty, @IsString), hp opcional numérico con mínimo 0 y sprites opcional como arreglo de strings. Jest configurado y reflect-metadata instalado como dependencia de desarrollo.",
+  "certainty": "Las pruebas finales se recuperan con alta confianza. Nombres de pruebas en inglés normalizados desde la pronunciación («width correct data» → with correct data). La ruta src/pokemons/dto/ se asume por la convención del recurso de Nest. reflect-metadata se importa según la indicación general de la clase 16; la clase 19 no lo menciona.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 33,
+      "phrase": "Create Pokémon DTO",
+      "change": "CreatePokemonDto con name, type, hp opcional y sprites opcional.",
+      "certainty": "Contexto de la clase 13.",
+      "source": "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md"
+    },
+    {
+      "id": "E2",
+      "line": 35,
+      "phrase": "el valor mínimo debería ser cero",
+      "change": "name/type con @IsNotEmpty y @IsString; hp con @IsOptional, @IsNumber y @Min(0).",
+      "certainty": "Contexto.",
+      "source": "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md"
+    },
+    {
+      "id": "E3",
+      "line": 37,
+      "phrase": "isarray porque tiene que ser un arreglo",
+      "change": "sprites con @IsOptional, @IsArray e @IsString({ each: true }).",
+      "certainty": "Contexto.",
+      "source": "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md"
+    },
+    {
+      "id": "E4",
+      "line": 25,
+      "phrase": "antes de la importación del DTO",
+      "change": "import 'reflect-metadata' en specs que usan estos decoradores.",
+      "certainty": "Contexto de la clase 16.",
+      "source": "Sección 3 Nuestras primeras pruebas/16. Test - Pagination.dto.md"
+    },
+    {
+      "id": "E5",
+      "line": 13,
+      "phrase": "validar usando la función de el validate",
+      "change": "Solo se usa validate de class-validator; no hace falta plainToInstance porque el DTO no tiene @Type.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E6",
+      "line": 17,
+      "phrase": "Create Pokémon, Punto Dto",
+      "change": "Crear create-pokemon.dto.spec.ts con describe('CreatePokemonDto').",
+      "certainty": "Explícito; nombre normalizado."
+    },
+    {
+      "id": "E7",
+      "line": 21,
+      "phrase": "Length sea igual a cero",
+      "change": "Caso válido: name 'Pikachu', type 'Electric', cero errores.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E8",
+      "line": 23,
+      "phrase": "Should be invalid",
+      "change": "Caso inválido: falta name.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E9",
+      "line": 25,
+      "phrase": "pues débil o propensa a fallos",
+      "change": "Tomar errors[0] y comprobar su property hace la prueba frágil.",
+      "certainty": "Explícito; enfoque descartado."
+    },
+    {
+      "id": "E10",
+      "line": 29,
+      "phrase": "Another required property",
+      "change": "Demostración: una nueva propiedad obligatoria rompe la prueba frágil aunque name siga fallando.",
+      "certainty": "Explícito; experimento temporal."
+    },
+    {
+      "id": "E11",
+      "line": 31,
+      "phrase": "punto find",
+      "change": "Buscar el error con errors.find(error => error.property === 'name').",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E12",
+      "line": 33,
+      "phrase": "to be defined tiene que estar definida",
+      "change": "Aserción expect(nameError).toBeDefined().",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E13",
+      "line": 35,
+      "phrase": "Should be invalid if type is not present",
+      "change": "Mismo patrón para type con typeError.",
+      "certainty": "Explícito."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Caso válido con datos mínimos",
+      "code": "import 'reflect-metadata';\nimport { validate } from 'class-validator';\nimport { CreatePokemonDto } from './create-pokemon.dto';\n\ndescribe('CreatePokemonDto', () => {\n  it('should be valid with correct data', async () => {\n    const dto = new CreatePokemonDto();\n    dto.name = 'Pikachu';\n    dto.type = 'Electric';\n\n    const errors = await validate(dto);\n\n    expect(errors.length).toBe(0);\n  });\n});",
+      "why": "Fija el contrato mínimo: si mañana se añade un campo obligatorio, esta prueba avisa.",
+      "check": "La prueba pasa.",
+      "evidence": [
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Prueba frágil del error de name",
+      "code": "it('should be invalid if name is not present', async () => {\n  const dto = new CreatePokemonDto();\n  dto.type = 'Electric';\n\n  const errors = await validate(dto);\n  const [nameError] = errors;\n\n  expect(nameError.property).toBe('name');\n});",
+      "why": "Funciona hoy, pero depende de que el error de name sea el primero.",
+      "check": "Añadir anotherRequiredProperty obligatoria al inicio del DTO rompe esta prueba sin que haya cambiado name.",
+      "evidence": [
+        "E8",
+        "E9",
+        "E10"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Buscar el error por propiedad",
+      "code": "const errors = await validate(dto);\nconst nameError = errors.find((error) => error.property === 'name');\n\nexpect(nameError).toBeDefined();",
+      "why": "find devuelve el ValidationError de name o undefined; la prueba solo se interesa por esa propiedad y tolera otros errores.",
+      "check": "Con la propiedad extra la prueba sigue pasando; si se busca 'name2' falla con undefined.",
+      "evidence": [
+        "E11",
+        "E12"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Repetir para type",
+      "code": "it('should be invalid if type is not present', async () => {\n  const dto = new CreatePokemonDto();\n  dto.name = 'Pikachu';\n\n  const errors = await validate(dto);\n  const typeError = errors.find((error) => error.property === 'type');\n\n  expect(typeError).toBeDefined();\n});",
+      "why": "Una prueba por regla obligatoria deja claro qué falló.",
+      "check": "Las tres pruebas pasan.",
+      "evidence": [
+        "E13"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/pokemons/dto/create-pokemon.dto.ts",
+      "language": "ts",
+      "code": "import {\n  IsArray,\n  IsNotEmpty,\n  IsNumber,\n  IsOptional,\n  IsString,\n  Min,\n} from 'class-validator';\n\nexport class CreatePokemonDto {\n  @IsNotEmpty()\n  @IsString()\n  name: string;\n\n  @IsNotEmpty()\n  @IsString()\n  type: string;\n\n  @IsOptional()\n  @IsNumber()\n  @Min(0)\n  hp?: number;\n\n  @IsOptional()\n  @IsArray()\n  @IsString({ each: true })\n  sprites?: string[];\n}",
+      "provenance": "E1–E3 (clase 13). Ruta asumida por convención del recurso."
+    },
+    {
+      "path": "src/pokemons/dto/create-pokemon.dto.spec.ts",
+      "language": "ts",
+      "code": "import 'reflect-metadata';\nimport { validate } from 'class-validator';\nimport { CreatePokemonDto } from './create-pokemon.dto';\n\ndescribe('CreatePokemonDto', () => {\n  it('should be valid with correct data', async () => {\n    const dto = new CreatePokemonDto();\n    dto.name = 'Pikachu';\n    dto.type = 'Electric';\n\n    const errors = await validate(dto);\n\n    expect(errors.length).toBe(0);\n  });\n\n  it('should be invalid if name is not present', async () => {\n    const dto = new CreatePokemonDto();\n    dto.type = 'Electric';\n\n    const errors = await validate(dto);\n    const nameError = errors.find((error) => error.property === 'name');\n\n    expect(nameError).toBeDefined();\n  });\n\n  it('should be invalid if type is not present', async () => {\n    const dto = new CreatePokemonDto();\n    dto.name = 'Pikachu';\n\n    const errors = await validate(dto);\n    const typeError = errors.find((error) => error.property === 'type');\n\n    expect(typeError).toBeDefined();\n  });\n});",
+      "provenance": "E4 import; E5 validate; E6 describe; E7 caso válido; E11–E12 búsqueda por property; E13 type."
+    }
+  ],
+  "temporary": "Se eliminan console.log(errors), la desestructuración del primer error (E9) y la propiedad anotherRequiredProperty añadida al DTO para demostrar la fragilidad (E10).",
+  "mental": "new DTO → asignar solo lo que el caso necesita → validate → buscar el ValidationError de la propiedad bajo prueba → toBeDefined. No contar errores ni depender de su orden salvo en el caso válido, donde se espera cero."
+}

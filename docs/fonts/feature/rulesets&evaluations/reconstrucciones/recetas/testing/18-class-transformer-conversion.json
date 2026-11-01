@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 3 Nuestras primeras pruebas/18. Class Transformer - Pruebas de conversión de tipo.md",
+  "previous": [
+    "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md",
+    "Sección 3 Nuestras primeras pruebas/16. Test - Pagination.dto.md"
+  ],
+  "objective": "Probar que PaginationDto convierte strings de query en números. validate() de class-validator no ejecuta @Type, así que la prueba debe construir el DTO con plainToInstance de class-transformer y comprobar tanto la ausencia de errores como el tipo resultante.",
+  "initial": "Proyecto MyPokemonApp con src/shared/dtos/pagination.dto.ts (page y limit opcionales, numéricos, transformados con @Type y mínimo 1) y su spec con pruebas de valores por defecto e inválidos que usan new PaginationDto() y validate().",
+  "certainty": "El mecanismo y el código de la prueba final se recuperan con alta confianza. El orden de decoradores de PaginationDto y el uso de @IsNumber (el instructor dice «is number tiene que ser un número entero») se ensamblan desde la clase 13. Las pruebas de las clases 16–17 no se reproducen: solo se indica que permanecen en el archivo.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 17,
+      "phrase": "Pagination punto dto",
+      "change": "Crear shared/dtos/pagination.dto.ts con page y limit opcionales de tipo number.",
+      "certainty": "Contexto de la clase 13.",
+      "source": "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md"
+    },
+    {
+      "id": "E2",
+      "line": 21,
+      "phrase": "también voy a transformarlo mediante el type",
+      "change": "@IsOptional, @IsNumber y @Type(() => Number) en page.",
+      "certainty": "Contexto; decorador de número normalizado.",
+      "source": "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md"
+    },
+    {
+      "id": "E3",
+      "line": 23,
+      "phrase": "Tiene que ser uno",
+      "change": "@Min(1) y mismos decoradores en limit.",
+      "certainty": "Contexto.",
+      "source": "Sección 3 Nuestras primeras pruebas/13. Funcionamiento del API.md"
+    },
+    {
+      "id": "E4",
+      "line": 25,
+      "phrase": "antes de la importación del DTO",
+      "change": "import 'reflect-metadata' al inicio del spec.",
+      "certainty": "Contexto de la clase 16.",
+      "source": "Sección 3 Nuestras primeras pruebas/16. Test - Pagination.dto.md"
+    },
+    {
+      "id": "E5",
+      "line": 15,
+      "phrase": "Should convert nuestros strings en números",
+      "change": "Nueva prueba de conversión.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E6",
+      "line": 17,
+      "phrase": "as unknown as number",
+      "change": "Primer intento: asignar strings a una instancia creada con new.",
+      "certainty": "Explícito; intento descartado."
+    },
+    {
+      "id": "E7",
+      "line": 19,
+      "phrase": "Tenemos errores que no estábamos esperando",
+      "change": "validate() falla porque @Type no se aplicó.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E8",
+      "line": 21,
+      "phrase": "el Valid solo va a validar lo de nuestro class validator",
+      "change": "La conversión pertenece a class-transformer y debe probarse con su función.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E9",
+      "line": 23,
+      "phrase": "Plain to instance",
+      "change": "plainToInstance(PaginationDto, input) con limit '10' y page '2'.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E10",
+      "line": 27,
+      "phrase": "Estoy esperando que sea un diez como número",
+      "change": "Aserciones dto.limit toBe(10) y dto.page toBe(2).",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E11",
+      "line": 31,
+      "phrase": "Se estaba esperando cero y se recibió un uno",
+      "change": "Quitar @Type hace fallar la prueba: detecta la regresión.",
+      "certainty": "Explícito."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Intento con una instancia creada con new",
+      "code": "it('should convert strings into numbers', async () => {\n  const dto = new PaginationDto();\n  dto.page = '10' as unknown as number;\n  dto.limit = '10' as unknown as number;\n\n  const errors = await validate(dto);\n  console.log(errors.length);\n  expect(errors.length).toBe(0);\n});",
+      "why": "Se simula la query con strings. La prueba falla: validate solo ejecuta decoradores de class-validator; @Type nunca se aplicó y page sigue siendo string.",
+      "check": "Jest muestra errores de page/limit: deben ser números.",
+      "evidence": [
+        "E5",
+        "E6",
+        "E7",
+        "E8"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Construir el DTO como lo hace Nest",
+      "code": "const input = { limit: '10', page: '2' };\nconst dto = plainToInstance(PaginationDto, input);\n\nconst errors = await validate(dto);\nexpect(errors.length).toBe(0);",
+      "why": "plainToInstance hace la parte de class-transformer (objeto plano → instancia con @Type aplicado); después validate comprueba las reglas.",
+      "check": "La prueba pasa y el log de errores es un arreglo vacío.",
+      "evidence": [
+        "E9"
+      ],
+      "language": "ts"
+    },
+    {
+      "title": "Comprobar lo que dice el título de la prueba",
+      "code": "expect(dto.limit).toBe(10);\nexpect(dto.page).toBe(2);",
+      "why": "Cero errores no demuestra la conversión. toBe compara valor y tipo como ===, así que '2' no pasa por 2.",
+      "check": "Quitar @Type(() => Number) de PaginationDto hace fallar la prueba.",
+      "evidence": [
+        "E10",
+        "E11"
+      ],
+      "language": "ts"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/shared/dtos/pagination.dto.ts",
+      "language": "ts",
+      "code": "import { Type } from 'class-transformer';\nimport { IsNumber, IsOptional, Min } from 'class-validator';\n\nexport class PaginationDto {\n  @IsOptional()\n  @IsNumber()\n  @Type(() => Number)\n  @Min(1)\n  page?: number;\n\n  @IsOptional()\n  @IsNumber()\n  @Type(() => Number)\n  @Min(1)\n  limit?: number;\n}",
+      "provenance": "E1–E3 (clase 13). Orden de decoradores ensamblado."
+    },
+    {
+      "path": "src/shared/dtos/pagination.dto.spec.ts",
+      "language": "ts",
+      "code": "import 'reflect-metadata';\nimport { plainToInstance } from 'class-transformer';\nimport { validate } from 'class-validator';\nimport { PaginationDto } from './pagination.dto';\n\ndescribe('PaginationDto', () => {\n  // Las pruebas de valores por defecto y valores inválidos de las clases 16–17 siguen aquí.\n\n  it('should convert strings into numbers', async () => {\n    const input = { limit: '10', page: '2' };\n    const dto = plainToInstance(PaginationDto, input);\n\n    const errors = await validate(dto);\n\n    expect(errors.length).toBe(0);\n    expect(dto.limit).toBe(10);\n    expect(dto.page).toBe(2);\n  });\n});",
+      "provenance": "E4 reflect-metadata; E5 título; E9 plainToInstance; E10 aserciones. Las pruebas de 16–17 se omiten y se indican en un comentario."
+    }
+  ],
+  "temporary": "Se elimina el intento con new PaginationDto() y as unknown as number (E6) y los console.log de errores. La retirada de @Type para provocar el fallo es solo una demostración y se revierte.",
+  "mental": "Nest hace plainToInstance (transformar) y luego validate (validar). Una prueba unitaria de un DTO con @Type debe repetir esas dos fases; validate sola no transforma. Comprobar el valor convertido con toBe, que distingue '2' de 2."
+}

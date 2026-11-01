@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "date": "2026-10-31",
+  "originals": {
+    "Sección 7 Order Details - Maestro detalle/69. DTOs de creación de orden.md": "3f30be02c2bb43feb267fa8193d4ebda54153a5534201c4510100c7645af5ad8"
+  },
+  "guides": [
+    {
+      "source": "Sección 7 Order Details - Maestro detalle/69. DTOs de creación de orden.md",
+      "guide": "Sección 7 Order Details - Maestro detalle/69. DTOs de creación de orden - Reconstrucción guiada.md",
+      "sha256": "d9925dcf2c8cb5c6f4a234493a4443c39db46810b966176ea328f35c231ed2f8"
+    }
+  ]
+}
