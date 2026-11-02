@@ -1,7 +1,7 @@
 # 02 — Guardar y consultar versiones de reglas (E2)
 
 Fecha de creación: 2026-11-01  
-Estado: Implementado y verificado en local (PGlite). Migración sin aplicar en Neon.  
+Estado: Implementado y verificado en local (PGlite). Migración aplicada en Neon el 2026-11-01.  
 Ámbito: etapa E2 del [plan 01](../../../docs/plans/feature/rulesets&evaluations/01-plan-rulesets-y-evaluations.md). Comprende:
 - la tabla `ruleset_versions`;
 - el DTO con despacho por `@Transform`;
@@ -93,7 +93,7 @@ GET …/rulesets/:revision    → findOwned (404) → { ruleset } | 404 RULESET_
 | `pnpm db:verify` | 3 de 3; incluye desplegar las 8 migraciones en PGlite sin repetirlas. |
 
 **No verificado:**
-- La migración **no se aplicó en Neon**: hace falta `pnpm db:migrate` con la base real, y es una acción del usuario.
+- La migración se aplicó en Neon el 2026-11-01: el usuario ejecutó `pnpm db:migrate` (`prisma migrate deploy`) tras comprobar con `pnpm db:status` que solo faltaban las dos migraciones de la feature.
 - La API no se arrancó contra Neon y `requests/rulesets.http` no se ejecutó.
 - El bloqueo no se probó contra PostgreSQL real (X3).
 - Todo se ejecutó con Node 26.9.0, no con 24.19.0.

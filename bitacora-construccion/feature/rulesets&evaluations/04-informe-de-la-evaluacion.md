@@ -1,7 +1,7 @@
 # 04 — Informe de la evaluación (E4)
 
 Fecha de creación: 2026-11-01  
-Estado: Implementado y verificado en local (PGlite). Pendiente la apertura manual de `errores.csv` en una hoja de cálculo; migraciones de E2/E3 sin aplicar en Neon.  
+Estado: Implementado y verificado en local (PGlite). Pendiente la apertura manual de `errores.csv` en una hoja de cálculo. Migraciones de E2/E3 aplicadas en Neon el 2026-11-01.  
 Ámbito: etapa E4 del [plan 01](../../../docs/plans/feature/rulesets&evaluations/01-plan-rulesets-y-evaluations.md):
 - la muestra en el GET de la evaluación;
 - `GET …/rows` paginado por resultado;
@@ -83,7 +83,7 @@ fila: { sourceRow, externalId, outcome, values|null, problems: [{ attribute, cod
 
 **No verificado:**
 - **Abrir `errores.csv` en Excel o Numbers** (acentos, tabulador de protección): comprobación manual pendiente para el usuario.
-- Migraciones de E2 y E3 en Neon: deben aplicarse antes de arrancar la API (bitácora 03).
+- La API no se arrancó contra Neon después de aplicar las migraciones (2026-11-01).
 - Bloqueos contra un PostgreSQL real (F34).
 - `requests/evaluations.http` contra la API en marcha.
 - Todo con Node 26.9.0.

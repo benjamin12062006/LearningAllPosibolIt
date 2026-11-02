@@ -1,7 +1,7 @@
 # 03 — Evaluación asíncrona de un snapshot (E3)
 
 Fecha de creación: 2026-11-01  
-Estado: Implementado y verificado en local (PGlite). Migraciones sin aplicar en Neon.  
+Estado: Implementado y verificado en local (PGlite). Migraciones aplicadas en Neon el 2026-11-01.  
 Ámbito: etapa E3 del [plan 01](../../../docs/plans/feature/rulesets&evaluations/01-plan-rulesets-y-evaluations.md). Comprende:
 - las tablas `evaluations` y `evaluation_rows`;
 - `POST /projects/:projectId/evaluations` (202) y `GET …/evaluations/:evaluationId`;
@@ -114,7 +114,7 @@ GET /projects/:projectId/evaluations/:evaluationId → { evaluation }
 - 401 sin sesión.
 
 **No verificado:**
-- **Migraciones sin aplicar en Neon** (las de E2 y E3). Hay que aplicarlas **antes de arrancar la API**: `EvaluationWorker.onApplicationBootstrap` llama a `interruptRunning`, que consulta `evaluations`, y sin la tabla el arranque falla. La importación funciona igual.
+- Migraciones de E2 y E3 **aplicadas en Neon el 2026-11-01** con `pnpm db:migrate`. Se aplicaron antes de arrancar la API, como hacía falta: `EvaluationWorker.onApplicationBootstrap` llama a `interruptRunning`, que consulta `evaluations`, y sin la tabla el arranque falla. La importación funciona igual.
 - `FOR UPDATE`, `FOR SHARE` y `SKIP LOCKED` no se pueden demostrar con PGlite (F34). Lo que no depende de los bloqueos lo cubre la base: índice parcial, FK y `CHECK`.
 - La traducción de un P2002 del índice parcial a 409 no tiene prueba propia: la comprobación previa en la misma transacción impide provocarlo desde la aplicación sin más. La forma del error está respaldada por F33.
 - No se midió el rendimiento con 5.000 filas (E4) ni se ejecutó `requests/evaluations.http`.
