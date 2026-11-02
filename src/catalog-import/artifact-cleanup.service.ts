@@ -4,18 +4,16 @@ import {
   Logger,
   type OnApplicationBootstrap,
 } from '@nestjs/common';
-import { ArtifactStore } from './artifact.store.js';
+import { ArtifactStore } from '../artifacts/artifact.store.js';
+import { removeOrphans } from '../artifacts/remove-orphans.js';
 import { CatalogImportRepository } from './catalog-import.repository.js';
 import {
   CATALOG_IMPORT_OPTIONS,
   type CatalogImportOptions,
 } from './import.types.js';
 
-/**
- * Margen de seguridad: un archivo recién escrito puede pertenecer a una
- * aceptación que todavía no ha confirmado su fila en la base.
- */
-export const ORPHAN_MIN_AGE_MS = 60 * 60 * 1000;
+// Se sigue exportando desde aquí: las pruebas de la limpieza lo importan de este archivo.
+export { ORPHAN_MIN_AGE_MS } from '../artifacts/remove-orphans.js';
 
 /**
  * Retira de `artifacts/` los archivos que ningún snapshot referencia: quedan
@@ -50,22 +48,15 @@ export class ArtifactCleanupService implements OnApplicationBootstrap {
   }
 
   /** Devuelve cuántos archivos se borraron. */
-  async removeOrphanArtifacts(now = Date.now()): Promise<number> {
-    const artifacts = await this.store.listArtifacts();
-    const oldEnough = artifacts.filter(
-      (artifact) => now - artifact.modifiedAt >= ORPHAN_MIN_AGE_MS,
+  removeOrphanArtifacts(now = Date.now()): Promise<number> {
+    return removeOrphans(
+      {
+        list: () => this.store.listArtifacts(),
+        findReferenced: (keys) =>
+          this.repository.findReferencedArtifactKeys(keys),
+        remove: (key) => this.store.removeArtifact(key),
+      },
+      now,
     );
-
-    const referenced = await this.repository.findReferencedArtifactKeys(
-      oldEnough.map((artifact) => artifact.key),
-    );
-    const orphans = oldEnough.filter(
-      (artifact) => !referenced.has(artifact.key),
-    );
-
-    for (const orphan of orphans) {
-      await this.store.removeArtifact(orphan.key);
-    }
-    return orphans.length;
   }
 }

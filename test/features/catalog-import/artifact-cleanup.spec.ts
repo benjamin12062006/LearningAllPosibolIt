@@ -13,7 +13,7 @@ import {
   ArtifactCleanupService,
   ORPHAN_MIN_AGE_MS,
 } from '../../../src/catalog-import/artifact-cleanup.service.js';
-import { ArtifactStore } from '../../../src/catalog-import/artifact.store.js';
+import { ArtifactStore } from '../../../src/artifacts/artifact.store.js';
 import type { CatalogImportRepository } from '../../../src/catalog-import/catalog-import.repository.js';
 import type { CatalogImportOptions } from '../../../src/catalog-import/import.types.js';
 
@@ -36,8 +36,8 @@ describe('Limpieza de archivos sin referencia', () => {
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'catalog-cleanup-'));
-    options = { root, autoStart: true, pollMs: 1000, shutdownMs: 1000 };
-    store = new ArtifactStore(options);
+    options = { autoStart: true, pollMs: 1000, shutdownMs: 1000 };
+    store = new ArtifactStore({ root });
     await store.onModuleInit();
     referenced = new Set([referencedKey]);
     const repository = {

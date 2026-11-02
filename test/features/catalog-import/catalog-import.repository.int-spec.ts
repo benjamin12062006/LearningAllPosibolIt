@@ -16,7 +16,7 @@ import { ProjectsRepository } from '../../../src/projects/projects.repository.js
 import { UsersRepository } from '../../../src/users/users.repository.js';
 import { CatalogImportRepository } from '../../../src/catalog-import/catalog-import.repository.js';
 import { CatalogImportWorker } from '../../../src/catalog-import/catalog-import.worker.js';
-import { ArtifactStore } from '../../../src/catalog-import/artifact.store.js';
+import { ArtifactStore } from '../../../src/artifacts/artifact.store.js';
 import type {
   Acceptance,
   CatalogImportOptions,
@@ -32,6 +32,7 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
   let repository: CatalogImportRepository;
   let store: ArtifactStore;
   let worker: CatalogImportWorker;
+  let root: string;
   let options: CatalogImportOptions;
   let ownerId: string;
   let otherOwnerId: string;
@@ -100,13 +101,13 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
     await prisma.onModuleInit();
     projects = new ProjectsRepository(prisma);
     repository = new CatalogImportRepository(prisma);
+    root = await mkdtemp(join(tmpdir(), 'catalog-integration-'));
     options = {
-      root: await mkdtemp(join(tmpdir(), 'catalog-integration-')),
       autoStart: false,
       pollMs: 1000,
       shutdownMs: 1000,
     };
-    store = new ArtifactStore(options);
+    store = new ArtifactStore({ root });
     await store.onModuleInit();
     worker = new CatalogImportWorker(repository, store, options);
   });
@@ -127,7 +128,7 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
       await prisma?.onModuleDestroy();
     } finally {
       await database?.close();
-      if (options) await rm(options.root, { recursive: true, force: true });
+      if (root) await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -498,6 +499,7 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
       ).resolves.toEqual({
         snapshotId: input.snapshotId,
         artifactKey: input.artifactKey,
+        exportArtifactKeys: [],
       });
       expect(
         await prisma.catalogRow.count({
@@ -536,8 +538,16 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
       expect(deleted).toHaveLength(2);
       expect(deleted).toEqual(
         expect.arrayContaining([
-          { snapshotId: first.snapshotId, artifactKey: first.artifactKey },
-          { snapshotId: second.snapshotId, artifactKey: second.artifactKey },
+          {
+            snapshotId: first.snapshotId,
+            artifactKey: first.artifactKey,
+            exportArtifactKeys: [],
+          },
+          {
+            snapshotId: second.snapshotId,
+            artifactKey: second.artifactKey,
+            exportArtifactKeys: [],
+          },
         ]),
       );
       expect(await prisma.project.count({ where: { id: projectId } })).toBe(0);

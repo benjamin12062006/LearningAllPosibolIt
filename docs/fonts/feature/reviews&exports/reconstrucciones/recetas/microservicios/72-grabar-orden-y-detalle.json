@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 7 Order Details - Maestro detalle/72. Grabar Orden y Detalle en base de datos.md",
+  "previous": [
+    "Sección 7 Order Details - Maestro detalle/70. ProductsMicroservice - Validar productos por Ids.md",
+    "Sección 7 Order Details - Maestro detalle/71. Comunicar OrdersMS con ProductsMS.md"
+  ],
+  "objective": "Crear la orden en OrdersService.create: confirmar los productos en el microservicio de productos, calcular el total con los precios de ese microservicio y no con los del cliente, contar los artículos y grabar la cabecera con una sola inserción de Prisma, dentro de un try/catch que responde un error genérico.",
+  "initial": "Estado de la clase 71: OrdersService extiende PrismaClient, recibe por inyección productsClient (ClientProxy registrado con PRODUCT_SERVICE) y llama a firstValueFrom(this.productsClient.send({ cmd: 'validate_products' }, ids)) con ids fijos de prueba. CreateOrderDto tiene items con productId, quantity y price (clase 69).",
+  "certainty": "Pasos, cálculos, rechazo del precio del cliente y order.create con totalAmount y totalItems se recuperan con alta confianza. Se conserva fiel un detalle: el reduce de totalAmount devuelve price * quantity sin sumar el acumulado (l. 27); en la clase 73 (l. 23) el total mostrado «no hace el cuadre» y estas dos clases no lo corrigen. El createMany con datos de ejemplo se trata como experimento: la prueba final muestra la cabecera sin ítems. Los miembros previos del servicio (onModuleInit, otros métodos) no se reconstruyen.",
+  "evidence": [
+    {"id": "E1", "line": 21, "phrase": "validate_products", "change": "Patrón { cmd: 'validate_products' } del microservicio de productos.", "certainty": "Contexto de la clase 70.", "source": "Sección 7 Order Details - Maestro detalle/70. ProductsMicroservice - Validar productos por Ids.md"},
+    {"id": "E2", "line": 35, "phrase": "firstValueFrom", "change": "Convertir el Observable de send en promesa con firstValueFrom de rxjs.", "certainty": "Contexto de la clase 71.", "source": "Sección 7 Order Details - Maestro detalle/71. Comunicar OrdersMS con ProductsMS.md"},
+    {"id": "E3", "line": 13, "phrase": "Primeramente, como esto puede fallar, hagamos un", "change": "Todo el cuerpo de create dentro de try/catch que lanza RpcException.", "certainty": "Explícito."},
+    {"id": "E4", "line": 15, "phrase": "Check logs", "change": "RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Check logs' }) en lugar del error original.", "certainty": "Explícito."},
+    {"id": "E5", "line": 17, "phrase": "Ahora ya tengo mi arreglo de", "change": "productIds = createOrderDto.items.map((item) => item.productId).", "certainty": "Explícito."},
+    {"id": "E6", "line": 17, "phrase": "Vamos a mandar a llamar nuestro microservicio mandándole los", "change": "Enviar productIds al microservicio de productos.", "certainty": "Explícito."},
+    {"id": "E7", "line": 19, "phrase": "Confirmar los ids de los productos", "change": "Comentarios numerados por paso.", "certainty": "Explícito."},
+    {"id": "E8", "line": 21, "phrase": "Bueno, perdón. No es un", "change": "totalAmount con createOrderDto.items.reduce(..., 0).", "certainty": "Explícito."},
+    {"id": "E9", "line": 25, "phrase": "Pero yo no quiero confiar en el precio que me está mandando el cliente o el gateway", "change": "El precio sale de products.find(...).price, no de orderItem.price.", "certainty": "Explícito."},
+    {"id": "E10", "line": 27, "phrase": "lo que voy a regresar sería el", "change": "Devolver price * orderItem.quantity.", "certainty": "Explícito; sin sumar el acumulado."},
+    {"id": "E11", "line": 31, "phrase": "Lo que nos va a interesar aquí va a ser regresar el valor acumulado más el", "change": "totalItems = reduce((acc, orderItem) => acc + orderItem.quantity, 0).", "certainty": "Explícito."},
+    {"id": "E12", "line": 33, "phrase": "Crear una transacción de base de datos", "change": "Paso 3: ambas inserciones deben tener éxito o ninguna.", "certainty": "Explícito."},
+    {"id": "E13", "line": 35, "phrase": "una forma muy sencilla ya que estas bases de datos tienen una relación es hacer una única inserción con todos los valores y prisma va a hacer la transacción por mí", "change": "Una sola llamada order.create con los hijos anidados, en vez de una transacción explícita.", "certainty": "Explícito."},
+    {"id": "E14", "line": 35, "phrase": "se hace una transacción", "change": "Alternativa para tablas sin relación: una transacción explícita (this.transaction…).", "certainty": "Explícito; no se implementa."},
+    {"id": "E15", "line": 37, "phrase": "En teoría, eso es lo mínimo necesario que yo necesito para el header de mi orden", "change": "data: { totalAmount, totalItems }; el resto usa valores por defecto.", "certainty": "Explícito."},
+    {"id": "E16", "line": 39, "phrase": "Aquí nosotros tendríamos que crear cualquier cantidad de registros para hacer esa inserción", "change": "Experimento: OrderItem: { createMany: { data: [{ price: 100, productId: 1, quantity: 10 }] } }.", "certainty": "Explícito; experimento."},
+    {"id": "E17", "line": 41, "phrase": "Realmente yo no necesito crearlo de esta manera, esto es un ejemplo", "change": "Los ítems se generarán desde el DTO en la clase siguiente; se devuelve order.", "certainty": "Explícito."}
+  ],
+  "phases": [
+    {
+      "title": "Confirmar los productos dentro de try/catch",
+      "code": "async create(createOrderDto: CreateOrderDto) {\n  try {\n    //1 Confirmar los ids de los productos\n    const productIds = createOrderDto.items.map((item) => item.productId);\n    const products: any[] = await firstValueFrom(\n      this.productsClient.send({ cmd: 'validate_products' }, productIds),\n    );\n  } catch (error) {\n    throw new RpcException({\n      status: HttpStatus.BAD_REQUEST,\n      message: 'Check logs',\n    });\n  }\n}",
+      "why": "Si algún producto no existe, el microservicio de productos falla y la orden no se crea. El error público es genérico para no devolver más información de la necesaria.",
+      "check": "Enviar un productId inexistente devuelve el error genérico.",
+      "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7"]
+    },
+    {
+      "title": "Calcular con los precios de la fuente",
+      "code": "//2. Cálculos de los valores\nconst totalAmount = createOrderDto.items.reduce((acc, orderItem) => {\n  const price = products.find(\n    (product) => product.id === orderItem.productId,\n  ).price;\n  return price * orderItem.quantity;\n}, 0);\n\nconst totalItems = createOrderDto.items.reduce((acc, orderItem) => {\n  return acc + orderItem.quantity;\n}, 0);",
+      "why": "El precio que llega del cliente o del gateway puede estar manipulado; se usa el que devuelve el microservicio de productos. Un mismo producto puede repetirse en items (otra talla o color), por eso se recorren los items y no los productos.",
+      "check": "Con dos unidades de un producto, totalAmount es el doble de su precio en la base de productos.",
+      "evidence": ["E8", "E9", "E10", "E11"]
+    },
+    {
+      "title": "Grabar la cabecera con una sola inserción",
+      "code": "//3. Crear una transacción de base de datos\nconst order = await this.order.create({\n  data: {\n    totalAmount: totalAmount,\n    totalItems: totalItems,\n  },\n});\n\nreturn order;",
+      "why": "Cabecera e ítems están relacionados, así que una sola inserción anidada basta para que Prisma lo haga todo o nada; con tablas sin relación haría falta una transacción explícita.",
+      "check": "La respuesta muestra la orden con totalAmount, totalItems y status PENDING, todavía sin ítems.",
+      "evidence": ["E12", "E13", "E14", "E15", "E17"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/orders/orders.service.ts",
+      "language": "ts",
+      "code": "import { HttpStatus, Inject, Injectable } from '@nestjs/common';\nimport { ClientProxy, RpcException } from '@nestjs/microservices';\nimport { PrismaClient } from '@prisma/client';\nimport { firstValueFrom } from 'rxjs';\nimport { PRODUCT_SERVICE } from 'src/config';\nimport { CreateOrderDto } from './dto';\n\n@Injectable()\nexport class OrdersService extends PrismaClient {\n  constructor(\n    @Inject(PRODUCT_SERVICE) private readonly productsClient: ClientProxy,\n  ) {\n    super();\n  }\n\n  // Miembros heredados de clases anteriores, no reconstruidos.\n\n  async create(createOrderDto: CreateOrderDto) {\n    try {\n      //1 Confirmar los ids de los productos\n      const productIds = createOrderDto.items.map((item) => item.productId);\n      const products: any[] = await firstValueFrom(\n        this.productsClient.send({ cmd: 'validate_products' }, productIds),\n      );\n\n      //2. Cálculos de los valores\n      const totalAmount = createOrderDto.items.reduce((acc, orderItem) => {\n        const price = products.find(\n          (product) => product.id === orderItem.productId,\n        ).price;\n        return price * orderItem.quantity;\n      }, 0);\n\n      const totalItems = createOrderDto.items.reduce((acc, orderItem) => {\n        return acc + orderItem.quantity;\n      }, 0);\n\n      //3. Crear una transacción de base de datos\n      const order = await this.order.create({\n        data: {\n          totalAmount: totalAmount,\n          totalItems: totalItems,\n        },\n      });\n\n      return order;\n    } catch (error) {\n      throw new RpcException({\n        status: HttpStatus.BAD_REQUEST,\n        message: 'Check logs',\n      });\n    }\n  }\n}",
+      "provenance": "E1–E17; constructor, inyección y super() desde la clase 71 (l. 31–33); rutas de import de config y dto ensambladas."
+    }
+  ],
+  "temporary": "Se crea un createMany con un ítem fijo de ejemplo ({ price: 100, productId: 1, quantity: 10 }) para mostrar la sintaxis y se deja para la clase siguiente (E16, E17). Al probar, la orden aparece sin ítems. El total se devuelve un momento en la respuesta para revisarlo.",
+  "mental": "Los datos que deciden dinero salen de la fuente autorizada, no de lo que manda el cliente. Si cabecera y detalle están relacionados, una inserción anidada de Prisma los graba juntos o no graba nada."
+}

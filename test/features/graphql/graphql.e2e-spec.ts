@@ -15,6 +15,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { printSchema } from 'graphql';
 import request from 'supertest';
+import { ARTIFACT_STORE_OPTIONS } from '../../../src/artifacts/artifacts.types.js';
 import { DescopeService } from '../../../src/auth/descope.service.js';
 import { CATALOG_IMPORT_OPTIONS } from '../../../src/catalog-import/import.types.js';
 import { configureHttp } from '../../../src/configure-http.js';
@@ -70,9 +71,10 @@ describe('GraphQL sobre los servicios, el guard y la persistencia reales', () =>
     })
       .overrideProvider(POSTGRESQL_CONNECTION)
       .useValue(database.connection)
+      .overrideProvider(ARTIFACT_STORE_OPTIONS)
+      .useValue({ root: resolve('.test-build/graphql-artifacts') })
       .overrideProvider(CATALOG_IMPORT_OPTIONS)
       .useValue({
-        root: resolve('.test-build/graphql-artifacts'),
         autoStart: false,
         pollMs: 1000,
         shutdownMs: 1000,

@@ -49,7 +49,15 @@ export type Acceptance = {
 };
 
 /** Importación borrada en la base cuyo archivo falta retirar del disco. */
-export type DeletedImport = { snapshotId: string; artifactKey: string };
+/**
+ * Lo que hay que retirar del disco tras borrar una importación: su CSV y los TSV
+ * de las exportaciones que se borraron en cascada con sus evaluaciones.
+ */
+export type DeletedImport = {
+  snapshotId: string;
+  artifactKey: string;
+  exportArtifactKeys: string[];
+};
 
 /** Trabajo que el worker ha reclamado y está procesando. */
 export type ClaimedImport = {
@@ -69,7 +77,6 @@ export class ImportFailure extends ApplicationFailure {}
 
 export const CATALOG_IMPORT_OPTIONS = Symbol('CATALOG_IMPORT_OPTIONS');
 export type CatalogImportOptions = {
-  root: string;
   autoStart: boolean;
   pollMs: number;
   shutdownMs: number;

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "date": "2026-11-01",
+  "originals": {
+    "Sección 12 Carga de archivos/158. Servir archivos de manera controlada.md": "1d14df1d06b1cca4a553c2aba3cccde76a58f8de0408aaee87cf0460bfdef2ee",
+    "Sección 12 Carga de archivos/157. Renombrar el archivo subido.md": "865e2e32381a1e5c42881a7d1101a36ef30022dcc36f16ab0bb692e8b24e476c"
+  },
+  "guides": [
+    {
+      "source": "Sección 12 Carga de archivos/158. Servir archivos de manera controlada.md",
+      "guide": "Sección 12 Carga de archivos/158. Servir archivos de manera controlada - Reconstrucción guiada.md",
+      "sha256": "bba77c54924580b57b540f873e53cce45826612ed85ecfe7648c7359002922a2"
+    }
+  ]
+}

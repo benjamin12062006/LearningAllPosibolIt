@@ -141,6 +141,7 @@ model Evaluation {
   snapshot         CatalogSnapshot @relation(fields: [projectId, snapshotId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
   ruleset          RulesetVersion  @relation(fields: [projectId, rulesetVersionId], references: [projectId, id], onDelete: Restrict, onUpdate: NoAction)
   rows             EvaluationRow[]
+  exports          Export[]
 
   @@unique([projectId, id])
   @@index([status, createdAt, id], map: "idx_evaluations_queue")
@@ -162,5 +163,23 @@ model EvaluationRow {
   @@id([evaluationId, sourceRow])
   @@index([evaluationId, outcome, sourceRow], map: "idx_evaluation_rows_outcome")
   @@map("evaluation_rows")
+  @@schema("estadistica_forms")
+}
+
+model Export {
+  id                     String     @id
+  projectId              String     @map("project_id")
+  evaluationId           String     @unique @map("evaluation_id")
+  approvedResultChecksum String     @map("approved_result_checksum")
+  acceptedInvalidCount   Int        @map("accepted_invalid_count")
+  acceptedExcludedCount  Int        @map("accepted_excluded_count")
+  rowCount               Int        @map("row_count")
+  artifactKey            String     @unique @map("artifact_key")
+  byteSize               Int        @map("byte_size")
+  tsvChecksum            String     @map("tsv_checksum")
+  createdAt              String     @map("created_at")
+  evaluation             Evaluation @relation(fields: [projectId, evaluationId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("exports")
   @@schema("estadistica_forms")
 }

@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 3 Constancia de empleo/18. PdfMake - Primer PDF.md",
+  "previous": [
+    "Sección 3 Constancia de empleo/17. Continuar proyecto.md"
+  ],
+  "objective": "Generar un PDF en el momento de la petición con pdfmake y enviarlo como respuesta: el servicio crea el documento a partir de una definición y el controlador fija Content-Type, encadena el documento a la respuesta con pipe y lo cierra con end().",
+  "initial": "Proyecto Nest del curso con un módulo basic-reports cuyo controlador expone un GET que llama a BasicReportsService.hello(). Según la clase 19 (l. 31), el servicio extiende PrismaClient. El contenido previo de esos archivos no se muestra en esta clase ni en la 17 y no se reconstruye.",
+  "certainty": "Instalación, fuentes Roboto, PdfPrinter, createPdfKitDocument, setHeader, pipe, end y esModuleInterop se recuperan con alta confianza. Se ensamblan: la firma exacta del controlador (método hello con @Res) y el contenido de la definición, dictado como «content: … Hola Mundo». La clase escribe «pdfDoc.info.title»; el tipo de PDFKit usa la clave Title, que es la que se escribe. Los miembros previos del servicio heredados de PrismaClient se omiten.",
+  "evidence": [
+    {"id": "E1", "line": 17, "phrase": "npm install pdfmake", "change": "Instalar pdfmake.", "certainty": "Explícito."},
+    {"id": "E2", "line": 23, "phrase": "está escrito en JavaScript por lo cual no tiene el archivo de definición", "change": "Instalar también los tipos (@types/pdfmake) e importar PdfPrinter desde pdfmake.", "certainty": "Explícito; nombre del paquete de tipos inferido del procedimiento de VS Code."},
+    {"id": "E3", "line": 25, "phrase": "Tenemos que definir dónde está la información de cada una de esas fuentes", "change": "Objeto fonts con los descriptores de Roboto.", "certainty": "Explícito."},
+    {"id": "E4", "line": 29, "phrase": "vamos a crear una carpeta que se llame", "change": "Carpeta fonts en la raíz con los .ttf de Roboto.", "certainty": "Explícito."},
+    {"id": "E5", "line": 31, "phrase": "Roboto-MediumItalic.ttf", "change": "normal, bold, italics y bolditalics apuntan a fonts/Roboto-*.ttf.", "certainty": "Explícito."},
+    {"id": "E6", "line": 33, "phrase": "Vamos a crearnos nuestra instancia de la impresora", "change": "const printer = new PdfPrinter(fonts) y printer.createPdfKitDocument(...).", "certainty": "Explícito."},
+    {"id": "E7", "line": 35, "phrase": "que esto va a ser de tipo", "change": "const docDefinition: TDocumentDefinitions = { content: 'Hola Mundo' }.", "certainty": "Explícito; contenido normalizado."},
+    {"id": "E8", "line": 37, "phrase": "Para regresar, nosotros vamos a ocupar tomar la", "change": "El controlador recibe @Res() response: Response de express.", "certainty": "Explícito."},
+    {"id": "E9", "line": 39, "phrase": "Vamos a enlazar de lo que está generando nuestro PDF esa respuesta", "change": "response.setHeader('Content-Type', 'application/pdf') y pdfDoc.pipe(response).", "certainty": "Explícito."},
+    {"id": "E10", "line": 41, "phrase": "Podemos quitarlo por ahora, porque todo esto es síncrono", "change": "hello() del servicio es síncrono y devuelve el documento.", "certainty": "Explícito."},
+    {"id": "E11", "line": 41, "phrase": "Bien, presionemos", "change": "pdfDoc.end() tras el pipe.", "certainty": "Explícito."},
+    {"id": "E12", "line": 43, "phrase": "Esto nos va a permitir a nosotros poder hacer este tipo de importaciones", "change": "esModuleInterop: true en tsconfig.json para el import por defecto.", "certainty": "Explícito."},
+    {"id": "E13", "line": 45, "phrase": "Ustedes le pueden poner un título al PDF", "change": "pdfDoc.info.Title = 'Hola-Mundo.pdf'.", "certainty": "Explícito; clave Title según el tipo de PDFKit."}
+  ],
+  "phases": [
+    {
+      "title": "Instalar pdfmake y declarar las fuentes",
+      "code": "npm install pdfmake\nnpm install --save-dev @types/pdfmake\n\n# Copiar Roboto-Regular.ttf, Roboto-Medium.ttf, Roboto-Italic.ttf\n# y Roboto-MediumItalic.ttf en ./fonts (raíz del proyecto)",
+      "language": "bash",
+      "why": "pdfmake necesita conocer los archivos de cada variante de fuente antes de crear la impresora.",
+      "check": "La carpeta fonts existe en la raíz con los cuatro archivos.",
+      "evidence": ["E1", "E2", "E3", "E4", "E5"]
+    },
+    {
+      "title": "Crear el documento en el servicio",
+      "code": "import PdfPrinter from 'pdfmake';\nimport type { TDocumentDefinitions } from 'pdfmake/interfaces';\n\nconst fonts = {\n  Roboto: {\n    normal: 'fonts/Roboto-Regular.ttf',\n    bold: 'fonts/Roboto-Medium.ttf',\n    italics: 'fonts/Roboto-Italic.ttf',\n    bolditalics: 'fonts/Roboto-MediumItalic.ttf',\n  },\n};\n\n// TODO: Esto será optimizado después\nhello() {\n  const printer = new PdfPrinter(fonts);\n\n  const docDefinition: TDocumentDefinitions = {\n    content: 'Hola Mundo',\n  };\n\n  const doc = printer.createPdfKitDocument(docDefinition);\n\n  return doc;\n}",
+      "why": "El servicio solo construye el documento a partir de una definición; no sabe nada de HTTP.",
+      "check": "Compila sin errores de tipos una vez instalados los tipos.",
+      "evidence": ["E6", "E7", "E10"]
+    },
+    {
+      "title": "Enviar el documento desde el controlador",
+      "code": "@Get()\nhello(@Res() response: Response) {\n  const pdfDoc = this.basicReportsService.hello();\n\n  response.setHeader('Content-Type', 'application/pdf');\n  pdfDoc.info.Title = 'Hola-Mundo.pdf';\n  pdfDoc.pipe(response);\n  pdfDoc.end();\n}",
+      "why": "El controlador decide cómo viaja el resultado: cabecera del tipo de contenido, flujo hacia la respuesta y cierre del documento.",
+      "check": "En Insomnia, el GET devuelve un PDF con «Hola Mundo».",
+      "evidence": ["E8", "E9", "E11", "E13"]
+    },
+    {
+      "title": "Permitir el import por defecto",
+      "code": "{\n  \"compilerOptions\": {\n    \"esModuleInterop\": true\n  }\n}",
+      "language": "json",
+      "why": "Sin esModuleInterop, el import por defecto de pdfmake falla con «is not a constructor».",
+      "check": "El GET deja de responder 500.",
+      "evidence": ["E12"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/basic-reports/basic-reports.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { PrismaClient } from '@prisma/client';\nimport PdfPrinter from 'pdfmake';\nimport type { TDocumentDefinitions } from 'pdfmake/interfaces';\n\nconst fonts = {\n  Roboto: {\n    normal: 'fonts/Roboto-Regular.ttf',\n    bold: 'fonts/Roboto-Medium.ttf',\n    italics: 'fonts/Roboto-Italic.ttf',\n    bolditalics: 'fonts/Roboto-MediumItalic.ttf',\n  },\n};\n\n@Injectable()\nexport class BasicReportsService extends PrismaClient {\n  // Miembros heredados de clases anteriores, no reconstruidos.\n\n  // TODO: Esto será optimizado después\n  hello() {\n    const printer = new PdfPrinter(fonts);\n\n    const docDefinition: TDocumentDefinitions = {\n      content: 'Hola Mundo',\n    };\n\n    const doc = printer.createPdfKitDocument(docDefinition);\n\n    return doc;\n  }\n}",
+      "provenance": "E2–E7, E10; herencia de PrismaClient según la clase 19, l. 31."
+    },
+    {
+      "path": "src/basic-reports/basic-reports.controller.ts",
+      "language": "ts",
+      "code": "import { Controller, Get, Res } from '@nestjs/common';\nimport { Response } from 'express';\nimport { BasicReportsService } from './basic-reports.service';\n\n@Controller('basic-reports')\nexport class BasicReportsController {\n  constructor(private readonly basicReportsService: BasicReportsService) {}\n\n  @Get()\n  hello(@Res() response: Response) {\n    const pdfDoc = this.basicReportsService.hello();\n\n    response.setHeader('Content-Type', 'application/pdf');\n    pdfDoc.info.Title = 'Hola-Mundo.pdf';\n    pdfDoc.pipe(response);\n    pdfDoc.end();\n  }\n}",
+      "provenance": "E8, E9, E11, E13; ruta 'basic-reports' y nombre del método ensamblados desde la petición «basic-report» citada en l. 43."
+    }
+  ],
+  "temporary": "El método se marcó async por error y se quitó (E10). La primera ejecución falla con «pdfmake_1.default is not a constructor» hasta activar esModuleInterop (E12). Todo el código vive en el servicio con un TODO: la clase siguiente lo reparte en un módulo propio.",
+  "mental": "El documento se genera al pedirlo, a partir de una definición. El servicio construye; el controlador fija la cabecera, encadena el flujo a la respuesta y lo cierra. No se guarda ningún archivo en disco."
+}

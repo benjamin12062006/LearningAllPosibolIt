@@ -9,6 +9,8 @@ import { describeProblem } from '../../../src/evaluations/problem-messages.js';
 const ALL_PROBLEM_CODES: ProblemCode[] = [
   'FIELD_MISSING',
   'TEXT_TOO_LONG',
+  'TEXT_HAS_LINE_BREAK',
+  'TEXT_STARTS_WITH_QUOTE',
   'URL_INVALID',
   'AVAILABILITY_INVALID',
   'AVAILABILITY_DATE_REQUIRED',
@@ -123,5 +125,24 @@ describe('describeProblem', () => {
     expect(
       describeProblem({ attribute, code: 'TEXT_TOO_LONG' }).suggestion.es,
     ).toContain(String(max));
+  });
+
+  it('para un salto de línea sugiere clean_text, salvo en el id, que ninguna regla cambia', () => {
+    for (const attribute of ['title', 'description', 'brand'] as const) {
+      const { suggestion } = describeProblem({
+        attribute,
+        code: 'TEXT_HAS_LINE_BREAK',
+      });
+      expect(suggestion.es).toContain('clean_text');
+      expect(suggestion.en).toContain('clean_text');
+    }
+
+    const { suggestion } = describeProblem({
+      attribute: 'id',
+      code: 'TEXT_HAS_LINE_BREAK',
+    });
+    expect(suggestion.es).not.toContain('clean_text');
+    expect(suggestion.es).toContain('identificador');
+    expect(suggestion.en).toContain('identifier');
   });
 });

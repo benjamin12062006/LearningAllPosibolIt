@@ -3,7 +3,7 @@ import { Readable } from 'node:stream';
 import { Test } from '@nestjs/testing';
 import { CatalogImportWorker } from '../../../src/catalog-import/catalog-import.worker.js';
 import { CatalogImportRepository } from '../../../src/catalog-import/catalog-import.repository.js';
-import { ArtifactStore } from '../../../src/catalog-import/artifact.store.js';
+import { ArtifactStore } from '../../../src/artifacts/artifact.store.js';
 import type { ClaimedImport } from '../../../src/catalog-import/import.types.js';
 import { CATALOG_IMPORT_OPTIONS } from '../../../src/catalog-import/import.types.js';
 
@@ -50,7 +50,6 @@ describe('Cierre del worker', () => {
         {
           provide: CATALOG_IMPORT_OPTIONS,
           useValue: {
-            root: '.',
             autoStart: false,
             pollMs: 1000,
             shutdownMs: 1,

@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import { publicError } from '../common/http/public-error.js';
-import { ArtifactStore } from './artifact.store.js';
+import { ArtifactStore } from '../artifacts/artifact.store.js';
 import { CatalogImportRepository } from './catalog-import.repository.js';
 import { parseCatalogCsv } from './csv-parser.js';
 import {

@@ -7,6 +7,7 @@ import { CatalogImportModule } from './catalog-import/catalog-import.module.js';
 import { GraphqlApiModule } from './graphql/graphql-api.module.js';
 import { RulesetsModule } from './rulesets/rulesets.module.js';
 import { EvaluationsModule } from './evaluations/evaluations.module.js';
+import { ExportsModule } from './exports/exports.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { EvaluationsModule } from './evaluations/evaluations.module.js';
     CatalogImportModule,
     RulesetsModule,
     EvaluationsModule,
+    ExportsModule,
     GraphqlApiModule,
   ],
 })

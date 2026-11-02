@@ -48,6 +48,36 @@ const PROBLEM_TEXTS: Record<ProblemCode, ProblemText> = {
       };
     },
   },
+  TEXT_HAS_LINE_BREAK: {
+    problem: {
+      es: 'El texto tiene un tabulador o un salto de línea, que no caben en el archivo para Google.',
+      en: 'The text contains a tab or a line break, which the Google file cannot hold.',
+    },
+    suggestion: (attribute) => {
+      // Ninguna regla cambia el id (invariante 2 de docs-diagrams/06).
+      if (attribute === 'id') {
+        return {
+          es: 'Corrige el identificador en el catálogo y vuelve a importarlo.',
+          en: 'Fix the identifier in the catalog and import it again.',
+        };
+      }
+      // `clean_text` colapsa tabuladores y saltos de línea en un espacio.
+      return {
+        es: 'Aplica la regla clean_text a este atributo o quita los saltos de línea en el catálogo.',
+        en: 'Apply the clean_text rule to this attribute or remove the line breaks in the catalog.',
+      };
+    },
+  },
+  TEXT_STARTS_WITH_QUOTE: {
+    problem: {
+      es: 'El texto empieza por comillas dobles, que Google puede leer como el inicio de un campo entre comillas.',
+      en: 'The text starts with a double quote, which Google may read as the start of a quoted field.',
+    },
+    suggestion: () => ({
+      es: 'Quita las comillas del principio del valor en el catálogo.',
+      en: 'Remove the leading quote from the value in the catalog.',
+    }),
+  },
   URL_INVALID: {
     problem: {
       es: 'No es una URL http o https válida.',

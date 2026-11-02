@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
-import { resolve } from 'node:path';
+import { ArtifactsModule } from '../artifacts/artifacts.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { PrismaModule } from '../database/prisma.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { ArtifactCleanupService } from './artifact-cleanup.service.js';
-import { ArtifactStore } from './artifact.store.js';
 import { CatalogImportController } from './catalog-import.controller.js';
 import { CatalogImportRepository } from './catalog-import.repository.js';
 import { CatalogImportService } from './catalog-import.service.js';
@@ -18,10 +17,15 @@ import {
 } from './import.types.js';
 
 @Module({
-  imports: [AuthModule, PrismaModule, ProjectsModule, UsersModule],
+  imports: [
+    ArtifactsModule,
+    AuthModule,
+    PrismaModule,
+    ProjectsModule,
+    UsersModule,
+  ],
   controllers: [CatalogImportController],
   providers: [
-    ArtifactStore,
     ArtifactCleanupService,
     CatalogImportRepository,
     CatalogImportService,
@@ -31,9 +35,6 @@ import {
     {
       provide: CATALOG_IMPORT_OPTIONS,
       useFactory: (): CatalogImportOptions => ({
-        root: resolve(
-          process.env.CATALOG_IMPORT_ROOT?.trim() || '.data/catalog-import',
-        ),
         autoStart: true,
         pollMs: 1000,
         shutdownMs: 5000,

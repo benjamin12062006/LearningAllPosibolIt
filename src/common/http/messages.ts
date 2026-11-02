@@ -361,4 +361,34 @@ export const API_MESSAGES = {
     'La evaluación no tiene resultados: todavía no terminó o falló.',
     'The evaluation has no results: it has not finished yet or it failed.',
   ),
+  [ErrorCodes.EXPORT_NOT_FOUND]: entry(
+    404,
+    'No se encontró la exportación.',
+    'The export was not found.',
+  ),
+  [ErrorCodes.EXPORT_NO_VALID_PRODUCTS]: entry(
+    409,
+    'La evaluación no tiene productos válidos: corrige el catálogo o las reglas y vuelve a evaluar.',
+    'The evaluation has no valid products: fix the catalog or the rules and evaluate again.',
+  ),
+  [ErrorCodes.EXPORT_APPROVAL_MISMATCH]: entry(
+    409,
+    'La aprobación no coincide con la evaluación guardada. Vuelve a consultar la evaluación y revisa sus resultados.',
+    'The approval does not match the stored evaluation. Fetch the evaluation again and review its results.',
+  ),
+  [ErrorCodes.EXPORT_EVALUATION_OUTDATED]: entry(
+    409,
+    'La evaluación se hizo con una versión anterior de las comprobaciones de Google. Vuelve a evaluar el catálogo.',
+    'The evaluation used an earlier version of the Google checks. Evaluate the catalog again.',
+  ),
+  [ErrorCodes.EXPORT_EVALUATION_SUPERSEDED]: entry(
+    409,
+    'Hay una evaluación más reciente en este proyecto. Revisa y exporta esa.',
+    'There is a more recent evaluation in this project. Review and export that one.',
+  ),
+  [ErrorCodes.EXPORT_FILE_UNAVAILABLE]: entry(
+    503,
+    'El archivo de la exportación no está disponible en este momento.',
+    'The export file is not available right now.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

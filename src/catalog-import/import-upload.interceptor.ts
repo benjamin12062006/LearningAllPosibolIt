@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { defer, lastValueFrom } from 'rxjs';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
-import { ArtifactStore } from './artifact.store.js';
+import { ArtifactStore } from '../artifacts/artifact.store.js';
 import {
   IMPORT_LIMITS,
   ImportFailure,

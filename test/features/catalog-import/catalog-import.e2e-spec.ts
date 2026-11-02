@@ -23,7 +23,8 @@ import { UsersService } from '../../../src/users/users.service.js';
 import { CatalogImportModule } from '../../../src/catalog-import/catalog-import.module.js';
 import { CatalogImportWorker } from '../../../src/catalog-import/catalog-import.worker.js';
 import { CatalogImportService } from '../../../src/catalog-import/catalog-import.service.js';
-import { ArtifactStore } from '../../../src/catalog-import/artifact.store.js';
+import { ArtifactStore } from '../../../src/artifacts/artifact.store.js';
+import { ARTIFACT_STORE_OPTIONS } from '../../../src/artifacts/artifacts.types.js';
 import {
   CATALOG_IMPORT_OPTIONS,
   IMPORT_LIMITS,
@@ -66,8 +67,10 @@ describe('CatalogImport HTTP multipart con Nest y persistencia reales', () => {
     })
       .overrideProvider(POSTGRESQL_CONNECTION)
       .useValue(database.connection)
+      .overrideProvider(ARTIFACT_STORE_OPTIONS)
+      .useValue({ root })
       .overrideProvider(CATALOG_IMPORT_OPTIONS)
-      .useValue({ root, autoStart: false, pollMs: 1000, shutdownMs: 1000 })
+      .useValue({ autoStart: false, pollMs: 1000, shutdownMs: 1000 })
       .overrideProvider(DescopeService)
       .useValue({
         validateSession: async (session: string) => {

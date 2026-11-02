@@ -12,7 +12,7 @@ import { apiError } from '../../../src/common/http/api-error.js';
 import { CatalogImportService } from '../../../src/catalog-import/catalog-import.service.js';
 import { CatalogImportRepository } from '../../../src/catalog-import/catalog-import.repository.js';
 import { CatalogImportWorker } from '../../../src/catalog-import/catalog-import.worker.js';
-import { ArtifactStore } from '../../../src/catalog-import/artifact.store.js';
+import { ArtifactStore } from '../../../src/artifacts/artifact.store.js';
 import { UsersService } from '../../../src/users/users.service.js';
 import {
   alice,
@@ -145,7 +145,9 @@ describe('Borrado de importaciones y proyectos', () => {
   let repository: jest.Mocked<
     Pick<CatalogImportRepository, 'deleteSnapshot' | 'deleteProject'>
   >;
-  let store: jest.Mocked<Pick<ArtifactStore, 'removeArtifact'>>;
+  let store: jest.Mocked<
+    Pick<ArtifactStore, 'removeArtifact' | 'removeExport'>
+  >;
   const steps: string[] = [];
 
   beforeEach(async () => {
@@ -155,15 +157,15 @@ describe('Borrado de importaciones y proyectos', () => {
         .fn<CatalogImportRepository['deleteSnapshot']>()
         .mockImplementation(async (_owner, _project, snapshotId) => {
           steps.push('commit');
-          return { snapshotId, artifactKey: 'k1.csv' };
+          return { snapshotId, artifactKey: 'k1.csv', exportArtifactKeys: [] };
         }),
       deleteProject: jest
         .fn<CatalogImportRepository['deleteProject']>()
         .mockImplementation(async () => {
           steps.push('commit');
           return [
-            { snapshotId: 's1', artifactKey: 'k1.csv' },
-            { snapshotId: 's2', artifactKey: 'k2.csv' },
+            { snapshotId: 's1', artifactKey: 'k1.csv', exportArtifactKeys: [] },
+            { snapshotId: 's2', artifactKey: 'k2.csv', exportArtifactKeys: [] },
           ];
         }),
     };
@@ -172,6 +174,11 @@ describe('Borrado de importaciones y proyectos', () => {
         .fn<ArtifactStore['removeArtifact']>()
         .mockImplementation(async (key) => {
           steps.push(`archivo ${key}`);
+        }),
+      removeExport: jest
+        .fn<ArtifactStore['removeExport']>()
+        .mockImplementation(async (key) => {
+          steps.push(`tsv ${key}`);
         }),
     };
     module = await Test.createTestingModule({
@@ -222,5 +229,49 @@ describe('Borrado de importaciones y proyectos', () => {
       code: 'IMPORT_ORPHAN_RETAINED',
       snapshotId: 's1',
     });
+  });
+
+  it('retira también los TSV de las exportaciones borradas en cascada, después del commit', async () => {
+    repository.deleteProject.mockImplementationOnce(async () => {
+      steps.push('commit');
+      return [
+        {
+          snapshotId: 's1',
+          artifactKey: 'k1.csv',
+          exportArtifactKeys: ['e1.tsv'],
+        },
+        { snapshotId: 's2', artifactKey: 'k2.csv', exportArtifactKeys: [] },
+      ];
+    });
+
+    await service.deleteProject(alice, projectFixture().id);
+
+    expect(steps).toEqual([
+      'commit',
+      'archivo k1.csv',
+      'tsv e1.tsv',
+      'archivo k2.csv',
+    ]);
+  });
+
+  it('un fallo al retirar un TSV se registra y no falla la petición', async () => {
+    repository.deleteSnapshot.mockImplementationOnce(async () => ({
+      snapshotId: 's1',
+      artifactKey: 'k1.csv',
+      exportArtifactKeys: ['e1.tsv', 'e2.tsv'],
+    }));
+    store.removeExport.mockRejectedValueOnce(new Error('EIO'));
+    const logError = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(
+      service.deleteImport(alice, projectFixture().id, 's1'),
+    ).resolves.toBeUndefined();
+    expect(logError).toHaveBeenCalledWith({
+      code: 'EXPORT_ORPHAN_RETAINED',
+      snapshotId: 's1',
+    });
+    expect(store.removeExport).toHaveBeenCalledWith('e2.tsv');
   });
 });

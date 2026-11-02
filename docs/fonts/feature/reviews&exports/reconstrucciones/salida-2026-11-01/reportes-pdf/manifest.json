@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "date": "2026-11-01",
+  "originals": {
+    "Sección 3 Constancia de empleo/18. PdfMake - Primer PDF.md": "f78d55329764b5d9cab5859f0f4cca75b6e08a479ae81ae398ef80dca68ea993",
+    "Sección 3 Constancia de empleo/17. Continuar proyecto.md": "c504fa46a1728e73eba587c96ca2dac288828bdd2d709a314b9d9f95d35a19e0",
+    "Sección 3 Constancia de empleo/19. Refactorización y modularización.md": "f4014e6c427c374b0b7fe3b5ceb2c29a9f4325b7f649eda53b3fa5f629acb1eb"
+  },
+  "guides": [
+    {
+      "source": "Sección 3 Constancia de empleo/18. PdfMake - Primer PDF.md",
+      "guide": "Sección 3 Constancia de empleo/18. PdfMake - Primer PDF - Reconstrucción guiada.md",
+      "sha256": "50ed0b60735c4940ff9d16070349fc200cc44e62b1c985b5060bb4f7d69ec2f1"
+    },
+    {
+      "source": "Sección 3 Constancia de empleo/19. Refactorización y modularización.md",
+      "guide": "Sección 3 Constancia de empleo/19. Refactorización y modularización - Reconstrucción guiada.md",
+      "sha256": "6e0f11801fa808192fd7655ea5d5c5835009b980efc8033121a4bad26d1a30fa"
+    }
+  ]
+}

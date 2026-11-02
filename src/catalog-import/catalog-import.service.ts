@@ -10,7 +10,7 @@ import {
   type PageRequest,
 } from '../common/http/pagination.js';
 import { UsersService } from '../users/users.service.js';
-import { ArtifactStore } from './artifact.store.js';
+import { ArtifactStore } from '../artifacts/artifact.store.js';
 import { CatalogImportRepository } from './catalog-import.repository.js';
 import { CatalogImportWorker } from './catalog-import.worker.js';
 import type {
@@ -181,16 +181,37 @@ export class CatalogImportService {
   private async removeDeletedArtifacts(deleted: DeletedImport[]) {
     for (const item of deleted) {
       await this.removeArtifactOrLog(item);
+      for (const exportKey of item.exportArtifactKeys) {
+        await this.removeExportOrLog(item, exportKey);
+      }
     }
   }
 
   /** Si el archivo no se puede borrar, queda sin referencia y se registra. */
-  private async removeArtifactOrLog(item: DeletedImport) {
+  private async removeArtifactOrLog(
+    item: Pick<DeletedImport, 'snapshotId' | 'artifactKey'>,
+  ) {
     try {
       await this.store.removeArtifact(item.artifactKey);
     } catch {
       this.logger.error({
         code: 'IMPORT_ORPHAN_RETAINED',
+        snapshotId: item.snapshotId,
+      });
+    }
+  }
+
+  /**
+   * Los TSV son del módulo `exports`, pero se retiran aquí porque el borrado es
+   * de este módulo (plan reviews&exports, D11). Igual que con el CSV, un fallo
+   * no deshace el borrado: lo retira la limpieza de `exports/` al arrancar.
+   */
+  private async removeExportOrLog(item: DeletedImport, exportKey: string) {
+    try {
+      await this.store.removeExport(exportKey);
+    } catch {
+      this.logger.error({
+        code: 'EXPORT_ORPHAN_RETAINED',
         snapshotId: item.snapshotId,
       });
     }

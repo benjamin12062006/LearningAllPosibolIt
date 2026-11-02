@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 10 E2E - Pruebas de extremo a extremo/118. E2E - Probar si es o no una imagen.md",
+  "previous": [
+    "Sección 10 E2E - Pruebas de extremo a extremo/117. E2E - Preparación carga de archivos.md"
+  ],
+  "objective": "Completar las pruebas E2E del módulo de archivos con Supertest: rechazar un archivo que no es imagen, subir una imagen real y comprobar la respuesta y el archivo creado en disco, borrarlo al terminar y pedir una imagen inexistente.",
+  "initial": "Clase 117: test/files/file-upload.e2e-spec.ts copiado de otro E2E, con la aplicación montada desde AppModule y el ValidationPipe global, y una prueba que hace POST /files/product sin archivo y espera 400. El controlador es el de las clases 157–159 del curso Backend (subida con fileFilter y diskStorage en static/products, GET product/:imageName con sendFile).",
+  "certainty": "attach con Buffer.from, attach con ruta a una imagen junto al spec, aserciones 201/toHaveProperty/toContain, borrado con existsSync + unlinkSync y la petición GET de una imagen inexistente se recuperan con alta confianza. Se ensamblan: la preparación copiada en la clase 117 (beforeAll/afterAll y opciones del ValidationPipe no se muestran) y la forma import * as request; el cuerpo de error { message, error, statusCode } se copia de la consola en la clase y se escribe con la forma estándar de BadRequestException (inferencia). La clase dicta «tres directorios atrás» hasta static/products; se respeta. El fragmento de toContain se dicta como «slash, slash product» y se escribe '/product'.",
+  "evidence": [
+    {"id": "E1", "line": 21, "phrase": "la configuración del app módulo", "change": "Montar AppModule con Test.createTestingModule y el ValidationPipe global.", "certainty": "Contexto de la clase 117.", "source": "Sección 10 E2E - Pruebas de extremo a extremo/117. E2E - Preparación carga de archivos.md"},
+    {"id": "E2", "line": 25, "phrase": "hagamos un expect de que el status to be 400", "change": "Prueba sin archivo: status 400 y cuerpo exacto.", "certainty": "Contexto de la clase 117.", "source": "Sección 10 E2E - Pruebas de extremo a extremo/117. E2E - Preparación carga de archivos.md"},
+    {"id": "E3", "line": 13, "phrase": "tiene que ser rechazada", "change": "Nueva prueba: un archivo que no es imagen se rechaza.", "certainty": "Explícito."},
+    {"id": "E4", "line": 15, "phrase": "aquí sería attach paréntesis y tenemos que poner la propiedad file", "change": ".attach('file', ...) en lugar de .send().", "certainty": "Explícito."},
+    {"id": "E5", "line": 15, "phrase": "usando el buffer from", "change": "Contenido ficticio con Buffer.from('This is a test file') y nombre test.txt.", "certainty": "Explícito."},
+    {"id": "E6", "line": 17, "phrase": "Make sure that the file is an image", "change": "Se espera 400 con ese mensaje.", "certainty": "Explícito."},
+    {"id": "E7", "line": 17, "phrase": "Should upload image file successfully", "change": "Prueba de subida correcta.", "certainty": "Explícito."},
+    {"id": "E8", "line": 21, "phrase": "Aquí vamos a poner guión bajo, guión bajo Dirname", "change": "testImagePath = join(__dirname, 'test-image.jpg').", "certainty": "Explícito."},
+    {"id": "E9", "line": 23, "phrase": "nos va a crear un montón de basura", "change": "Cada ejecución deja una imagen en static/products.", "certainty": "Explícito."},
+    {"id": "E10", "line": 23, "phrase": "Response.body File Name", "change": "fileName = response.body.fileName.", "certainty": "Explícito."},
+    {"id": "E11", "line": 27, "phrase": "Estoy esperando expect que el estatus punto to be que sea un 201", "change": "expect(response.status).toBe(201).", "certainty": "Explícito."},
+    {"id": "E12", "line": 27, "phrase": "tiene que tener la prop", "change": "El nombre cambia en cada subida: comprobar propiedades en vez del objeto exacto.", "certainty": "Explícito."},
+    {"id": "E13", "line": 29, "phrase": "También debe tener el file name", "change": "toHaveProperty('secureUrl') y toHaveProperty('fileName').", "certainty": "Explícito."},
+    {"id": "E14", "line": 29, "phrase": "debe de contener algo como slash, slash product", "change": "expect(response.body.secureUrl).toContain('/product').", "certainty": "Explícito; fragmento normalizado."},
+    {"id": "E15", "line": 31, "phrase": "para ir tres directorios atrás y llegar a la carpeta estática", "change": "filePath = join(__dirname, '../../../static/products', fileName).", "certainty": "Explícito."},
+    {"id": "E16", "line": 33, "phrase": "Y una vez confirmamos eso, eliminémoslo y para eliminarlo es un Unlink sync", "change": "expect(existsSync(filePath)).toBe(true) y unlinkSync(filePath).", "certainty": "Explícito."},
+    {"id": "E17", "line": 35, "phrase": "si buscamos una imagen de un producto que no existe", "change": "Prueba de imagen inexistente.", "certainty": "Explícito."},
+    {"id": "E18", "line": 37, "phrase": "No es una petición post, es una petición get", "change": "GET /files/product/no-product-image.jpg sin attach; se espera 400 y el mensaje copiado de la consola.", "certainty": "Explícito; nombre del archivo normalizado."},
+    {"id": "E19", "line": 39, "phrase": "Asegúrense de hacer una limpieza de lo que suceda", "change": "Si una prueba graba en disco, debe limpiar lo que crea.", "certainty": "Explícito."}
+  ],
+  "phases": [
+    {
+      "title": "Rechazar un archivo que no es imagen",
+      "code": "it('should throw a 400 error if file selected is not an image', async () => {\n  const response = await request(app.getHttpServer())\n    .post('/files/product')\n    .attach('file', Buffer.from('This is a test file'), 'test.txt');\n\n  expect(response.status).toBe(400);\n  expect(response.body).toEqual({\n    message: 'Make sure that the file is an image',\n    error: 'Bad Request',\n    statusCode: 400,\n  });\n});",
+      "why": "Un archivo multipart se adjunta con attach, no con send. Un Buffer permite probar el rechazo sin tener un archivo real.",
+      "check": "La prueba pasa con el fileFilter actual.",
+      "evidence": ["E3", "E4", "E5", "E6"]
+    },
+    {
+      "title": "Subir una imagen real y comprobar propiedades",
+      "code": "const testImagePath = join(__dirname, 'test-image.jpg');\n\nit('should upload image file successfully', async () => {\n  const response = await request(app.getHttpServer())\n    .post('/files/product')\n    .attach('file', testImagePath);\n\n  const fileName = response.body.fileName;\n\n  expect(response.status).toBe(201);\n  expect(response.body).toHaveProperty('secureUrl');\n  expect(response.body).toHaveProperty('fileName');\n  expect(response.body.secureUrl).toContain('/product');\n});",
+      "why": "El nombre lo genera el servidor (UUID), así que no se puede comparar el objeto completo: se comprueban las propiedades y una parte estable de la URL.",
+      "check": "La prueba pasa, pero cada ejecución deja una imagen nueva en static/products.",
+      "evidence": ["E7", "E8", "E9", "E10", "E11", "E12", "E13", "E14"]
+    },
+    {
+      "title": "Comprobar el archivo en disco y borrarlo",
+      "code": "const filePath = join(__dirname, '../../../static/products', fileName);\nconst fileExists = existsSync(filePath);\n\nexpect(fileExists).toBe(true);\n\nunlinkSync(filePath);",
+      "why": "La prueba verifica que el archivo existe donde debe y lo elimina para no dejar basura entre ejecuciones.",
+      "check": "Tras ejecutar las pruebas, static/products no tiene archivos nuevos.",
+      "evidence": ["E15", "E16", "E19"]
+    },
+    {
+      "title": "Pedir una imagen inexistente",
+      "code": "it('should throw a 400 error if the requested image does not exist', async () => {\n  const imageName = 'no-product-image.jpg';\n\n  const response = await request(app.getHttpServer()).get(\n    `/files/product/${imageName}`,\n  );\n\n  expect(response.status).toBe(400);\n  expect(response.body).toEqual({\n    message: `No product found with image ${imageName}`,\n    error: 'Bad Request',\n    statusCode: 400,\n  });\n});",
+      "why": "Cubre la rama del servicio que comprueba la existencia sin revelar la ruta.",
+      "check": "La prueba pasa con el mensaje del servicio.",
+      "evidence": ["E17", "E18"]
+    }
+  ],
+  "files": [
+    {
+      "path": "test/files/file-upload.e2e-spec.ts",
+      "language": "ts",
+      "code": "import { INestApplication, ValidationPipe } from '@nestjs/common';\nimport { Test, TestingModule } from '@nestjs/testing';\nimport { existsSync, unlinkSync } from 'fs';\nimport { join } from 'path';\nimport * as request from 'supertest';\nimport { AppModule } from '../../../src/app.module';\n\ndescribe('FilesModule (e2e)', () => {\n  let app: INestApplication;\n  const testImagePath = join(__dirname, 'test-image.jpg');\n\n  beforeAll(async () => {\n    const moduleFixture: TestingModule = await Test.createTestingModule({\n      imports: [AppModule],\n    }).compile();\n\n    app = moduleFixture.createNestApplication();\n    // Opciones copiadas del E2E anterior; no se muestran en esta clase.\n    app.useGlobalPipes(new ValidationPipe());\n    await app.init();\n  });\n\n  afterAll(async () => {\n    await app.close();\n  });\n\n  it('should throw a 400 error if no file selected', async () => {\n    const response = await request(app.getHttpServer()).post('/files/product');\n\n    expect(response.status).toBe(400);\n    expect(response.body).toEqual({\n      message: 'Make sure that the file is an image',\n      error: 'Bad Request',\n      statusCode: 400,\n    });\n  });\n\n  it('should throw a 400 error if file selected is not an image', async () => {\n    const response = await request(app.getHttpServer())\n      .post('/files/product')\n      .attach('file', Buffer.from('This is a test file'), 'test.txt');\n\n    expect(response.status).toBe(400);\n    expect(response.body).toEqual({\n      message: 'Make sure that the file is an image',\n      error: 'Bad Request',\n      statusCode: 400,\n    });\n  });\n\n  it('should upload image file successfully', async () => {\n    const response = await request(app.getHttpServer())\n      .post('/files/product')\n      .attach('file', testImagePath);\n\n    const fileName = response.body.fileName;\n\n    expect(response.status).toBe(201);\n    expect(response.body).toHaveProperty('secureUrl');\n    expect(response.body).toHaveProperty('fileName');\n    expect(response.body.secureUrl).toContain('/product');\n\n    const filePath = join(__dirname, '../../../static/products', fileName);\n    const fileExists = existsSync(filePath);\n\n    expect(fileExists).toBe(true);\n\n    unlinkSync(filePath);\n  });\n\n  it('should throw a 400 error if the requested image does not exist', async () => {\n    const imageName = 'no-product-image.jpg';\n\n    const response = await request(app.getHttpServer()).get(\n      `/files/product/${imageName}`,\n    );\n\n    expect(response.status).toBe(400);\n    expect(response.body).toEqual({\n      message: `No product found with image ${imageName}`,\n      error: 'Bad Request',\n      statusCode: 400,\n    });\n  });\n});",
+      "provenance": "E1–E19. Preparación (beforeAll/afterAll, opciones del pipe) y ruta de AppModule ensambladas a partir de la clase 117 y de los «tres directorios atrás» de E15; forma del cuerpo de error inferida."
+    }
+  ],
+  "temporary": "Se imprimen response.status y response.body con console.log para copiar los valores esperados; después se convierten en aserciones. Antes de añadir el borrado, cada ejecución deja una imagen nueva en static/products (E9).",
+  "mental": "Una prueba E2E con archivos adjunta contenido real o ficticio, comprueba lo que no cambia entre ejecuciones (propiedades, fragmentos de URL) y verifica el efecto en disco. Si crea archivos, los borra."
+}

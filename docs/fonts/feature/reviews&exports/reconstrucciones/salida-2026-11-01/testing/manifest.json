@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "date": "2026-11-01",
+  "originals": {
+    "Sección 10 E2E - Pruebas de extremo a extremo/117. E2E - Preparación carga de archivos.md": "61555d343dcd0af6a7132f6162a107a557b7f4aeece8e53be6235e758e5839c4",
+    "Sección 10 E2E - Pruebas de extremo a extremo/118. E2E - Probar si es o no una imagen.md": "cfdccd1234eb1ecc47d6789fd2ea06e1ab82bca39c6c775de78d2f1a3714f64a"
+  },
+  "guides": [
+    {
+      "source": "Sección 10 E2E - Pruebas de extremo a extremo/118. E2E - Probar si es o no una imagen.md",
+      "guide": "Sección 10 E2E - Pruebas de extremo a extremo/118. E2E - Probar si es o no una imagen - Reconstrucción guiada.md",
+      "sha256": "7bf3207f7332163bc967c2fdc4e8760678a09a3d59ee2695c380a1304e871963"
+    }
+  ]
+}

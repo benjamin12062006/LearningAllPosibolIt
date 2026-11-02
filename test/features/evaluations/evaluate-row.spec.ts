@@ -332,3 +332,90 @@ describe('evaluateRow: perfil google_merchant v1', () => {
     ]);
   });
 });
+
+/** Tabulador y saltos de línea que el perfil marca como `TEXT_HAS_LINE_BREAK` (D5). */
+const LINE_BREAKS = [
+  '\t',
+  '\n',
+  '\r',
+  '\v',
+  '\f',
+  '\u0085',
+  '\u2028',
+  '\u2029',
+];
+
+describe('evaluateRow: perfil google_merchant 2026-11-01, valores que no caben en un TSV', () => {
+  it.each(LINE_BREAKS)(
+    'marca %j en title, description y brand',
+    (character) => {
+      for (const attribute of ['title', 'description', 'brand']) {
+        expect(problemsOf({ [attribute]: `Mesa${character}roble` })).toEqual([
+          { attribute, code: 'TEXT_HAS_LINE_BREAK' },
+        ]);
+      }
+    },
+  );
+
+  it.each(LINE_BREAKS)('marca %j en el id', (character) => {
+    expect(problemsOf({}, `SKU${character}1`)).toEqual([
+      { attribute: 'id', code: 'TEXT_HAS_LINE_BREAK' },
+    ]);
+  });
+
+  it('marca una comilla doble al principio de id, title, description y brand', () => {
+    expect(problemsOf({}, '"SKU-1"')).toEqual([
+      { attribute: 'id', code: 'TEXT_STARTS_WITH_QUOTE' },
+    ]);
+    for (const attribute of ['title', 'description', 'brand']) {
+      expect(problemsOf({ [attribute]: '"Mesa" de roble' })).toEqual([
+        { attribute, code: 'TEXT_STARTS_WITH_QUOTE' },
+      ]);
+    }
+  });
+
+  it('acepta comillas que no están al principio', () => {
+    expect(problemsOf({ title: 'Mesa "grande"' })).toEqual([]);
+    expect(problemsOf({ title: ' "Mesa"' })).toEqual([]);
+  });
+
+  it('informa primero lo que impide escribir el valor y después la longitud', () => {
+    const long = 'a'.repeat(151);
+
+    expect(problemsOf({ title: `${long}\n` })).toEqual([
+      { attribute: 'title', code: 'TEXT_HAS_LINE_BREAK' },
+    ]);
+    expect(problemsOf({ title: `"${long}` })).toEqual([
+      { attribute: 'title', code: 'TEXT_STARTS_WITH_QUOTE' },
+    ]);
+    expect(problemsOf({ title: '"Mesa\nde roble' })).toEqual([
+      { attribute: 'title', code: 'TEXT_HAS_LINE_BREAK' },
+    ]);
+  });
+
+  it('un opcional con solo un tabulador sigue siendo un valor vacío', () => {
+    expect(problemsOf({ brand: '\t' })).toEqual([]);
+  });
+
+  it('los enlaces con salto de línea siguen siendo URL_INVALID', () => {
+    expect(problemsOf({ link: 'https://tienda.example/\nmesa' })).toEqual([
+      { attribute: 'link', code: 'URL_INVALID' },
+    ]);
+  });
+
+  it.each(LINE_BREAKS)(
+    'clean_text antes de validar elimina %j',
+    (character) => {
+      const outcome = evaluateRow(
+        productRow({ description: `Mesa${character}de roble` }),
+        ruleset([{ type: 'clean_text', attributes: ['description'] }]),
+        USD,
+      );
+
+      expect(outcome).toMatchObject({
+        outcome: 'valid',
+        values: { description: 'Mesa de roble' },
+      });
+    },
+  );
+});

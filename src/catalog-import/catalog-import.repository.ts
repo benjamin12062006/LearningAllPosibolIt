@@ -79,7 +79,15 @@ type SnapshotRow = {
 
 type RunningJobRow = { id: string; snapshotId: string; requestId: string };
 
-type DeletableSnapshotRow = DeletedImport & { jobStatus: string | null };
+type DeletableSnapshotRow = {
+  snapshotId: string;
+  artifactKey: string;
+  jobStatus: string | null;
+};
+
+type DeletedSnapshotRow = { snapshotId: string; artifactKey: string };
+
+type ExportKeyRow = { snapshotId: string; artifactKey: string };
 
 type ArtifactKeyRow = { artifactKey: string };
 
@@ -312,12 +320,14 @@ export class CatalogImportRepository {
         throw apiError(ErrorCodes.EVALUATION_IN_PROGRESS);
       }
 
+      const exportKeys = await findExportKeys(tx, [snapshotId]);
       await tx.$executeRaw`
         DELETE FROM estadistica_forms.catalog_snapshots
         WHERE id = ${snapshotId}`;
       return {
         snapshotId: snapshot.snapshotId,
         artifactKey: snapshot.artifactKey,
+        exportArtifactKeys: exportKeys.get(snapshotId) ?? [],
       };
     });
   }
@@ -345,14 +355,30 @@ export class CatalogImportRepository {
         throw apiError(ErrorCodes.EVALUATION_IN_PROGRESS);
       }
 
-      const deleted = await tx.$queryRaw<DeletedImport[]>`
+      // El proyecto bloqueado no detiene una exportación en curso, que bloquea
+      // su snapshot con FOR SHARE: bloquear aquí los snapshots espera a que
+      // termine, y así su TSV aparece entre las claves que se retiran.
+      const snapshots = await tx.$queryRaw<IdRow[]>`
+        SELECT id
+        FROM estadistica_forms.catalog_snapshots
+        WHERE project_id = ${projectId}
+        FOR UPDATE`;
+      const exportKeys = await findExportKeys(
+        tx,
+        snapshots.map((snapshot) => snapshot.id),
+      );
+
+      const deleted = await tx.$queryRaw<DeletedSnapshotRow[]>`
         DELETE FROM estadistica_forms.catalog_snapshots
         WHERE project_id = ${projectId}
         RETURNING id AS "snapshotId", artifact_key AS "artifactKey"`;
       await tx.$executeRaw`
         DELETE FROM estadistica_forms.projects
         WHERE id = ${projectId} AND owner_id = ${ownerId}`;
-      return deleted;
+      return deleted.map((snapshot) => ({
+        ...snapshot,
+        exportArtifactKeys: exportKeys.get(snapshot.snapshotId) ?? [],
+      }));
     });
   }
 
@@ -582,6 +608,37 @@ async function hasActiveEvaluation(
     select: { id: true },
   });
   return active !== null;
+}
+
+/**
+ * Claves de los TSV de las exportaciones que se borrarán en cascada con estos
+ * snapshots, agrupadas por snapshot (plan reviews&exports, D11). La tabla es del
+ * módulo `exports`, pero la lectura vive aquí porque el borrado es de este
+ * módulo. Los snapshots deben estar bloqueados con FOR UPDATE en `tx`.
+ */
+async function findExportKeys(
+  tx: Prisma.TransactionClient,
+  snapshotIds: string[],
+): Promise<Map<string, string[]>> {
+  const keys = new Map<string, string[]>();
+  if (snapshotIds.length === 0) {
+    return keys;
+  }
+  const rows = await tx.$queryRaw<ExportKeyRow[]>`
+    SELECT
+      e.snapshot_id AS "snapshotId",
+      x.artifact_key AS "artifactKey"
+    FROM estadistica_forms.exports x
+    JOIN estadistica_forms.evaluations e
+      ON e.project_id = x.project_id AND e.id = x.evaluation_id
+    WHERE e.snapshot_id IN (${Prisma.join(snapshotIds)})`;
+  for (const row of rows) {
+    keys.set(row.snapshotId, [
+      ...(keys.get(row.snapshotId) ?? []),
+      row.artifactKey,
+    ]);
+  }
+  return keys;
 }
 
 /** Las filas guardadas, el hash y el tamaño deben coincidir con el archivo aceptado. */

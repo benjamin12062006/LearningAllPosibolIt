@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { ArtifactStore } from '../../../src/catalog-import/artifact.store.js';
+import { ArtifactStore } from '../../../src/artifacts/artifact.store.js';
 import { IMPORT_LIMITS } from '../../../src/catalog-import/import.types.js';
 
 describe('ArtifactStore privado real', () => {
@@ -12,12 +12,7 @@ describe('ArtifactStore privado real', () => {
   const key = '00000000-0000-4000-8000-000000000001.csv';
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'catalog-store-'));
-    store = new ArtifactStore({
-      root,
-      autoStart: false,
-      pollMs: 1000,
-      shutdownMs: 1000,
-    });
+    store = new ArtifactStore({ root });
     await store.onModuleInit();
   });
   afterEach(async () => {

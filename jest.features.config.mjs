@@ -21,6 +21,7 @@ export default {
     '<rootDir>/.test-build/src/projects/**/*.js',
     '<rootDir>/.test-build/src/catalog-import/**/*.js',
     '<rootDir>/.test-build/src/evaluations/**/*.js',
+    '<rootDir>/.test-build/src/exports/**/*.js',
     '!**/*.module.js',
     '!**/*.types.js',
   ],

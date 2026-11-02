@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 3 Constancia de empleo/19. Refactorización y modularización.md",
+  "previous": [
+    "Sección 3 Constancia de empleo/18. PdfMake - Primer PDF.md"
+  ],
+  "objective": "Extraer la impresora a un PrinterModule con un PrinterService exportado y reutilizable, inyectarlo en BasicReportsService y mover la definición del documento a funciones puras en src/reports que reciben opciones.",
+  "initial": "Estado de la clase 18: BasicReportsService crea la impresora, la definición y el documento dentro de hello(); el controlador fija Content-Type, hace pipe y end.",
+  "certainty": "PrinterModule/PrinterService, la impresora privada, createPdf con BufferOptions opcional y tipo de retorno PDFKit.PDFDocument, exports/imports, la inyección con super() y getHelloWorldReport con ReportOptions se recuperan con alta confianza. Se ensamblan: el contenido exacto del módulo generado por la CLI y la forma de content (arreglo o texto) en el reporte; el nombre de la interfaz se dicta como «ReportOptions o ReportArguments» y se elige ReportOptions, que es el que usa después.",
+  "evidence": [
+    {"id": "E1", "line": 13, "phrase": "va a ser un poco difícil de reutilizar todo esto", "change": "Motivo: otro módulo que imprima tendría que copiar la configuración.", "certainty": "Explícito."},
+    {"id": "E2", "line": 15, "phrase": "printer module", "change": "nest g module printer.", "certainty": "Explícito."},
+    {"id": "E3", "line": 17, "phrase": "lo único que yo voy a ocupar generar ahora va a ser un", "change": "nest g service printer --no-spec.", "certainty": "Explícito."},
+    {"id": "E4", "line": 19, "phrase": "simplemente importan el", "change": "Cualquier módulo que quiera imprimir importa PrinterService (vía PrinterModule).", "certainty": "Explícito."},
+    {"id": "E5", "line": 21, "phrase": "y le mandamos nuestras fuentes", "change": "private printer = new PdfPrinter(fonts) en PrinterService.", "certainty": "Explícito."},
+    {"id": "E6", "line": 23, "phrase": "Ojo que es privado porque yo no quiero que se pueda acceder directamente a ese objeto", "change": "La impresora es privada; se expone solo createPdf.", "certainty": "Explícito."},
+    {"id": "E7", "line": 23, "phrase": "y estas opciones es de tipo", "change": "Parámetro options de tipo BufferOptions.", "certainty": "Explícito."},
+    {"id": "E8", "line": 25, "phrase": "Lo inicializamos con un objeto vacío", "change": "options: BufferOptions = {} y retorno PDFKit.PDFDocument.", "certainty": "Explícito."},
+    {"id": "E9", "line": 27, "phrase": "Grábense los cambios y ya tenemos nuestro servicio previamente configurado", "change": "createPdf devuelve this.printer.createPdfKitDocument(docDefinition, options).", "certainty": "Explícito."},
+    {"id": "E10", "line": 29, "phrase": "entonces vamos a poner aquí el", "change": "PrinterModule exporta PrinterService; BasicReportsModule importa PrinterModule.", "certainty": "Explícito."},
+    {"id": "E11", "line": 31, "phrase": "vamos a hacer la inyección del", "change": "constructor(private readonly printerService: PrinterService).", "certainty": "Explícito."},
+    {"id": "E12", "line": 31, "phrase": "Nosotros vamos a ocupar llamar el", "change": "super() porque el servicio extiende PrismaClient.", "certainty": "Explícito."},
+    {"id": "E13", "line": 33, "phrase": "Lo que tenemos sería el", "change": "hello() usa this.printerService.createPdf(docDefinition).", "certainty": "Explícito."},
+    {"id": "E14", "line": 35, "phrase": "Una carpeta que se llame", "change": "src/reports/hello-world.report.ts con export const getHelloWorldReport.", "certainty": "Explícito."},
+    {"id": "E15", "line": 37, "phrase": "Voy a crearme un archivo de barril por acá", "change": "src/reports/index.ts con export * from './hello-world.report'.", "certainty": "Explícito."},
+    {"id": "E16", "line": 39, "phrase": "Podríamos hacer una desestructuración de nuestras opciones y tomar el", "change": "interface ReportOptions { name: string } y const { name } = options.", "certainty": "Explícito."},
+    {"id": "E17", "line": 41, "phrase": "Ojo que aquí son backticks", "change": "Texto `Hola ${name}`.", "certainty": "Explícito."},
+    {"id": "E18", "line": 41, "phrase": "que en este caso sería", "change": "El servicio llama getHelloWorldReport({ name: 'Fernando Herrera' }).", "certainty": "Explícito."}
+  ],
+  "phases": [
+    {
+      "title": "Generar PrinterModule y PrinterService",
+      "code": "nest g module printer\nnest g service printer --no-spec",
+      "language": "bash",
+      "why": "Si la impresora vive en un servicio de reportes, cada módulo nuevo que imprima tendría que copiarla.",
+      "check": "Existen src/printer/printer.module.ts y printer.service.ts, y AppModule importa PrinterModule.",
+      "evidence": ["E1", "E2", "E3"]
+    },
+    {
+      "title": "Configurar la impresora una sola vez",
+      "code": "@Injectable()\nexport class PrinterService {\n  private printer = new PdfPrinter(fonts);\n\n  createPdf(\n    docDefinition: TDocumentDefinitions,\n    options: BufferOptions = {},\n  ): PDFKit.PDFDocument {\n    return this.printer.createPdfKitDocument(docDefinition, options);\n  }\n}",
+      "why": "La impresora es privada y ya viene configurada; los consumidores solo piden un documento. Un cambio de configuración afecta a todos.",
+      "check": "Compila con los tipos de pdfmake.",
+      "evidence": ["E4", "E5", "E6", "E7", "E8", "E9"]
+    },
+    {
+      "title": "Exportar, importar e inyectar",
+      "code": "// printer.module.ts\n@Module({\n  providers: [PrinterService],\n  exports: [PrinterService],\n})\nexport class PrinterModule {}\n\n// basic-reports.module.ts\nimports: [PrinterModule],\n\n// basic-reports.service.ts\nconstructor(private readonly printerService: PrinterService) {\n  super();\n}",
+      "why": "Un módulo solo ofrece lo que exporta. El servicio de reportes extiende PrismaClient y por eso llama a super().",
+      "check": "La aplicación arranca sin errores de inyección.",
+      "evidence": ["E10", "E11", "E12"]
+    },
+    {
+      "title": "Definiciones como funciones en src/reports",
+      "code": "interface ReportOptions {\n  name: string;\n}\n\nexport const getHelloWorldReport = (\n  options: ReportOptions,\n): TDocumentDefinitions => {\n  const { name } = options;\n\n  const docDefinition: TDocumentDefinitions = {\n    content: [`Hola ${name}`],\n  };\n\n  return docDefinition;\n};",
+      "why": "Cada reporte es una función que recibe datos y devuelve la definición; el servicio la pasa a la impresora.",
+      "check": "El GET devuelve un PDF con «Hola Fernando Herrera».",
+      "evidence": ["E13", "E14", "E15", "E16", "E17", "E18"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/printer/printer.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport PdfPrinter from 'pdfmake';\nimport type { BufferOptions, TDocumentDefinitions } from 'pdfmake/interfaces';\n\nconst fonts = {\n  Roboto: {\n    normal: 'fonts/Roboto-Regular.ttf',\n    bold: 'fonts/Roboto-Medium.ttf',\n    italics: 'fonts/Roboto-Italic.ttf',\n    bolditalics: 'fonts/Roboto-MediumItalic.ttf',\n  },\n};\n\n@Injectable()\nexport class PrinterService {\n  private printer = new PdfPrinter(fonts);\n\n  createPdf(\n    docDefinition: TDocumentDefinitions,\n    options: BufferOptions = {},\n  ): PDFKit.PDFDocument {\n    return this.printer.createPdfKitDocument(docDefinition, options);\n  }\n}",
+      "provenance": "E5–E9; fuentes movidas desde la clase 18."
+    },
+    {
+      "path": "src/printer/printer.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { PrinterService } from './printer.service';\n\n@Module({\n  providers: [PrinterService],\n  exports: [PrinterService],\n})\nexport class PrinterModule {}",
+      "provenance": "E2, E3, E10."
+    },
+    {
+      "path": "src/basic-reports/basic-reports.module.ts",
+      "language": "ts",
+      "code": "import { Module } from '@nestjs/common';\nimport { PrinterModule } from '../printer/printer.module';\nimport { BasicReportsController } from './basic-reports.controller';\nimport { BasicReportsService } from './basic-reports.service';\n\n@Module({\n  controllers: [BasicReportsController],\n  providers: [BasicReportsService],\n  imports: [PrinterModule],\n})\nexport class BasicReportsModule {}",
+      "provenance": "E10; controllers y providers ensamblados desde la estructura del recurso."
+    },
+    {
+      "path": "src/reports/hello-world.report.ts",
+      "language": "ts",
+      "code": "import type { TDocumentDefinitions } from 'pdfmake/interfaces';\n\ninterface ReportOptions {\n  name: string;\n}\n\nexport const getHelloWorldReport = (\n  options: ReportOptions,\n): TDocumentDefinitions => {\n  const { name } = options;\n\n  const docDefinition: TDocumentDefinitions = {\n    content: [`Hola ${name}`],\n  };\n\n  return docDefinition;\n};",
+      "provenance": "E14, E16, E17; forma de content ensamblada."
+    },
+    {
+      "path": "src/reports/index.ts",
+      "language": "ts",
+      "code": "export * from './hello-world.report';",
+      "provenance": "E15."
+    },
+    {
+      "path": "src/basic-reports/basic-reports.service.ts",
+      "language": "ts",
+      "code": "import { Injectable } from '@nestjs/common';\nimport { PrismaClient } from '@prisma/client';\nimport { PrinterService } from '../printer/printer.service';\nimport { getHelloWorldReport } from '../reports';\n\n@Injectable()\nexport class BasicReportsService extends PrismaClient {\n  constructor(private readonly printerService: PrinterService) {\n    super();\n  }\n\n  // Miembros heredados de clases anteriores, no reconstruidos.\n\n  hello() {\n    const docDefinition = getHelloWorldReport({ name: 'Fernando Herrera' });\n\n    const doc = this.printerService.createPdf(docDefinition);\n\n    return doc;\n  }\n}",
+      "provenance": "E11–E13, E18."
+    }
+  ],
+  "temporary": "La función getHelloWorldReport empieza sin parámetros y con el texto fijo; después recibe ReportOptions. El controlador de la clase 18 no cambia.",
+  "mental": "Lo reutilizable (la impresora configurada) va a un módulo que lo exporta; cada consumidor importa el módulo e inyecta el servicio. El contenido de cada documento es una función que recibe datos y devuelve una definición, sin conocer la impresora ni HTTP."
+}

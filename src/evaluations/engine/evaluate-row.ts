@@ -19,8 +19,10 @@ import {
 /**
  * Versión del algoritmo de evaluación. Cada evaluación la guarda (RNF02), así
  * que cualquier cambio de comportamiento de este archivo obliga a subirla.
+ *
+ * 2: `clean_text` y `build_title` también colapsan U+0085 (ver `WHITESPACE_RUN`).
  */
-export const ENGINE_VERSION = '1';
+export const ENGINE_VERSION = '2';
 
 /** Moneda del proyecto congelada en el snapshot: la de la importación, no la actual. */
 export type EvaluationContext = Readonly<{ currency: string }>;
@@ -46,8 +48,13 @@ type RulesResult =
   | Readonly<{ kind: 'kept'; values: ProductValues }>
   | Readonly<{ kind: 'excluded'; rulePosition: number }>;
 
-/** Espacios, tabuladores, saltos de línea y espacios Unicode como el no separable. */
-const WHITESPACE_RUN = /\s+/gu;
+/**
+ * Espacios, tabuladores, saltos de línea y espacios Unicode como el no separable.
+ * `\s` no incluye U+0085 (NEL), que el perfil trata como salto de línea
+ * (`hasTabOrLineBreak`); se añade para que `clean_text` corrija todo lo que el
+ * perfil marca como `TEXT_HAS_LINE_BREAK`.
+ */
+const WHITESPACE_RUN = /[\s\u0085]+/gu;
 
 /**
  * Evalúa una fila del catálogo sin efectos: no lee la hora, la base ni el disco y

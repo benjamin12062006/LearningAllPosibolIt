@@ -4,8 +4,13 @@ import { normalizePrice, type PriceProblemCode } from './price.js';
  * Versión del perfil de Google Merchant Center que aplica este archivo. La fecha
  * es la de consulta de la especificación (F19). Cada evaluación la guarda
  * (RNF02), así que cambiar cualquier regla de este archivo obliga a cambiarla.
+ *
+ * 2026-11-01: valores que no caben en un TSV (`TEXT_HAS_LINE_BREAK`,
+ * `TEXT_STARTS_WITH_QUOTE`), con la fecha de consulta del formato delimitado de
+ * Google (fuente F18 de reviews&exports). Las evaluaciones anteriores no se
+ * pueden exportar hasta repetirlas.
  */
-export const PROFILE_VERSION = 'google_merchant@2026-10-31';
+export const PROFILE_VERSION = 'google_merchant@2026-11-01';
 
 /** Atributos que se pueden mapear desde una columna. `id` no: sale de `idColumn`. */
 export const PRODUCT_ATTRIBUTES = [
@@ -52,6 +57,8 @@ export type ProblemAttribute = ProductAttribute | 'id';
 export type ProblemCode =
   | 'FIELD_MISSING'
   | 'TEXT_TOO_LONG'
+  | 'TEXT_HAS_LINE_BREAK'
+  | 'TEXT_STARTS_WITH_QUOTE'
   | 'URL_INVALID'
   | 'AVAILABILITY_INVALID'
   | 'AVAILABILITY_DATE_REQUIRED'
@@ -94,9 +101,46 @@ export function isProductAttribute(name: string): name is ProductAttribute {
   return PRODUCT_ATTRIBUTE_NAMES.has(name);
 }
 
+/** Comprueba valores leídos de `jsonb`: solo atributos del perfil con texto. */
+export function isProductValues(value: unknown): value is ProductValues {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.entries(value).every(
+      ([key, item]) => isProductAttribute(key) && typeof item === 'string',
+    )
+  );
+}
+
 /** Vacío o solo espacios: para Google no hay valor. */
 export function isBlank(value: string | undefined) {
   return value === undefined || value.trim() === '';
+}
+
+/**
+ * Tabulador o salto de línea. Google no los admite dentro de un valor de un
+ * archivo delimitado y la IANA tampoco en un TSV (fuentes F18 y F21 de
+ * reviews&exports). Google no enumera qué cuenta como salto de línea: además de
+ * `\n` y `\r` se incluyen `\v`, `\f`, U+0085 (NEL), U+2028 y U+2029, para no
+ * depender de cómo los interprete (plan de reviews y exports, D5; propuesta
+ * propia).
+ */
+const TAB_OR_LINE_BREAK = /[\t\n\r\v\f\u0085\u2028\u2029]/u;
+
+/** El valor partiría su línea o su columna en un archivo delimitado por tabuladores. */
+export function hasTabOrLineBreak(value: string) {
+  return TAB_OR_LINE_BREAK.test(value);
+}
+
+/**
+ * Con los «campos entrecomillados» de Google activados (fuente F19 de
+ * reviews&exports), una comilla al principio abre un campo entrecomillado; sin
+ * ellos, es un carácter más. Como no se sabe cómo está configurada la fuente del
+ * cliente, un valor así no se exporta (plan de reviews y exports, D5).
+ */
+export function startsWithQuote(value: string) {
+  return value.startsWith('"');
 }
 
 /**
@@ -110,8 +154,9 @@ export function findProductProblems(
   currency: string,
 ): RowProblem[] {
   const problems: RowProblem[] = [];
-  if (isTooLong(externalId, MAX_LENGTHS.id)) {
-    problems.push({ attribute: 'id', code: 'TEXT_TOO_LONG' });
+  const idProblem = findFreeTextProblem(externalId, MAX_LENGTHS.id);
+  if (idProblem !== null) {
+    problems.push({ attribute: 'id', code: idProblem });
   }
 
   for (const attribute of PRODUCT_ATTRIBUTES) {
@@ -148,7 +193,7 @@ function findAttributeProblem(
     case 'title':
     case 'description':
     case 'brand':
-      return isTooLong(value, MAX_LENGTHS[attribute]) ? 'TEXT_TOO_LONG' : null;
+      return findFreeTextProblem(value, MAX_LENGTHS[attribute]);
     case 'link':
     case 'image_link':
       return isWebUrl(value) ? null : 'URL_INVALID';
@@ -161,6 +206,28 @@ function findAttributeProblem(
       return price.ok ? null : price.code;
     }
   }
+}
+
+/**
+ * Problema de un texto libre (`id`, `title`, `description`, `brand`). Si hay
+ * varios, se informa primero lo que impide escribir el valor en el TSV (D5 de
+ * reviews&exports): `clean_text` corrige el salto de línea y a la vez puede
+ * acortar el texto, así que la longitud se mide después.
+ */
+function findFreeTextProblem(
+  value: string,
+  maxLength: number,
+): ProblemCode | null {
+  if (hasTabOrLineBreak(value)) {
+    return 'TEXT_HAS_LINE_BREAK';
+  }
+  if (startsWithQuote(value)) {
+    return 'TEXT_STARTS_WITH_QUOTE';
+  }
+  if (isTooLong(value, maxLength)) {
+    return 'TEXT_TOO_LONG';
+  }
+  return null;
 }
 
 /**

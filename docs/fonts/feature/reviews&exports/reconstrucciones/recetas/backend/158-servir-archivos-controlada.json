@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 12 Carga de archivos/158. Servir archivos de manera controlada.md",
+  "previous": [
+    "Sección 12 Carga de archivos/157. Renombrar el archivo subido.md"
+  ],
+  "objective": "Servir de forma controlada una imagen subida: un GET recibe solo el nombre del archivo, el servicio construye la ruta dentro de una carpeta fija del servidor, comprueba que exista sin revelar la ruta en el error y el controlador envía el archivo con @Res() y res.sendFile().",
+  "initial": "Estado de la clase 157 (guía reconstruida junto al original): FilesController con POST files/product, FileInterceptor con fileFilter y diskStorage en ./static/products, nombre de archivo UUID asignado por fileNamer y FilesService inyectado pero sin métodos.",
+  "certainty": "El flujo (secureUrl con el nombre asignado, GET product/:imageName, servicio con join + existsSync + BadRequestException, @Res + sendFile) se recupera con alta confianza. Nombres normalizados desde la pronunciación: «Get static product image» → getStaticProductImage, «Fine product image» → findProductImage, «match name» → imageName. La transcripción dicta «un directorio atrás. Slash punto, punto. Slash static slash products»: se escribe un solo segmento `..`; el número correcto de niveles depende de dónde quede __dirname al compilar y la clase no lo muestra. El texto exacto del mensaje de error se normaliza a `No product found with image ${imageName}`.",
+  "evidence": [
+    {"id": "E1", "line": 13, "phrase": "solo voy a colocar el fail name", "change": "En la subida, secureUrl contiene por ahora solo file.filename y se devuelve { secureUrl }.", "certainty": "Explícito; secureUrl normalizado desde «Secure Reward»."},
+    {"id": "E2", "line": 19, "phrase": "Hagamos una petición, jet", "change": "Nuevo método @Get en FilesController.", "certainty": "Explícito."},
+    {"id": "E3", "line": 21, "phrase": "Y seguido de dos puntos y match name", "change": "Ruta 'product/:imageName' con @Param('imageName').", "certainty": "Explícito; nombre normalizado."},
+    {"id": "E4", "line": 21, "phrase": "Yo voy a buscar específicamente en este directorio esa imagen", "change": "El cliente aporta solo el nombre; la carpeta la decide el servidor.", "certainty": "Explícito."},
+    {"id": "E5", "line": 23, "phrase": "una función que se llama Get static product image", "change": "FilesService.getStaticProductImage(imageName: string).", "certainty": "Explícito; nombre normalizado."},
+    {"id": "E6", "line": 25, "phrase": "propiamente que se llama Join", "change": "import { join } from 'path' y join(__dirname, ...).", "certainty": "Explícito."},
+    {"id": "E7", "line": 27, "phrase": "Slash punto, punto. Slash static slash products", "change": "Segmento relativo hacia static/products concatenado con imageName.", "certainty": "Explícito; número de niveles incierto."},
+    {"id": "E8", "line": 27, "phrase": "preguntemos si existe Sync", "change": "if (!existsSync(path)) desde 'fs'.", "certainty": "Explícito."},
+    {"id": "E9", "line": 27, "phrase": "bat request exception", "change": "throw new BadRequestException(...).", "certainty": "Explícito."},
+    {"id": "E10", "line": 29, "phrase": "No especifiquen el PAC no regrese en el path", "change": "El mensaje de error no incluye la ruta física.", "certainty": "Explícito."},
+    {"id": "E11", "line": 29, "phrase": "no product found with image", "change": "Mensaje con el nombre de la imagen; si existe, se devuelve la ruta.", "certainty": "Explícito; texto normalizado."},
+    {"id": "E12", "line": 31, "phrase": "Tengo específicamente el path de mi computadora", "change": "Experimento: el controlador devuelve la ruta y Postman muestra la ruta absoluta del equipo.", "certainty": "Explícito; experimento temporal."},
+    {"id": "E13", "line": 33, "phrase": "el arroba res", "change": "@Res() res: Response, con Response importado de express.", "certainty": "Explícito."},
+    {"id": "E14", "line": 35, "phrase": "rompen la funcionalidad propiamente de Nest en este método", "change": "Con @Res, Nest no envía el valor devuelto: la respuesta es manual.", "certainty": "Explícito."},
+    {"id": "E15", "line": 37, "phrase": "voy a poner un estatus 403", "change": "Experimento: res.status(403).json({ ok: false, path }).", "certainty": "Explícito; experimento temporal."},
+    {"id": "E16", "line": 39, "phrase": "se saltan interceptores que tengan definidos de manera global", "change": "Advertencia: @Res se salta pasos del ciclo de vida de Nest.", "certainty": "Explícito."},
+    {"id": "E17", "line": 39, "phrase": "voy a hacer un send file", "change": "res.sendFile(path) como respuesta final.", "certainty": "Explícito."},
+    {"id": "E18", "line": 41, "phrase": "la persona no tiene acceso al file si físicamente no sabe cuál es", "change": "El endpoint oculta la ubicación física; el mismo patrón serviría para otro almacenamiento.", "certainty": "Explícito."}
+  ],
+  "phases": [
+    {
+      "title": "secureUrl con el nombre asignado",
+      "code": "uploadFile(@UploadedFile() file: Express.Multer.File) {\n  if (!file) {\n    throw new BadRequestException('Make sure that the file is an image');\n  }\n\n  const secureUrl = `${file.filename}`;\n\n  return { secureUrl };\n}",
+      "why": "El cliente debe recibir la referencia que usará para pedir el archivo. Por ahora es solo el nombre asignado por el storage; la URL completa llega en la clase siguiente.",
+      "check": "Subir una imagen en Postman y ver secureUrl con el nombre UUID.",
+      "evidence": ["E1"]
+    },
+    {
+      "title": "Endpoint GET que recibe solo el nombre",
+      "code": "@Get('product/:imageName')\nfindProductImage(@Param('imageName') imageName: string) {\n  return imageName;\n}",
+      "why": "Primero se comprueba que la ruta y el parámetro llegan. El cliente nunca envía una carpeta: el servidor decide dónde buscar.",
+      "check": "GET files/product/<nombre> devuelve el nombre.",
+      "evidence": ["E2", "E3", "E4"]
+    },
+    {
+      "title": "Servicio que construye la ruta y comprueba existencia",
+      "code": "import { BadRequestException, Injectable } from '@nestjs/common';\nimport { existsSync } from 'fs';\nimport { join } from 'path';\n\n@Injectable()\nexport class FilesService {\n  getStaticProductImage(imageName: string) {\n    const path = join(__dirname, '../static/products', imageName);\n\n    if (!existsSync(path))\n      throw new BadRequestException(`No product found with image ${imageName}`);\n\n    return path;\n  }\n}",
+      "why": "La lógica de archivos va al servicio. join compone la ruta dentro de una carpeta fija; si no existe, el error no revela la ruta física.",
+      "check": "Pedir un nombre inexistente responde 400 con el mensaje y sin ruta.",
+      "evidence": ["E5", "E6", "E7", "E8", "E9", "E10", "E11"]
+    },
+    {
+      "title": "Responder manualmente con @Res y sendFile",
+      "code": "@Get('product/:imageName')\nfindProductImage(\n  @Res() res: Response,\n  @Param('imageName') imageName: string,\n) {\n  const path = this.filesService.getStaticProductImage(imageName);\n\n  res.sendFile(path);\n}",
+      "why": "Con @Res el método toma el control de la respuesta y Nest deja de enviar el return. Se pierde parte del ciclo de vida (interceptores globales), a cambio de enviar el archivo.",
+      "check": "GET con un nombre existente muestra la imagen en Postman o en el navegador.",
+      "evidence": ["E13", "E14", "E16", "E17", "E18"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/files/files.service.ts",
+      "language": "ts",
+      "code": "import { BadRequestException, Injectable } from '@nestjs/common';\nimport { existsSync } from 'fs';\nimport { join } from 'path';\n\n@Injectable()\nexport class FilesService {\n  getStaticProductImage(imageName: string) {\n    const path = join(__dirname, '../static/products', imageName);\n\n    if (!existsSync(path))\n      throw new BadRequestException(`No product found with image ${imageName}`);\n\n    return path;\n  }\n}",
+      "provenance": "E5–E11. Número de segmentos `..` incierto (E7)."
+    },
+    {
+      "path": "src/files/files.controller.ts",
+      "language": "ts",
+      "code": "import {\n  BadRequestException,\n  Controller,\n  Get,\n  Param,\n  Post,\n  Res,\n  UploadedFile,\n  UseInterceptors,\n} from '@nestjs/common';\nimport { FileInterceptor } from '@nestjs/platform-express';\nimport { Response } from 'express';\nimport { diskStorage } from 'multer';\nimport { FilesService } from './files.service';\nimport { fileFilter, fileNamer } from './helpers';\n\n@Controller('files')\nexport class FilesController {\n  constructor(private readonly filesService: FilesService) {}\n\n  @Get('product/:imageName')\n  findProductImage(\n    @Res() res: Response,\n    @Param('imageName') imageName: string,\n  ) {\n    const path = this.filesService.getStaticProductImage(imageName);\n\n    res.sendFile(path);\n  }\n\n  @Post('product')\n  @UseInterceptors(FileInterceptor('file', {\n    fileFilter,\n    storage: diskStorage({\n      destination: './static/products',\n      filename: fileNamer,\n    }),\n  }))\n  uploadFile(@UploadedFile() file: Express.Multer.File) {\n    if (!file) {\n      throw new BadRequestException('Make sure that the file is an image');\n    }\n\n    const secureUrl = `${file.filename}`;\n\n    return { secureUrl };\n  }\n}",
+      "provenance": "E1–E4, E13–E17; POST, interceptor y helpers heredados de la clase 157 (guía reconstruida)."
+    }
+  ],
+  "temporary": "Dos experimentos se descartan: devolver la ruta física desde el controlador, que expone la ruta absoluta del equipo (E12), y responder res.status(403).json({ ok: false, path }) para demostrar el control manual de la respuesta (E15). La clase menciona como posibles mejoras, sin implementarlas, recibir el tipo de archivo como parámetro y borrar imágenes al eliminar un producto.",
+  "mental": "El cliente solo nombra el recurso; el servidor decide la carpeta, comprueba que exista y responde sin revelar dónde está. @Res da control total de la respuesta a cambio de salirse de parte del ciclo de vida de Nest."
+}

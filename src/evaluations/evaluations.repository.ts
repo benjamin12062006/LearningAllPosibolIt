@@ -14,7 +14,7 @@ import { describeProblem, isRowProblem } from './problem-messages.js';
 import { ENGINE_VERSION, type RowOutcome } from './engine/evaluate-row.js';
 import type { EvaluationResult } from './engine/evaluation-summary.js';
 import {
-  isProductAttribute,
+  isProductValues,
   PROFILE_VERSION,
   type ProductValues,
   type RowProblem,
@@ -552,17 +552,6 @@ function readProductValues(row: StoredEvaluationRow): ProductValues | null {
     );
   }
   return row.productValues;
-}
-
-function isProductValues(value: unknown): value is ProductValues {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.entries(value).every(
-      ([key, item]) => isProductAttribute(key) && typeof item === 'string',
-    )
-  );
 }
 
 function toEvaluationView(row: EvaluationRow): EvaluationView {

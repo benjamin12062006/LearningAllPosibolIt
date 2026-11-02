@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "date": "2026-11-01",
+  "originals": {
+    "Sección 7 Order Details - Maestro detalle/71. Comunicar OrdersMS con ProductsMS.md": "4c8ad0b62055c0c256e4bc2d4e6a8b9ad92bfb74d63a81f297bc8aa597fc81e3",
+    "Sección 7 Order Details - Maestro detalle/70. ProductsMicroservice - Validar productos por Ids.md": "88ba0e26891c22b4bcd343d59696bb3fb1bd94b21f6effae53fa10c11581c30b",
+    "Sección 7 Order Details - Maestro detalle/72. Grabar Orden y Detalle en base de datos.md": "4100aada905dd0119646554483a2a447cab875c16ffae0d51838fff25598eab0",
+    "Sección 7 Order Details - Maestro detalle/73. Grabar detalle y retornar información.md": "3e27f61ed7eb0297be6632e10b94bb4ca053ff8a164f10909d49f8d202d2666a"
+  },
+  "guides": [
+    {
+      "source": "Sección 7 Order Details - Maestro detalle/72. Grabar Orden y Detalle en base de datos.md",
+      "guide": "Sección 7 Order Details - Maestro detalle/72. Grabar Orden y Detalle en base de datos - Reconstrucción guiada.md",
+      "sha256": "903dc21317336e2a7c47b023551b825fa5e43af8c1aa8f6f63c6c554b767ca62"
+    },
+    {
+      "source": "Sección 7 Order Details - Maestro detalle/73. Grabar detalle y retornar información.md",
+      "guide": "Sección 7 Order Details - Maestro detalle/73. Grabar detalle y retornar información - Reconstrucción guiada.md",
+      "sha256": "2ba90e4e971b5270eb60949db8e458bd81a81f83bfa86550ae6374560ea2010f"
+    }
+  ]
+}
