@@ -10,14 +10,18 @@ datasource db {
 }
 
 model AppUser {
-  id              String    @id
-  identityIssuer  String    @map("identity_issuer")
-  identitySubject String    @map("identity_subject")
-  email           String?
-  displayName     String?   @map("display_name")
-  createdAt       String    @map("created_at")
-  updatedAt       String    @map("updated_at")
-  projects        Project[]
+  id                   String                   @id
+  identityIssuer       String                   @map("identity_issuer")
+  identitySubject      String                   @map("identity_subject")
+  email                String?
+  displayName          String?                  @map("display_name")
+  createdAt            String                   @map("created_at")
+  updatedAt            String                   @map("updated_at")
+  projects             Project[]
+  personalOrganization Organization?
+  memberships          OrganizationMember[]
+  sentInvitations      OrganizationInvitation[] @relation("InvitedBy")
+  acceptedInvitations  OrganizationInvitation[] @relation("AcceptedBy")
 
   @@unique([identityIssuer, identitySubject])
   @@map("app_users")
@@ -32,11 +36,16 @@ model Project {
   country        String?
   currency       String?
   channelProfile String?           @map("channel_profile")
+  /// Nulo admitido hasta E1.2 (plan organizations&access O3); `ownerId` queda
+  /// como procedencia de quien lo creó.
+  organizationId String?           @map("organization_id")
   owner          AppUser           @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   snapshots      CatalogSnapshot[]
   rulesets       RulesetVersion[]
 
   @@index([ownerId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_projects_owner_created")
+  @@index([organizationId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_projects_organization_created")
   @@map("projects")
   @@schema("estadistica_forms")
 }
@@ -181,5 +190,62 @@ model Export {
   evaluation             Evaluation @relation(fields: [projectId, evaluationId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("exports")
+  @@schema("estadistica_forms")
+}
+
+/// Empresa dueña de proyectos (ampliación E1). `personalOwnerId` marca la
+/// organización personal de un usuario: como mucho una por usuario, lo que hace
+/// repetible el backfill de los propietarios heredados.
+model Organization {
+  id              String                   @id
+  name            String
+  personalOwnerId String?                  @unique @map("personal_owner_id")
+  createdAt       String                   @map("created_at")
+  personalOwner   AppUser?                 @relation(fields: [personalOwnerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  members         OrganizationMember[]
+  invitations     OrganizationInvitation[]
+  projects        Project[]
+
+  @@map("organizations")
+  @@schema("estadistica_forms")
+}
+
+/// Rol de una persona en una organización. La migración limita `role` a
+/// owner, admin, manager, editor y viewer.
+model OrganizationMember {
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  role           String
+  createdAt      String       @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user           AppUser      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, userId])
+  @@index([userId, organizationId], map: "idx_organization_members_user")
+  @@map("organization_members")
+  @@schema("estadistica_forms")
+}
+
+/// Invitación a una organización (E1.3). Del token solo se guarda su SHA-256.
+/// La migración añade un índice único parcial que Prisma no expresa: como mucho
+/// una invitación pendiente (sin aceptar ni revocar) por organización y correo.
+model OrganizationInvitation {
+  id              String       @id
+  organizationId  String       @map("organization_id")
+  emailNormalized String       @map("email_normalized")
+  role            String
+  tokenHash       String       @unique @map("token_hash")
+  invitedBy       String       @map("invited_by")
+  createdAt       String       @map("created_at")
+  expiresAt       String       @map("expires_at")
+  acceptedAt      String?      @map("accepted_at")
+  acceptedBy      String?      @map("accepted_by")
+  revokedAt       String?      @map("revoked_at")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  inviter         AppUser      @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  acceptor        AppUser?     @relation("AcceptedBy", fields: [acceptedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([organizationId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_organization_invitations_organization_created")
+  @@map("organization_invitations")
   @@schema("estadistica_forms")
 }

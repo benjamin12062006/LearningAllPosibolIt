@@ -8,12 +8,14 @@ import { GraphqlApiModule } from './graphql/graphql-api.module.js';
 import { RulesetsModule } from './rulesets/rulesets.module.js';
 import { EvaluationsModule } from './evaluations/evaluations.module.js';
 import { ExportsModule } from './exports/exports.module.js';
+import { OrganizationsModule } from './organizations/organizations.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     AuthModule,
     UsersModule,
+    OrganizationsModule,
     ProjectsModule,
     CatalogImportModule,
     RulesetsModule,

@@ -391,4 +391,39 @@ export const API_MESSAGES = {
     'El archivo de la exportación no está disponible en este momento.',
     'The export file is not available right now.',
   ),
+  [ErrorCodes.ORGANIZATION_NOT_FOUND]: entry(
+    404,
+    'Organización no encontrada.',
+    'Organization not found.',
+  ),
+  [ErrorCodes.ORGANIZATION_LAST_OWNER]: entry(
+    409,
+    'La organización necesita al menos un owner. Da el rol owner a otra persona antes.',
+    'The organization needs at least one owner. Give the owner role to someone else first.',
+  ),
+  [ErrorCodes.ORGANIZATION_PERSONAL_OWNER]: entry(
+    409,
+    'La persona dueña de una organización personal no puede salir ni perder el rol owner.',
+    'The owner of a personal organization cannot leave it or lose the owner role.',
+  ),
+  [ErrorCodes.MEMBER_NOT_FOUND]: entry(
+    404,
+    'Esa persona no es miembro de la organización.',
+    'That person is not a member of the organization.',
+  ),
+  [ErrorCodes.MEMBER_ALREADY_EXISTS]: entry(
+    409,
+    'Esa persona ya es miembro de la organización.',
+    'That person is already a member of the organization.',
+  ),
+  [ErrorCodes.INVITATION_NOT_FOUND]: entry(
+    404,
+    'La invitación no existe, caducó o ya se usó. Pide una nueva.',
+    'The invitation does not exist, has expired, or was already used. Ask for a new one.',
+  ),
+  [ErrorCodes.INVITATION_EMAIL_MISMATCH]: entry(
+    403,
+    'La invitación es para otro correo. Entra con el correo invitado.',
+    'The invitation is for a different email. Sign in with the invited email.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

@@ -1,3 +1,8 @@
+import type {
+  OrganizationPermission,
+  OrganizationRole,
+} from '../organizations/organization-roles.js';
+
 export type ChannelProfile = 'google_merchant';
 
 export type ProjectConfiguration = Readonly<{
@@ -17,6 +22,18 @@ export type Project = Readonly<{
 }>;
 
 export type ConfiguredProject = Project & ProjectConfiguration;
+
+/**
+ * Quién actúa, sobre qué proyecto de qué organización y qué puede hacer. Lo
+ * resuelve la membresía; los IDs que manda el cliente solo son selectores.
+ */
+export type ProjectAccess = Readonly<{
+  actorId: string;
+  organizationId: string;
+  projectId: string;
+  role: OrganizationRole;
+  permissions: readonly OrganizationPermission[];
+}>;
 
 export type ProjectUpdate = Readonly<{
   name?: string;
