@@ -63,6 +63,7 @@ describe('Organización personal y lecturas por membresía con PostgreSQL tempor
         kind: 'personal',
         role: 'owner',
         createdAt: expect.any(String),
+        archivedAt: null,
       },
     ]);
     const listed = await projects.findAllInOrganization(

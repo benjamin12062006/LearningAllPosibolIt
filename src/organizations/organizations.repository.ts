@@ -9,7 +9,9 @@ import {
   membershipChangeError,
   type MembershipChange,
 } from './membership-rules.js';
-import type { OrganizationRole } from './organization-roles.js';
+import { canOwnAnotherTeam } from './organization-limits.js';
+import { assertNotArchived, lockOrganization } from './organization-lock.js';
+import { can, type OrganizationRole } from './organization-roles.js';
 import type {
   OrganizationMember,
   OrganizationMembership,
@@ -22,6 +24,7 @@ type MembershipRow = Readonly<{
   isPersonal: boolean;
   role: OrganizationRole;
   createdAt: string;
+  archivedAt: string | null;
 }>;
 
 /** Mismo nombre que pone la migración a las organizaciones heredadas. */
@@ -33,7 +36,8 @@ const MEMBERSHIP_COLUMNS = Prisma.sql`
   o.name,
   o.personal_owner_id IS NOT NULL AS "isPersonal",
   m.role,
-  o.created_at AS "createdAt"
+  o.created_at AS "createdAt",
+  o.archived_at AS "archivedAt"
 `;
 
 /** Columnas de `organization_members m JOIN app_users u`. */
@@ -69,21 +73,17 @@ export class OrganizationsRepository {
     return rows.map(toMembership);
   }
 
-  async findMembership(
+  findMembership(
     userId: string,
     organizationId: string,
   ): Promise<OrganizationMembership | null> {
-    const rows = await this.prisma.$queryRaw<MembershipRow[]>(Prisma.sql`
-      SELECT ${MEMBERSHIP_COLUMNS}
-      FROM estadistica_forms.organization_members m
-      JOIN estadistica_forms.organizations o ON o.id = m.organization_id
-      WHERE m.user_id = ${userId}
-        AND m.organization_id = ${organizationId}
-    `);
-    return rows[0] ? toMembership(rows[0]) : null;
+    return findMembershipIn(this.prisma, userId, organizationId);
   }
 
-  /** Organización de equipo: quien la crea es su primer `owner`. */
+  /**
+   * Organización de equipo: quien la crea es su primer `owner`. La fila del
+   * usuario se bloquea para contar sus equipos sin carreras (Q2, F39).
+   */
   async createTeam(
     userId: string,
     name: string,
@@ -92,6 +92,11 @@ export class OrganizationsRepository {
     const now = new Date().toISOString();
 
     await this.prisma.$transaction(async (tx) => {
+      const ownedTeams = await lockUserAndCountOwnedTeams(tx, userId);
+      if (!canOwnAnotherTeam(ownedTeams)) {
+        throw apiError(ErrorCodes.TEAM_ORGANIZATIONS_LIMIT);
+      }
+
       await tx.$executeRaw(Prisma.sql`
         INSERT INTO estadistica_forms.organizations
           (id, name, personal_owner_id, created_at)
@@ -110,6 +115,7 @@ export class OrganizationsRepository {
       kind: 'team',
       role: 'owner',
       createdAt: now,
+      archivedAt: null,
     };
   }
 
@@ -184,6 +190,82 @@ export class OrganizationsRepository {
       `);
     });
   }
+
+  /**
+   * Archivar (`true`) o restaurar (`false`). Solo un owner (`organization.own`)
+   * y nunca una organización personal. Repetir la misma operación no cambia
+   * la fecha de archivado.
+   */
+  async setArchived(
+    actorId: string,
+    organizationId: string,
+    archived: boolean,
+  ): Promise<OrganizationMembership> {
+    const now = new Date().toISOString();
+
+    return this.prisma.$transaction(async (tx) => {
+      const organization = await lockOrganization(tx, organizationId);
+      const actor = await findMembershipIn(tx, actorId, organizationId);
+      if (!organization || !actor) {
+        throw apiError(ErrorCodes.ORGANIZATION_NOT_FOUND);
+      }
+      if (!can(actor.role, 'organization.own')) {
+        throw apiError(ErrorCodes.FORBIDDEN);
+      }
+      if (organization.isPersonal) {
+        throw apiError(ErrorCodes.ORGANIZATION_PERSONAL_NOT_ARCHIVABLE);
+      }
+
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE estadistica_forms.organizations
+        SET archived_at = CASE
+          WHEN ${archived} THEN COALESCE(archived_at, ${now})
+          ELSE NULL
+        END
+        WHERE id = ${organizationId}
+      `);
+      const updated = await findMembershipIn(tx, actorId, organizationId);
+      return updated ?? actor;
+    });
+  }
+}
+
+/** Lectura de una membresía con el cliente normal o dentro de una transacción. */
+async function findMembershipIn(
+  client: Prisma.TransactionClient,
+  userId: string,
+  organizationId: string,
+): Promise<OrganizationMembership | null> {
+  const rows = await client.$queryRaw<MembershipRow[]>(Prisma.sql`
+    SELECT ${MEMBERSHIP_COLUMNS}
+    FROM estadistica_forms.organization_members m
+    JOIN estadistica_forms.organizations o ON o.id = m.organization_id
+    WHERE m.user_id = ${userId}
+      AND m.organization_id = ${organizationId}
+  `);
+  return rows[0] ? toMembership(rows[0]) : null;
+}
+
+/** Equipos (no personales) donde el usuario es owner, archivados incluidos. */
+async function lockUserAndCountOwnedTeams(
+  tx: Prisma.TransactionClient,
+  userId: string,
+): Promise<number> {
+  await tx.$queryRaw(Prisma.sql`
+    SELECT id
+    FROM estadistica_forms.app_users
+    WHERE id = ${userId}
+    FOR UPDATE
+  `);
+  const rows = await tx.$queryRaw<{ total: number }[]>(Prisma.sql`
+    SELECT count(*)::int AS total
+    FROM estadistica_forms.organization_members m
+    JOIN estadistica_forms.organizations o ON o.id = m.organization_id
+    WHERE m.user_id = ${userId}
+      AND m.role = 'owner'
+      AND o.personal_owner_id IS NULL
+  `);
+  return rows[0]?.total ?? 0;
 }
 
 type LockedMemberRow = Readonly<{
@@ -193,8 +275,9 @@ type LockedMemberRow = Readonly<{
 }>;
 
 /**
- * Bloquea las membresías que deciden el cambio (todos los owners, el actor y
- * el destino) y aplica las reglas sobre esas filas ya bloqueadas.
+ * Bloquea la organización (A5) y las membresías que deciden el cambio (todos
+ * los owners, el actor y el destino) y aplica las reglas sobre esas filas ya
+ * bloqueadas.
  *
  * `FOR UPDATE` en orden de usuario: dos cambios simultáneos en la misma
  * organización se esperan, y el segundo vuelve a evaluar el `WHERE` sobre la
@@ -211,6 +294,7 @@ async function lockAndCheckChange(
     change: MembershipChange;
   }>,
 ) {
+  const organization = await lockOrganization(tx, request.organizationId);
   const rows = await tx.$queryRaw<LockedMemberRow[]>(Prisma.sql`
     SELECT
       m.user_id AS "userId",
@@ -228,9 +312,11 @@ async function lockAndCheckChange(
   `);
 
   const actor = rows.find(({ userId }) => userId === request.actorId);
-  if (!actor) {
+  if (!organization || !actor) {
     throw apiError(ErrorCodes.ORGANIZATION_NOT_FOUND);
   }
+  assertNotArchived(organization);
+
   const target = rows.find(({ userId }) => userId === request.targetUserId);
   if (!target) {
     throw apiError(ErrorCodes.MEMBER_NOT_FOUND);
@@ -297,5 +383,6 @@ function toMembership(row: MembershipRow): OrganizationMembership {
     kind: row.isPersonal ? 'personal' : 'team',
     role: row.role,
     createdAt: row.createdAt,
+    archivedAt: row.archivedAt,
   };
 }

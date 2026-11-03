@@ -1,8 +1,8 @@
 # 01 — Organizaciones, membresías y acceso por empresa (E1 de la ampliación)
 
 Fecha de creación: 2026-11-02  
-Última actualización: 2026-11-02 (fuentes C7 y F34 añadidas a O5 y O9 antes de cerrar E1.1); 2026-11-02 (E1.1 cerrada); 2026-11-03 (E1.3 cerrada con su [plan 02](02-plan-e1.3-equipos-e-invitaciones.md); archivado, cuotas y GraphQL pasan a E1.4)  
-Estado: E1.1 y E1.3 implementadas y verificadas en local ([bitácora 01](../../../../bitacora-construccion/feature/organizations&access/01-organizacion-personal-y-contexto-de-acceso.md), [bitácora 02](../../../../bitacora-construccion/feature/organizations&access/02-equipos-invitaciones-y-ultimo-owner.md)); migraciones sin aplicar en Neon. E1.2 y E1.4 sin empezar.  
+Última actualización: 2026-11-02 (fuentes C7 y F34 añadidas a O5 y O9 antes de cerrar E1.1); 2026-11-02 (E1.1 cerrada); 2026-11-03 (E1.3 cerrada con su [plan 02](02-plan-e1.3-equipos-e-invitaciones.md); archivado, cuotas y GraphQL pasan a E1.4); 2026-11-03 (E1.4 cerrada con su [plan 03](03-plan-e1.4-archivado-y-cuotas.md))  
+Estado: E1.1, E1.3 y E1.4 implementadas y verificadas en local ([bitácora 01](../../../../bitacora-construccion/feature/organizations&access/01-organizacion-personal-y-contexto-de-acceso.md), [02](../../../../bitacora-construccion/feature/organizations&access/02-equipos-invitaciones-y-ultimo-owner.md), [03](../../../../bitacora-construccion/feature/organizations&access/03-archivar-organizaciones-y-cuotas.md)); migraciones sin aplicar en Neon. E1.2 bloqueada hasta que feeds cierre.  
 Ámbito: `claudeLearningAllPosibolIt`, solo backend y REST. E1 de la ampliación ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)); no confundir con la E1 del plan de feeds.  
 Relacionada con: [acta E0](../../../../../docs-diagrams/21-acta-e0-adelantar-la-ampliacion.md), [transición del backend](../../../../../docs-diagrams/11-backend-nest-organizaciones-y-transicion.md), [fuentes](../../../fonts/feature/organizations&access/01-fuentes-de-acceso-y-organizaciones.md).  
 Revisión de referencia: `f6b4bf9` con cambios locales de feeds de otra sesión.
@@ -48,7 +48,7 @@ Una empresa es la dueña de sus proyectos y las personas acceden por su membres�
    - `GET /api/v1/projects/:id/access`: contexto (actor, empresa, proyecto, rol, permisos) que usarán hojas y revisiones.
 2. **E1.2 — Acceso por membresía en los módulos existentes.** Sustituir `owner_id` por la membresía en catalog-import, rulesets, evaluations, exports y feeds, módulo a módulo y con sus pruebas sin cambiar. Requiere que feeds esté estable y el backfill aplicado en Neon. Después, `NOT NULL` y `UNIQUE (organization_id, id)` para las FK compuestas de recursos nuevos.
 3. **E1.3 — Equipos** (detalle en el [plan 02](02-plan-e1.3-equipos-e-invitaciones.md); archivado, cuotas y GraphQL se separaron a E1.4). Crear organización, invitaciones con token de un solo uso (solo hash), cambiar rol, revocar y último `owner` protegido con bloqueo de filas.
-4. **E1.4 — Archivado, cuotas mínimas y GraphQL de organizaciones.**
+4. **E1.4 — Archivado y cuotas mínimas** ([plan 03](03-plan-e1.4-archivado-y-cuotas.md)). GraphQL de organizaciones pasa al [plan GraphQL aplazado](../graphql&rulesets-evaluations-exports/01-plan-aplazado-sincronizacion-graphql.md), por la decisión del usuario de construir lo nuevo solo en REST.
 
 ## Comprobación prevista
 

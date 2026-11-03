@@ -5,6 +5,8 @@ import { ErrorCodes } from '../common/http/error-codes.js';
 import type { PageRequest } from '../common/http/pagination.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { hasFreeSeat } from './organization-limits.js';
+import { assertNotArchived, lockOrganization } from './organization-lock.js';
 import {
   can,
   canManageRole,
@@ -66,18 +68,20 @@ export class OrganizationInvitationsRepository {
 
   /**
    * Invitar otra vez el mismo correo revoca la pendiente anterior y crea otra
-   * con token nuevo (T3). El permiso se comprueba con la fila del actor
+   * con token nuevo (T3). La invitación reserva una plaza (Q3); la que se
+   * sustituye no cuenta. El permiso se comprueba con la fila del actor
    * bloqueada, igual que al cambiar roles.
    */
   async create(input: NewInvitation): Promise<OrganizationInvitation> {
     return this.prisma.$transaction(async (tx) => {
-      const actorRole = await lockActorRole(
+      const actorRole = await lockWritableOrganization(
         tx,
         input.actorId,
         input.organizationId,
       );
       assertCanManage(actorRole, input.role);
       await assertNotMember(tx, input.organizationId, input.email);
+      await assertSeatForInvitation(tx, input);
 
       await tx.$executeRaw(Prisma.sql`
         UPDATE estadistica_forms.organization_invitations
@@ -128,7 +132,11 @@ export class OrganizationInvitationsRepository {
     now: string,
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const actorRole = await lockActorRole(tx, actorId, organizationId);
+      const actorRole = await lockWritableOrganization(
+        tx,
+        actorId,
+        organizationId,
+      );
       if (!can(actorRole, 'members.manage')) {
         throw apiError(ErrorCodes.FORBIDDEN);
       }
@@ -157,21 +165,35 @@ export class OrganizationInvitationsRepository {
    * Consume la invitación y crea la membresía en la misma transacción. Si la
    * persona ya es miembro, la invitación no se consume.
    *
+   * Primero se averigua de qué organización es, sin bloquear; después se
+   * bloquea la organización y solo entonces la invitación. Es el mismo orden
+   * que al invitar (que revoca invitaciones con la organización bloqueada):
+   * con el orden contrario, las dos transacciones podrían esperarse entre sí.
+   *
    * @returns el ID de la organización a la que se unió.
    */
   async accept(acceptance: InvitationAcceptance): Promise<string> {
     return this.prisma.$transaction(async (tx) => {
+      const organizationId = await findOrganizationOfToken(
+        tx,
+        acceptance.tokenHash,
+      );
+      const organization = organizationId
+        ? await lockOrganization(tx, organizationId)
+        : null;
       const invitation = await findPendingForUpdate(
         tx,
         Prisma.sql`i.token_hash = ${acceptance.tokenHash}`,
         acceptance.now,
       );
-      if (!invitation) {
+      if (!organization || !invitation) {
         throw apiError(ErrorCodes.INVITATION_NOT_FOUND);
       }
       if (invitation.email !== acceptance.sessionEmail) {
         throw apiError(ErrorCodes.INVITATION_EMAIL_MISMATCH);
       }
+      assertNotArchived(organization);
+      await assertSeatForMember(tx, invitation.organizationId);
 
       const inserted = await tx.$executeRaw(Prisma.sql`
         INSERT INTO estadistica_forms.organization_members
@@ -223,6 +245,25 @@ async function findPendingForUpdate(
 }
 
 /**
+ * Primer paso de quien gestiona invitaciones: bloquea la organización (A5) y la
+ * membresía del actor. Si no es miembro, 404; si está archivada, 409, en ese
+ * orden para no revelar nada a quien no es miembro.
+ */
+async function lockWritableOrganization(
+  tx: Prisma.TransactionClient,
+  actorId: string,
+  organizationId: string,
+): Promise<OrganizationRole> {
+  const organization = await lockOrganization(tx, organizationId);
+  const actorRole = await lockActorRole(tx, actorId, organizationId);
+  if (!organization) {
+    throw apiError(ErrorCodes.ORGANIZATION_NOT_FOUND);
+  }
+  assertNotArchived(organization);
+  return actorRole;
+}
+
+/**
  * Rol del actor con su membresía bloqueada: una revocación o degradación
  * confirmada antes ya se ve aquí, y ninguna puede confirmarse mientras dura
  * esta transacción. Si no es miembro, 404.
@@ -248,6 +289,64 @@ async function lockActorRole(
 function assertCanManage(actorRole: OrganizationRole, role: OrganizationRole) {
   if (!canManageRole(actorRole, role)) {
     throw apiError(ErrorCodes.FORBIDDEN);
+  }
+}
+
+async function findOrganizationOfToken(
+  tx: Prisma.TransactionClient,
+  tokenHash: string,
+): Promise<string | null> {
+  const rows = await tx.$queryRaw<{ organizationId: string }[]>(Prisma.sql`
+    SELECT organization_id AS "organizationId"
+    FROM estadistica_forms.organization_invitations
+    WHERE token_hash = ${tokenHash}
+  `);
+  return rows[0]?.organizationId ?? null;
+}
+
+/**
+ * Plazas ocupadas = miembros + invitaciones pendientes, sin contar la del mismo
+ * correo, que esta invitación sustituye.
+ */
+async function assertSeatForInvitation(
+  tx: Prisma.TransactionClient,
+  invitation: NewInvitation,
+) {
+  const rows = await tx.$queryRaw<{ occupied: number }[]>(Prisma.sql`
+    SELECT
+      (
+        SELECT count(*)
+        FROM estadistica_forms.organization_members
+        WHERE organization_id = ${invitation.organizationId}
+      )::int
+      + (
+        SELECT count(*)
+        FROM estadistica_forms.organization_invitations i
+        WHERE i.organization_id = ${invitation.organizationId}
+          AND i.email_normalized <> ${invitation.email}
+          AND ${isPendingAt(invitation.now)}
+      )::int AS occupied
+  `);
+  if (!hasFreeSeat(rows[0]?.occupied ?? 0)) {
+    throw apiError(ErrorCodes.ORGANIZATION_SEATS_LIMIT);
+  }
+}
+
+/**
+ * La invitación ya reservó su plaza; al aceptar solo se comprueba que los
+ * miembros no hayan llegado al límite (por ejemplo, si se redujo después).
+ */
+async function assertSeatForMember(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+) {
+  const rows = await tx.$queryRaw<{ members: number }[]>(Prisma.sql`
+    SELECT count(*)::int AS members
+    FROM estadistica_forms.organization_members
+    WHERE organization_id = ${organizationId}
+  `);
+  if (!hasFreeSeat(rows[0]?.members ?? 0)) {
+    throw apiError(ErrorCodes.ORGANIZATION_SEATS_LIMIT);
   }
 }
 

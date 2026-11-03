@@ -102,6 +102,7 @@ describe('Organizaciones y acceso por membresía, con guard y persistencia reale
           kind: 'personal',
           role: 'owner',
           createdAt: expect.any(String),
+          archivedAt: null,
         },
       ],
       page: firstPage,

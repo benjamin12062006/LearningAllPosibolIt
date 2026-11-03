@@ -426,4 +426,24 @@ export const API_MESSAGES = {
     'La invitación es para otro correo. Entra con el correo invitado.',
     'The invitation is for a different email. Sign in with the invited email.',
   ),
+  [ErrorCodes.ORGANIZATION_ARCHIVED]: entry(
+    409,
+    'La organización está archivada: se puede consultar, pero no cambiar. Restáurala primero.',
+    'The organization is archived: it can be viewed but not changed. Restore it first.',
+  ),
+  [ErrorCodes.ORGANIZATION_PERSONAL_NOT_ARCHIVABLE]: entry(
+    409,
+    'Una organización personal no se puede archivar.',
+    'A personal organization cannot be archived.',
+  ),
+  [ErrorCodes.TEAM_ORGANIZATIONS_LIMIT]: entry(
+    409,
+    'Ya eres owner de 10 organizaciones de equipo, el máximo permitido.',
+    'You are already the owner of 10 team organizations, the maximum allowed.',
+  ),
+  [ErrorCodes.ORGANIZATION_SEATS_LIMIT]: entry(
+    409,
+    'La organización llegó al máximo de 50 personas entre miembros e invitaciones pendientes.',
+    'The organization reached the maximum of 50 people between members and pending invitations.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

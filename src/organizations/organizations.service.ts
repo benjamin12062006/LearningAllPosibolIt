@@ -101,6 +101,24 @@ export class OrganizationsService {
     await this.repository.removeMember(user.id, organizationId, targetUserId);
   }
 
+  /** Archivar (`true`) o restaurar (`false`); solo un owner (plan 03, A2). */
+  async setArchived(
+    identity: AuthenticatedIdentity,
+    organizationId: string,
+    archived: boolean,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    const { role, ...organization } = await this.repository.setArchived(
+      user.id,
+      organizationId,
+      archived,
+    );
+    return {
+      organization,
+      access: { role, permissions: permissionsFor(role) },
+    };
+  }
+
   /** Una organización donde el usuario no es miembro responde 404, como si no existiera. */
   async requireMembership(
     userId: string,

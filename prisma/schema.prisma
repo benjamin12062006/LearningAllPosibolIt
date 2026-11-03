@@ -201,6 +201,8 @@ model Organization {
   name            String
   personalOwnerId String?                  @unique @map("personal_owner_id")
   createdAt       String                   @map("created_at")
+  /// Nula = activa (E1.4). Una organización personal nunca se archiva.
+  archivedAt      String?                  @map("archived_at")
   personalOwner   AppUser?                 @relation(fields: [personalOwnerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   members         OrganizationMember[]
   invitations     OrganizationInvitation[]

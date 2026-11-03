@@ -11,6 +11,8 @@ export type Organization = Readonly<{
   name: string;
   kind: OrganizationKind;
   createdAt: string;
+  /** `null` mientras está activa. */
+  archivedAt: string | null;
 }>;
 
 /** Una organización vista por uno de sus miembros. */

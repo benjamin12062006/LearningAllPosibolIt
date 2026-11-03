@@ -100,6 +100,7 @@ describe('Equipos e invitaciones por HTTP, con guard y persistencia reales', () 
         name: 'Tienda',
         kind: 'team',
         createdAt: expect.any(String),
+        archivedAt: null,
       },
       access: { role: 'owner', permissions: [...permissionsFor('owner')] },
     });
@@ -279,6 +280,60 @@ describe('Equipos e invitaciones por HTTP, con guard y persistencia reales', () 
     await call('alice-session', 'post', `${team}/invitations`)
       .send({ email: 'carol@example.test', role: 'superuser' })
       .expect(400);
+  });
+
+  it('archivar y restaurar: solo owner, la personal no se archiva y archivada no admite invitaciones', async () => {
+    const team = await teamWith('bob-session', 'admin');
+    const invitation = { email: 'carol@example.test', role: 'viewer' };
+
+    await call('bob-session', 'post', `${team}/archive`)
+      .expect(403)
+      .expect(({ body }) =>
+        expect(body).toMatchObject(publicError('FORBIDDEN')),
+      );
+    await call('alice-session', 'post', `${team}/archive`)
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body.organization.archivedAt).toEqual(expect.any(String)),
+      );
+    await call('bob-session', 'get', team).expect(200);
+    await call('alice-session', 'post', `${team}/invitations`)
+      .send(invitation)
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body).toMatchObject(publicError('ORGANIZATION_ARCHIVED')),
+      );
+
+    await call('alice-session', 'post', `${team}/restore`)
+      .expect(200)
+      .expect(({ body }) => expect(body.organization.archivedAt).toBeNull());
+    await call('alice-session', 'post', `${team}/invitations`)
+      .send(invitation)
+      .expect(201);
+
+    await database.connection.pool.query(
+      `INSERT INTO estadistica_forms.organizations
+         (id, name, personal_owner_id, created_at)
+       VALUES ('00000000-0000-4000-8000-0000000000aa', 'Personal', $1, '2026-11-03')`,
+      [userIds['carol-session']],
+    );
+    await database.connection.pool.query(
+      `INSERT INTO estadistica_forms.organization_members
+         (organization_id, user_id, role, created_at)
+       VALUES ('00000000-0000-4000-8000-0000000000aa', $1, 'owner', '2026-11-03')`,
+      [userIds['carol-session']],
+    );
+    await call(
+      'carol-session',
+      'post',
+      `${ORGANIZATIONS}/00000000-0000-4000-8000-0000000000aa/archive`,
+    )
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body).toMatchObject(
+          publicError('ORGANIZATION_PERSONAL_NOT_ARCHIVABLE'),
+        ),
+      );
   });
 
   function call(

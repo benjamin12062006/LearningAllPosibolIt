@@ -60,6 +60,35 @@ export class OrganizationsController {
     return this.organizationsService.findOne(identity, organizationId);
   }
 
+  /** Archivada se lee igual, pero no admite cambios de miembros ni invitaciones. */
+  @Post(':organizationId/archive')
+  @HttpCode(200)
+  archive(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+  ) {
+    return this.organizationsService.setArchived(
+      identity,
+      organizationId,
+      true,
+    );
+  }
+
+  @Post(':organizationId/restore')
+  @HttpCode(200)
+  restore(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+  ) {
+    return this.organizationsService.setArchived(
+      identity,
+      organizationId,
+      false,
+    );
+  }
+
   @Get(':organizationId/members')
   async findMembers(
     @CurrentIdentity() identity: AuthenticatedIdentity,
