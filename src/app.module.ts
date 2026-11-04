@@ -9,6 +9,7 @@ import { RulesetsModule } from './rulesets/rulesets.module.js';
 import { EvaluationsModule } from './evaluations/evaluations.module.js';
 import { ExportsModule } from './exports/exports.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
+import { WorksheetsModule } from './worksheets/worksheets.module.js';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { OrganizationsModule } from './organizations/organizations.module.js';
     RulesetsModule,
     EvaluationsModule,
     ExportsModule,
+    WorksheetsModule,
     GraphqlApiModule,
   ],
 })

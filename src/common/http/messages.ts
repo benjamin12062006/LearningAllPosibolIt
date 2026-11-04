@@ -446,4 +446,64 @@ export const API_MESSAGES = {
     'La organización llegó al máximo de 50 personas entre miembros e invitaciones pendientes.',
     'The organization reached the maximum of 50 people between members and pending invitations.',
   ),
+  [ErrorCodes.WORKBOOK_NOT_FOUND]: entry(
+    404,
+    'No se encontró el libro.',
+    'The workbook was not found.',
+  ),
+  [ErrorCodes.WORKSHEET_NOT_FOUND]: entry(
+    404,
+    'No se encontró la hoja.',
+    'The worksheet was not found.',
+  ),
+  [ErrorCodes.WORKBOOK_NAME_TAKEN]: entry(
+    409,
+    'Ya hay un libro con ese nombre en el proyecto.',
+    'There is already a workbook with that name in the project.',
+  ),
+  [ErrorCodes.WORKSHEET_NAME_TAKEN]: entry(
+    409,
+    'Ya hay una hoja con ese nombre en el libro.',
+    'There is already a worksheet with that name in the workbook.',
+  ),
+  [ErrorCodes.WORKSHEET_COLUMN_DUPLICATE]: entry(
+    400,
+    'Cada columna necesita un nombre distinto. El campo indica cuál se repite.',
+    'Each column needs a different name. The field shows which one is repeated.',
+  ),
+  [ErrorCodes.PROJECT_HAS_WORKBOOKS]: entry(
+    409,
+    'El proyecto tiene libros con hojas y su historial no se borra. Elimina el proyecto cuando no tenga libros.',
+    'The project has workbooks with worksheets, and their history is not deleted. Delete the project once it has no workbooks.',
+  ),
+  [ErrorCodes.WORKSHEET_REVISION_NOT_FOUND]: entry(
+    404,
+    'No se encontró esa revisión de la hoja.',
+    'That worksheet revision was not found.',
+  ),
+  [ErrorCodes.WORKSHEET_CURSOR_INVALID]: entry(
+    400,
+    'El cursor no es válido para esta consulta. Vuelve a pedir la primera página.',
+    'The cursor is not valid for this query. Request the first page again.',
+  ),
+  [ErrorCodes.ROW_FILTER_INVALID]: entry(
+    400,
+    'El filtro no tiene una forma válida o supera los límites (3 niveles, 20 condiciones). El campo indica dónde.',
+    'The filter has an invalid shape or exceeds the limits (3 levels, 20 conditions). The field shows where.',
+  ),
+  [ErrorCodes.ROW_FILTER_COLUMN_UNKNOWN]: entry(
+    400,
+    'La columna no existe en esta revisión de la hoja. El campo indica cuál.',
+    'The column does not exist in this worksheet revision. The field shows which one.',
+  ),
+  [ErrorCodes.ROW_FILTER_OPERATOR_INVALID]: entry(
+    400,
+    'Ese operador no se puede usar con el tipo de la columna. El campo indica dónde.',
+    'That operator cannot be used with the column type. The field shows where.',
+  ),
+  [ErrorCodes.ROW_FILTER_VALUE_INVALID]: entry(
+    400,
+    'El valor no tiene el formato del tipo de la columna. El campo indica cuál.',
+    'The value does not have the format of the column type. The field shows which one.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;
