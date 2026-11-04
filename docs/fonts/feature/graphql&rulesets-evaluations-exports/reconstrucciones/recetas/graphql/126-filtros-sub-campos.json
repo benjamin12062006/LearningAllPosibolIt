@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 10 Paginaciones, paginaciones anidadas y filtros/126. Aplicar filtros a sub-campos.md",
+  "previous": [
+    "Sección 10 Paginaciones, paginaciones anidadas y filtros/125. Simplificar la consulta.md",
+    "Sección 8 Items + Usuarios - Peticiones autenticadas/106. ResolveField con información del padre.md"
+  ],
+  "objective": "Paginar y filtrar los items de un usuario dentro de la propia consulta del usuario: quitar el campo de relación del ObjectType y servir `items` con un @ResolveField que recibe @Parent, PaginationArgs y SearchArgs y reutiliza ItemsService.findAll.",
+  "initial": "Clase 125: ItemsService.findAll(user, paginationArgs, searchArgs) con query builder (take, skip, where por userId y búsqueda opcional por nombre). Clase 106 (guía reconstruida): UsersResolver con @ResolveField itemCount y @Parent. User expone `items` como @Field de la relación con Item.",
+  "certainty": "Comentar el @Field de la relación, el @ResolveField `items` con @Parent y los dos @Args, y la reutilización de findAll se recuperan con alta confianza. El nombre del método se dicta como «get items by user» y se escribe getItemsByUser. Las opciones de la relación @OneToMany vienen de una clase no consultada (105) y se escriben sin opciones. findAll se copia de la clase 125 como contexto.",
+  "evidence": [
+    {"id": "E1", "line": 17, "phrase": "Items repositorio y Create Query Builder", "change": "findAll construye un query builder sobre itemsRepository.", "certainty": "Contexto de la clase 125.", "source": "Sección 10 Paginaciones, paginaciones anidadas y filtros/125. Simplificar la consulta.md"},
+    {"id": "E2", "line": 19, "phrase": "Voy a colocar aquí el where paréntesis", "change": "where con \"userId\" = :userId como parámetro.", "certainty": "Contexto de la clase 125.", "source": "Sección 10 Paginaciones, paginaciones anidadas y filtros/125. Simplificar la consulta.md"},
+    {"id": "E3", "line": 27, "phrase": "Ojo, que aquí se lo voy a manejar con una variable", "change": "andWhere LOWER(name) like :name solo si hay búsqueda.", "certainty": "Contexto de la clase 125.", "source": "Sección 10 Paginaciones, paginaciones anidadas y filtros/125. Simplificar la consulta.md"},
+    {"id": "E4", "line": 13, "phrase": "pero estos items me gustaría que estuviera página", "change": "Objetivo: items del usuario paginados.", "certainty": "Explícito."},
+    {"id": "E5", "line": 19, "phrase": "Eso lo creamos mediante un resolver que se llama item count", "change": "Se toma como modelo el @ResolveField itemCount (clase 106).", "certainty": "Explícito."},
+    {"id": "E6", "line": 19, "phrase": "Primero vámonos a nuestra entidad de usuarios, busquen la parte de los items", "change": "Se comenta el @Field de la relación items en User.", "certainty": "Explícito."},
+    {"id": "E7", "line": 21, "phrase": "Es como que si el objeto de usuarios no tiene items, es decir, no lo puedo consultar", "change": "Sin @Field, GraphQL no expone la relación; la relación de TypeORM sigue.", "certainty": "Explícito."},
+    {"id": "E8", "line": 21, "phrase": "va a ser items exactamente igual como lo tenía antes el resolve field", "change": "@ResolveField(() => [Item], { name: 'items' }).", "certainty": "Explícito."},
+    {"id": "E9", "line": 23, "phrase": "le podemos poner get o items o get items by user", "change": "Método getItemsByUser, protegido como itemCount.", "certainty": "Explícito; nombre normalizado."},
+    {"id": "E10", "line": 25, "phrase": "el usuario va a ser el usuario del padre", "change": "findAll recibe el @Parent, no el usuario autenticado.", "certainty": "Explícito."},
+    {"id": "E11", "line": 25, "phrase": "Y aquí el search args también", "change": "@Args() paginationArgs: PaginationArgs y @Args() searchArgs: SearchArgs.", "certainty": "Explícito."},
+    {"id": "E12", "line": 27, "phrase": "Va a resolver un arreglo de item", "change": "Retorno Promise<Item[]>.", "certainty": "Explícito."},
+    {"id": "E13", "line": 29, "phrase": "van a aplicarse los diez elementos que el valor por defecto", "change": "Sin argumentos se aplica el límite por defecto de PaginationArgs.", "certainty": "Explícito."},
+    {"id": "E14", "line": 35, "phrase": "este items es un resolver independiente", "change": "El campo funciona igual en users y en user(id).", "certainty": "Explícito."}
+  ],
+  "phases": [
+    {
+      "title": "Dejar de exponer la relación directa",
+      "code": "@OneToMany(() => Item, (item) => item.user)\n// @Field(() => [Item])\nitems: Item[];",
+      "why": "Con el @Field, GraphQL devolvía todos los items de la relación sin límite. Quitándolo, el campo deja de existir en el esquema, igual que password; la relación de TypeORM se conserva.",
+      "check": "La consulta users { items { name } } falla porque el campo ya no existe.",
+      "evidence": ["E4", "E6", "E7"]
+    },
+    {
+      "title": "Servir items con un campo resuelto y argumentos propios",
+      "code": "@ResolveField(() => [Item], { name: 'items' })\nasync getItemsByUser(\n  @CurrentUser([ValidRoles.admin]) adminUser: User,\n  @Parent() user: User,\n  @Args() paginationArgs: PaginationArgs,\n  @Args() searchArgs: SearchArgs,\n): Promise<Item[]> {\n  return this.itemsService.findAll(user, paginationArgs, searchArgs);\n}",
+      "why": "El campo se resuelve por cada usuario padre y acepta límite, desplazamiento y búsqueda. Reutiliza findAll, así que la paginación y el filtro son los mismos que en la query items.",
+      "check": "users { items(limit: 5, search: \"rice\") { name } } devuelve como mucho 5 items de ese usuario que contienen la palabra.",
+      "evidence": ["E5", "E8", "E9", "E10", "E11", "E12", "E13", "E14"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/users/users.resolver.ts (fragmento)",
+      "language": "ts",
+      "code": "@ResolveField(() => Int, { name: 'itemCount' })\nasync itemCount(\n  @CurrentUser([ValidRoles.admin]) adminUser: User,\n  @Parent() user: User,\n): Promise<number> {\n  return this.itemsService.itemCountByUser(user);\n}\n\n@ResolveField(() => [Item], { name: 'items' })\nasync getItemsByUser(\n  @CurrentUser([ValidRoles.admin]) adminUser: User,\n  @Parent() user: User,\n  @Args() paginationArgs: PaginationArgs,\n  @Args() searchArgs: SearchArgs,\n): Promise<Item[]> {\n  return this.itemsService.findAll(user, paginationArgs, searchArgs);\n}",
+      "provenance": "itemCount heredado de la clase 106 (guía); E8–E13 para items. Imports de Args, PaginationArgs, SearchArgs e Item desde los barriles del curso."
+    },
+    {
+      "path": "src/users/entities/user.entity.ts (fragmento)",
+      "language": "ts",
+      "code": "@OneToMany(() => Item, (item) => item.user)\n// @Field(() => [Item])\nitems: Item[];",
+      "provenance": "E6, E7; opciones de la relación no consultadas (clase 105)."
+    },
+    {
+      "path": "src/items/items.service.ts (findAll, contexto de la clase 125)",
+      "language": "ts",
+      "code": "async findAll(\n  user: User,\n  paginationArgs: PaginationArgs,\n  searchArgs: SearchArgs,\n): Promise<Item[]> {\n  const { limit, offset } = paginationArgs;\n  const { search } = searchArgs;\n\n  const queryBuilder = this.itemsRepository\n    .createQueryBuilder()\n    .take(limit)\n    .skip(offset)\n    .where(`\"userId\" = :userId`, { userId: user.id });\n\n  if (search) {\n    queryBuilder.andWhere('LOWER(name) like :name', {\n      name: `%${search.toLowerCase()}%`,\n    });\n  }\n\n  return queryBuilder.getMany();\n}",
+      "provenance": "E1–E3 (clase 125). Sin cambios en esta clase."
+    }
+  ],
+  "temporary": "Se borra un console.log que quedó en findAll del servicio de usuarios. Al final se consulta user(id) para mostrar que el campo items se hereda con sus argumentos; se comenta que paginar varios nodos hijos a la vez es más enredado y que lo habitual es consultar el nodo concreto por su id.",
+  "mental": "Un campo hijo que puede ser grande no se expone como relación directa: se resuelve con @ResolveField + @Parent y recibe sus propios argumentos de paginación y filtro, reutilizando la consulta del servicio."
+}

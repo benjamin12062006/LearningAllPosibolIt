@@ -23,6 +23,13 @@ import type {
 type AcceptedUpload = StoredUpload & { originalname: string };
 type ImportFields = { idColumn: string; delimiter: ImportDelimiter };
 
+/**
+ * Ids que quien llama ya guardó antes de aceptar (la actualización del feed, D9
+ * de feeds&publications): si su proceso cae entre medias, al reintentar ve que
+ * el snapshot existe y no lo acepta dos veces.
+ */
+export type PlannedImportIds = { snapshotId: string; jobId: string };
+
 const MAX_ORIGINAL_NAME_LENGTH = 180;
 
 @Injectable()
@@ -38,7 +45,8 @@ export class CatalogImportService {
 
   /**
    * Acepta un CSV ya recibido: lo guarda como artefacto, registra el snapshot y
-   * su trabajo en cola y avisa al worker. El procesamiento es asíncrono.
+   * su trabajo en cola y avisa al worker. El procesamiento es asíncrono. Sin
+   * `plannedIds`, los ids se generan aquí.
    */
   async accept(
     ownerId: string,
@@ -46,6 +54,7 @@ export class CatalogImportService {
     upload: AcceptedUpload,
     fields: ImportFields,
     requestId: string,
+    plannedIds?: PlannedImportIds,
   ) {
     const acceptance = buildAcceptance(
       ownerId,
@@ -53,6 +62,7 @@ export class CatalogImportService {
       upload,
       fields,
       requestId,
+      plannedIds,
     );
 
     await this.moveToArtifacts(upload, acceptance);
@@ -116,11 +126,15 @@ export class CatalogImportService {
     await this.removeDeletedArtifacts([deleted]);
   }
 
-  /** Borra el proyecto con todas sus importaciones y después sus archivos. */
+  /**
+   * Borra el proyecto con todas sus importaciones y su feed, y después sus
+   * archivos.
+   */
   async deleteProject(identity: AuthenticatedIdentity, projectId: string) {
     const owner = await this.users.findCurrent(identity);
     const deleted = await this.repository.deleteProject(owner.id, projectId);
-    await this.removeDeletedArtifacts(deleted);
+    await this.removeDeletedArtifacts(deleted.imports);
+    await this.removeFeedFiles(projectId, deleted.feedArtifactKeys);
   }
 
   private async moveToArtifacts(upload: StoredUpload, acceptance: Acceptance) {
@@ -216,6 +230,17 @@ export class CatalogImportService {
       });
     }
   }
+
+  /** Igual que los demás archivos: un fallo se registra y lo retira la limpieza. */
+  private async removeFeedFiles(projectId: string, keys: string[]) {
+    for (const key of keys) {
+      try {
+        await this.store.removeFeedVersion(key);
+      } catch {
+        this.logger.error({ code: 'FEED_ORPHAN_RETAINED', projectId });
+      }
+    }
+  }
 }
 
 function buildAcceptance(
@@ -224,10 +249,14 @@ function buildAcceptance(
   upload: AcceptedUpload,
   fields: ImportFields,
   requestId: string,
-): Acceptance {
-  return {
+  plannedIds: PlannedImportIds = {
     snapshotId: randomUUID(),
     jobId: randomUUID(),
+  },
+): Acceptance {
+  return {
+    snapshotId: plannedIds.snapshotId,
+    jobId: plannedIds.jobId,
     artifactKey: `${randomUUID()}.csv`,
     ownerId,
     projectId,

@@ -18,6 +18,7 @@ import {
   type Acceptance,
   type ClaimedImport,
   type DeletedImport,
+  type DeletedProject,
   type ImportError,
   type ImportRow,
 } from './import.types.js';
@@ -79,13 +80,9 @@ type SnapshotRow = {
 
 type RunningJobRow = { id: string; snapshotId: string; requestId: string };
 
-type DeletableSnapshotRow = {
-  snapshotId: string;
-  artifactKey: string;
-  jobStatus: string | null;
-};
-
 type DeletedSnapshotRow = { snapshotId: string; artifactKey: string };
+
+type DeletableSnapshotRow = DeletedSnapshotRow & { jobStatus: string | null };
 
 type ExportKeyRow = { snapshotId: string; artifactKey: string };
 
@@ -336,7 +333,7 @@ export class CatalogImportRepository {
    * Borra el proyecto y todas sus importaciones. Devuelve los archivos que hay
    * que retirar después del commit.
    */
-  deleteProject(ownerId: string, projectId: string): Promise<DeletedImport[]> {
+  deleteProject(ownerId: string, projectId: string): Promise<DeletedProject> {
     return this.prisma.$transaction(async (tx) => {
       // Mismo bloqueo que `accept`: no puede entrar una importación nueva
       // mientras se borra el proyecto.
@@ -367,6 +364,7 @@ export class CatalogImportRepository {
         tx,
         snapshots.map((snapshot) => snapshot.id),
       );
+      const feedArtifactKeys = await findFeedKeysLocked(tx, projectId);
 
       const deleted = await tx.$queryRaw<DeletedSnapshotRow[]>`
         DELETE FROM estadistica_forms.catalog_snapshots
@@ -375,10 +373,13 @@ export class CatalogImportRepository {
       await tx.$executeRaw`
         DELETE FROM estadistica_forms.projects
         WHERE id = ${projectId} AND owner_id = ${ownerId}`;
-      return deleted.map((snapshot) => ({
-        ...snapshot,
-        exportArtifactKeys: exportKeys.get(snapshot.snapshotId) ?? [],
-      }));
+      return {
+        imports: deleted.map((snapshot) => ({
+          ...snapshot,
+          exportArtifactKeys: exportKeys.get(snapshot.snapshotId) ?? [],
+        })),
+        feedArtifactKeys,
+      };
     });
   }
 
@@ -633,12 +634,35 @@ async function findExportKeys(
       ON e.project_id = x.project_id AND e.id = x.evaluation_id
     WHERE e.snapshot_id IN (${Prisma.join(snapshotIds)})`;
   for (const row of rows) {
-    keys.set(row.snapshotId, [
-      ...(keys.get(row.snapshotId) ?? []),
-      row.artifactKey,
-    ]);
+    const snapshotKeys = keys.get(row.snapshotId) ?? [];
+    snapshotKeys.push(row.artifactKey);
+    keys.set(row.snapshotId, snapshotKeys);
   }
   return keys;
+}
+
+/**
+ * Archivos de las versiones del feed del proyecto, que se borran en cascada con
+ * él. Borrar el proyecto cruza dos módulos y vive aquí, como las claves de las
+ * exportaciones. Una publicación en curso bloquea su feed con FOR UPDATE:
+ * esperar aquí hace que su versión nueva aparezca entre las claves.
+ */
+async function findFeedKeysLocked(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+): Promise<string[]> {
+  await tx.$queryRaw<IdRow[]>`
+    SELECT id
+    FROM estadistica_forms.feeds
+    WHERE project_id = ${projectId}
+    FOR UPDATE`;
+  const rows = await tx.$queryRaw<ArtifactKeyRow[]>`
+    SELECT v.artifact_key AS "artifactKey"
+    FROM estadistica_forms.feed_versions v
+    JOIN estadistica_forms.feeds f ON f.id = v.feed_id
+    WHERE f.project_id = ${projectId}
+      AND v.artifact_key IS NOT NULL`;
+  return rows.map((row) => row.artifactKey);
 }
 
 /** Las filas guardadas, el hash y el tamaño deben coincidir con el archivo aceptado. */

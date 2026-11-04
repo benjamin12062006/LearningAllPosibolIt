@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "date": "2026-11-02",
+  "originals": {
+    "Sección 8 Aplicación de Monitoreo - NOC/111. CRON Tasks.md": "2a73f6ef63093e69f87fd255d869a6c02560c6480ccfc8bad20e8dd60d0e51d7",
+    "Sección 8 Aplicación de Monitoreo - NOC/112. CronService.md": "e6a5e192880c391f03ab6a8ddd84760cf9b7e83a9db95f6f821d68a7fddc6a5f",
+    "Sección 12 NOC - Testing - Clean Architecture/184. Pruebas en CronService.md": "c352058b388bbf89e6e7b84c19d1de1f7d90898b6e43eb3954ed2fb105786253"
+  },
+  "guides": [
+    {
+      "source": "Sección 8 Aplicación de Monitoreo - NOC/112. CronService.md",
+      "guide": "Sección 8 Aplicación de Monitoreo - NOC/112. CronService - Reconstrucción guiada.md",
+      "sha256": "69d80c2ffa17a6303d803f453c4043f0ddb69d8c2f2333a1f88fe5b8035cb94c"
+    },
+    {
+      "source": "Sección 12 NOC - Testing - Clean Architecture/184. Pruebas en CronService.md",
+      "guide": "Sección 12 NOC - Testing - Clean Architecture/184. Pruebas en CronService - Reconstrucción guiada.md",
+      "sha256": "db15cedce1a9748e3b0bc72bea17ac7fd34414da999d35443bbf7d05c1025b2e"
+    }
+  ]
+}

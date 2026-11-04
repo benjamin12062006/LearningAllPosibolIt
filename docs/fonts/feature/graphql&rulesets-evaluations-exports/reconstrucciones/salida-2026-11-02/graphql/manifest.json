@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "date": "2026-11-02",
+  "originals": {
+    "Sección 10 Paginaciones, paginaciones anidadas y filtros/125. Simplificar la consulta.md": "c9b477da527db42464058a2f5375e774cc023c66a6cd631b0759529f4073d812",
+    "Sección 8 Items + Usuarios - Peticiones autenticadas/106. ResolveField con información del padre.md": "9194a0680199d00096e7c8c4e8c857140a902786d2811d1d280b803d4790d7f6",
+    "Sección 10 Paginaciones, paginaciones anidadas y filtros/126. Aplicar filtros a sub-campos.md": "ca8f1ce01659d7d43a0e7874e6f8d03a06639b49664df81dd608ff749016e68f",
+    "Sección 11 Entidad para el manejo de listas Maestro Detalle/139. Traer información de los items y conteos.md": "26abd9a75a205e1517d3648574bebf131b939638e3626c7900b909cfbdf79cbc",
+    "Sección 11 Entidad para el manejo de listas Maestro Detalle/141. Filtrar por lista, paginar y conteo.md": "8f7d6502a4ac9d4d41ef61535a3ae6d602b76c6bd911089c8fb2e7510219e00f",
+    "Sección 4 GraphQL TODO - Continuación/42. Agregar conteos como campos adicionales.md": "6b7c31c7ed0d9a46e2d4d366be50a44c86b4f27caeda7e45865436ee78e4f6dc",
+    "Sección 4 GraphQL TODO - Continuación/43. ObjectTypes - Aggregation.md": "eb41f1b76863dccb6e133107e24dbbab7de3e55cf6225ea6eb1a9df894f1b8be"
+  },
+  "guides": [
+    {
+      "source": "Sección 10 Paginaciones, paginaciones anidadas y filtros/126. Aplicar filtros a sub-campos.md",
+      "guide": "Sección 10 Paginaciones, paginaciones anidadas y filtros/126. Aplicar filtros a sub-campos - Reconstrucción guiada.md",
+      "sha256": "65122a396f9c2c79d6a3d7d54c8aaee7fb0ee1e9202e1a6e56ac193066638a38"
+    },
+    {
+      "source": "Sección 11 Entidad para el manejo de listas Maestro Detalle/139. Traer información de los items y conteos.md",
+      "guide": "Sección 11 Entidad para el manejo de listas Maestro Detalle/139. Traer información de los items y conteos - Reconstrucción guiada.md",
+      "sha256": "56d0e6a8ed9bd14acd0f125288016c01682ae5fa2969e2e7addb0c4dc420a833"
+    },
+    {
+      "source": "Sección 11 Entidad para el manejo de listas Maestro Detalle/141. Filtrar por lista, paginar y conteo.md",
+      "guide": "Sección 11 Entidad para el manejo de listas Maestro Detalle/141. Filtrar por lista, paginar y conteo - Reconstrucción guiada.md",
+      "sha256": "0a4f4edda58bb3274132a8f95e654f1d79026698cffac20cb442f233b0b113c8"
+    },
+    {
+      "source": "Sección 4 GraphQL TODO - Continuación/43. ObjectTypes - Aggregation.md",
+      "guide": "Sección 4 GraphQL TODO - Continuación/43. ObjectTypes - Aggregation - Reconstrucción guiada.md",
+      "sha256": "552a78fd9d7fa35bc353877c46e56dd24dc669212172e68cf4a7e5ec4282f244"
+    }
+  ]
+}

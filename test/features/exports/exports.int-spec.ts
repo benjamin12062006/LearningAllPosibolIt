@@ -458,10 +458,9 @@ describe('Exportaciones con Prisma, almacén y PostgreSQL temporal', () => {
         approvalOf(second),
       );
 
-      const deleted = await new CatalogImportRepository(prisma).deleteProject(
-        ownerId,
-        projectId,
-      );
+      const { imports: deleted } = await new CatalogImportRepository(
+        prisma,
+      ).deleteProject(ownerId, projectId);
 
       const keysOf = (id: string) =>
         deleted.find((item) => item.snapshotId === id)?.exportArtifactKeys;

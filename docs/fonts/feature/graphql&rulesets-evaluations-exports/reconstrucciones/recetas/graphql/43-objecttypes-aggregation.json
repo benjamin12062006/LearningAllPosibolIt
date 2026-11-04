@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 4 GraphQL TODO - Continuación/43. ObjectTypes - Aggregation.md",
+  "previous": [
+    "Sección 4 GraphQL TODO - Continuación/42. Agregar conteos como campos adicionales.md"
+  ],
+  "objective": "Agrupar los conteos de los todos en un ObjectType propio, AggregationsType, devuelto por una sola query `aggregations`, y marcar como obsoleto un campo que repite otro con `deprecationReason`.",
+  "initial": "Clase 42: TodoService guarda los todos en memoria y expone getters totalTodos, pendingTodos y completedTodos; TodoResolver tiene tres queries sueltas que los devuelven como Int.",
+  "certainty": "El tipo con tres campos Int, la query que lo devuelve y el campo obsoleto se recuperan con alta confianza. Nombres normalizados desde la pronunciación: «agrega nations type» → AggregationsType en types/aggregations.type.ts, «pen din» → pending, «cumplire» → completed. La descripción del ObjectType y el texto exacto de deprecationReason se dictan a medias; se escriben como 'Todo quick aggregations' y 'Must use completed instead'. Las tres queries de la clase 42 siguen existiendo.",
+  "evidence": [
+    {"id": "E1", "line": 19, "phrase": "voy a hacerlo mediante queries y series", "change": "Clase 42: getters totalTodos, pendingTodos y completedTodos en el servicio.", "certainty": "Contexto; «queries y series» = getters y setters.", "source": "Sección 4 GraphQL TODO - Continuación/42. Agregar conteos como campos adicionales.md"},
+    {"id": "E2", "line": 27, "phrase": "Básicamente tenemos que hacer un filtro", "change": "pending y completed filtran por done y cuentan.", "certainty": "Contexto.", "source": "Sección 4 GraphQL TODO - Continuación/42. Agregar conteos como campos adicionales.md"},
+    {"id": "E3", "line": 15, "phrase": "Este nuevo query va a regresar un nuevo tipo de dato", "change": "Nueva query que devuelve un tipo propio.", "certainty": "Explícito."},
+    {"id": "E4", "line": 17, "phrase": "agrega nations punto type punto ds", "change": "Archivo types/aggregations.type.ts con una clase ObjectType.", "certainty": "Explícito; nombre normalizado."},
+    {"id": "E5", "line": 19, "phrase": "voy a tener el pen din tipo number", "change": "Campos total, pending y completed.", "certainty": "Explícito; nombres normalizados."},
+    {"id": "E6", "line": 19, "phrase": "Vamos a ponerlo como un int de graf", "change": "@Field(() => Int) para que no se interprete como Float.", "certainty": "Explícito."},
+    {"id": "E7", "line": 21, "phrase": "Este va a regresar algo de tipo agregación style", "change": "@Query(() => AggregationsType) aggregations() que devuelve los tres getters.", "certainty": "Explícito."},
+    {"id": "E8", "line": 23, "phrase": "Ahora tenemos esta nueva opción, que es agregación", "change": "Se consulta aggregations { total pending completed }.", "certainty": "Explícito."},
+    {"id": "E9", "line": 29, "phrase": "Entonces lo quiero marcar como obsoleto", "change": "Un campo que repite completed se marca obsoleto.", "certainty": "Explícito."},
+    {"id": "E10", "line": 29, "phrase": "sería la razón por la cual esto está obsoleto", "change": "deprecationReason en las opciones de @Field.", "certainty": "Explícito; texto del motivo normalizado."}
+  ],
+  "phases": [
+    {
+      "title": "Un ObjectType para los conteos",
+      "code": "import { Field, Int, ObjectType } from '@nestjs/graphql';\n\n@ObjectType({ description: 'Todo quick aggregations' })\nexport class AggregationsType {\n  @Field(() => Int)\n  total: number;\n\n  @Field(() => Int)\n  pending: number;\n\n  @Field(() => Int)\n  completed: number;\n}",
+      "why": "En lugar de varias queries sueltas, un objeto agrupa los conteos en un nivel propio de la respuesta. Sin Int, GraphQL tomaría number como Float.",
+      "check": "El esquema muestra el tipo AggregationsType con tres campos Int no nulos.",
+      "evidence": ["E3", "E4", "E5", "E6"]
+    },
+    {
+      "title": "Query que devuelve el objeto",
+      "code": "@Query(() => AggregationsType)\naggregations(): AggregationsType {\n  return {\n    completed: this.todoService.completedTodos,\n    pending: this.todoService.pendingTodos,\n    total: this.todoService.totalTodos,\n  };\n}",
+      "why": "El cliente pide solo los campos que necesita dentro del mismo objeto.",
+      "check": "aggregations { total pending } devuelve los conteos actuales.",
+      "evidence": ["E1", "E2", "E7", "E8"]
+    },
+    {
+      "title": "Marcar un campo como obsoleto",
+      "code": "@Field(() => Int, { deprecationReason: 'Must use completed instead' })\ntotalTodosCompleted: number;",
+      "why": "Un campo que repite otro no se borra de golpe: se marca obsoleto con el motivo y la alternativa, y las herramientas lo avisan.",
+      "check": "El explorador muestra el campo tachado y el motivo.",
+      "evidence": ["E9", "E10"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/todo/types/aggregations.type.ts",
+      "language": "ts",
+      "code": "import { Field, Int, ObjectType } from '@nestjs/graphql';\n\n@ObjectType({ description: 'Todo quick aggregations' })\nexport class AggregationsType {\n  @Field(() => Int)\n  total: number;\n\n  @Field(() => Int)\n  pending: number;\n\n  @Field(() => Int)\n  completed: number;\n\n  @Field(() => Int, { deprecationReason: 'Must use completed instead' })\n  totalTodosCompleted: number;\n}",
+      "provenance": "E4–E6, E9, E10; descripción y motivo normalizados."
+    },
+    {
+      "path": "src/todo/todo.resolver.ts (fragmento)",
+      "language": "ts",
+      "code": "@Query(() => AggregationsType)\naggregations(): AggregationsType {\n  return {\n    completed: this.todoService.completedTodos,\n    pending: this.todoService.pendingTodos,\n    total: this.todoService.totalTodos,\n    totalTodosCompleted: this.todoService.completedTodos,\n  };\n}",
+      "provenance": "E7, E8; getters de la clase 42 (E1, E2)."
+    }
+  ],
+  "temporary": "Antes de marcarlo obsoleto, el campo repetido se añade y se consulta para mostrar que devuelve lo mismo que completed. Al final se activa un momento el playground clásico para comparar cómo muestra lo obsoleto y se vuelve a Apollo Studio.",
+  "mental": "Un ObjectType propio agrupa datos derivados en un nivel de la respuesta. Un campo que sobra se marca obsoleto con deprecationReason en lugar de borrarlo."
+}

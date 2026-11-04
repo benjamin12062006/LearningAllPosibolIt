@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 8 Aplicación de Monitoreo - NOC/112. CronService.md",
+  "previous": [
+    "Sección 8 Aplicación de Monitoreo - NOC/111. CRON Tasks.md"
+  ],
+  "objective": "Aislar el paquete `cron` detrás de una clase propia, `CronService`, con un método `createJob(cronTime, onTick)` que crea, arranca y devuelve el trabajo, para que el resto de la aplicación no dependa del paquete.",
+  "initial": "Clase 111: `npm i cron`; en `Server.start` se crea directamente `new CronJob('*/2 * * * * *', …)` y se llama a `job.start()`. El instructor advierte que ese código está acoplado al paquete.",
+  "certainty": "La clase, el método estático, los dos tipos y el retorno del trabajo son explícitos. La firma exacta del constructor de `CronJob` en la versión que usa el curso no se muestra; se escribe con dos argumentos y `job.start()`, como en la clase 111. La afirmación de que el paquete usa `ChildProcess` es del instructor y no se comprueba aquí.",
+  "evidence": [
+    {"id": "E1", "line": 19, "phrase": "debería haber un único archivo el cual lo utilice", "change": "Regla: un único archivo usa el paquete de terceros y lo adapta.", "certainty": "Contexto de la clase 111.", "source": "Sección 8 Aplicación de Monitoreo - NOC/111. CRON Tasks.md"},
+    {"id": "E2", "line": 17, "phrase": "es segundos. Luego minutos. Luego horas.", "change": "La expresión tiene seis campos: segundos, minutos, horas, día del mes, mes y día de la semana.", "certainty": "Contexto de la clase 111.", "source": "Sección 8 Aplicación de Monitoreo - NOC/111. CRON Tasks.md"},
+    {"id": "E3", "line": 23, "phrase": "Me faltó poner el", "change": "El trabajo no se ejecuta hasta llamar a job.start().", "certainty": "Contexto de la clase 111.", "source": "Sección 8 Aplicación de Monitoreo - NOC/111. CRON Tasks.md"},
+    {"id": "E4", "line": 13, "phrase": "voy a crearme otro directorio le voy a poner el nombre", "change": "Carpeta presentation/cron con el archivo cron-service.ts.", "certainty": "Explícito."},
+    {"id": "E5", "line": 15, "phrase": "export class CronService", "change": "Clase CronService.", "certainty": "Explícito."},
+    {"id": "E6", "line": 17, "phrase": "Vamos a ponerle \"createJob( )\"", "change": "Método estático createJob que contiene el código que estaba en el servidor.", "certainty": "Explícito."},
+    {"id": "E7", "line": 19, "phrase": "Aquí voy a hacer un \"return\" del \"job\"", "change": "createJob devuelve el CronJob para poder llamar a job.stop().", "certainty": "Explícito."},
+    {"id": "E8", "line": 21, "phrase": "que le voy a poner \"onTick\"", "change": "Segundo argumento: la función que se ejecuta en cada disparo.", "certainty": "Explícito."},
+    {"id": "E9", "line": 27, "phrase": "voy a ponerle \"CronTime\"", "change": "type CronTime = string | Date.", "certainty": "Explícito."},
+    {"id": "E10", "line": 29, "phrase": "Voy a recibir una función que no emite nada", "change": "type OnTick = () => void.", "certainty": "Explícito."},
+    {"id": "E11", "line": 29, "phrase": "cuando ustedes tienen más de tres argumentos entonces manden un objeto", "change": "Si crecen los argumentos, pasar un objeto.", "certainty": "Recomendación; no se aplica en la clase."},
+    {"id": "E12", "line": 31, "phrase": "voy a mandar aquí que se ejecute cada 5 segundos", "change": "Server.start llama a CronService.createJob('*/5 * * * * *', …).", "certainty": "Explícito."},
+    {"id": "E13", "line": 33, "phrase": "Este es nuestro patrón adaptador también que adapta el paquete de terceros", "change": "El servicio es un adaptador: cambiar de paquete solo toca este archivo.", "certainty": "Explícito."},
+    {"id": "E14", "line": 35, "phrase": "podríamos leer todos los trabajos que estén definidos ahí", "change": "Idea futura: que la base de datos decida qué trabajos se levantan o se detienen.", "certainty": "Solo mencionado."}
+  ],
+  "phases": [
+    {
+      "title": "Mover el trabajo a un servicio propio",
+      "code": "import { CronJob } from 'cron';\n\nexport class CronService {\n  static createJob() {\n    const job = new CronJob('*/5 * * * * *', () => {\n      const date = new Date();\n      console.log('5 seconds', date);\n    });\n\n    job.start();\n    return job;\n  }\n}",
+      "why": "El servidor deja de importar el paquete; solo este archivo lo conoce.",
+      "check": "La aplicación sigue imprimiendo cada cinco segundos.",
+      "evidence": ["E1", "E3", "E4", "E5", "E6", "E7", "E13"]
+    },
+    {
+      "title": "Recibir el horario y la tarea con tipos propios",
+      "code": "import { CronJob } from 'cron';\n\ntype CronTime = string | Date;\ntype OnTick = () => void;\n\nexport class CronService {\n  static createJob(cronTime: CronTime, onTick: OnTick): CronJob {\n    const job = new CronJob(cronTime, onTick);\n\n    job.start();\n    return job;\n  }\n}",
+      "why": "Los tipos propios describen solo lo que la aplicación usa (texto cron o fecha, y una función sin argumentos), no toda la firma del paquete.",
+      "check": "TypeScript no marca any en los argumentos.",
+      "evidence": ["E8", "E9", "E10", "E11"]
+    },
+    {
+      "title": "Usarlo desde el servidor",
+      "code": "export class Server {\n  public static start() {\n    console.log('Server started...');\n\n    CronService.createJob('*/5 * * * * *', () => {\n      const date = new Date();\n      console.log('5 seconds', date);\n    });\n  }\n}",
+      "why": "El servidor declara qué hacer y cuándo; el detalle de la librería queda fuera.",
+      "check": "Con varios trabajos (cada 2, 3 y 5 segundos) cada uno se dispara a su ritmo.",
+      "evidence": ["E2", "E12", "E14"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/presentation/cron/cron-service.ts",
+      "language": "ts",
+      "code": "import { CronJob } from 'cron';\n\ntype CronTime = string | Date;\ntype OnTick = () => void;\n\nexport class CronService {\n  static createJob(cronTime: CronTime, onTick: OnTick): CronJob {\n    const job = new CronJob(cronTime, onTick);\n\n    job.start();\n    return job;\n  }\n}",
+      "provenance": "E4–E10; constructor con dos argumentos según la clase 111."
+    },
+    {
+      "path": "src/presentation/server.ts",
+      "language": "ts",
+      "code": "import { CronService } from './cron/cron-service';\n\nexport class Server {\n  public static start() {\n    console.log('Server started...');\n\n    CronService.createJob('*/5 * * * * *', () => {\n      const date = new Date();\n      console.log('5 seconds', date);\n    });\n  }\n}",
+      "provenance": "E12; texto del log normalizado."
+    }
+  ],
+  "temporary": "Para demostrar varios trabajos a la vez se clonan llamadas cada 2 y 3 segundos y luego se borran, dejando solo la de 5.",
+  "mental": "Un paquete de programación se envuelve en un adaptador pequeño: la aplicación pide «ejecuta esto con este horario» y recibe algo que puede detener. Cambiar de librería solo toca el adaptador."
+}

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "date": "2026-11-02",
+  "originals": {
+    "Sección 14 Reliability/87. Implementing Message Retries.md": "4b93db6dc238beaaa2cfcb15a3e204facc098e375cefd03f735a1ef9b5bab785"
+  },
+  "guides": [
+    {
+      "source": "Sección 14 Reliability/87. Implementing Message Retries.md",
+      "guide": "Sección 14 Reliability/87. Implementing Message Retries - Reconstrucción guiada.md",
+      "sha256": "24b22de76125c9ec31b609325df335bcbb49bf76e0349c5bcad6586e70c1e979"
+    }
+  ]
+}

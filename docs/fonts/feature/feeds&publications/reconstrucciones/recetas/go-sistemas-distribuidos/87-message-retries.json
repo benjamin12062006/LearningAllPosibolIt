@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 14 Reliability/87. Implementing Message Retries.md",
+  "previous": [],
+  "objective": "Envolver el procesamiento de cada mensaje de RabbitMQ en un reintento con espera creciente y un máximo de intentos; al agotarlos, anotar en el mensaje por qué falló y rechazarlo sin reencolar, y confirmar (ack) solo cuando el handler termina bien.",
+  "initial": "El consumidor de RabbitMQ llama al handler una vez por mensaje. Si el servicio de pagos está caído, el mensaje queda sin confirmar en la cola indefinidamente, sin alertas. Existe en `shared` un paquete `retry` del código inicial del curso.",
+  "certainty": "La llamada al reintento, la configuración por defecto, las cabeceras añadidas, el rechazo sin reencolar y el ack tras el éxito son explícitos. El código del paquete `retry` no se muestra (es del código inicial); solo se sabe que configura máximo de intentos, espera inicial y espera máxima, y que en la ejecución las esperas son 1, 2 y 4 segundos. Los nombres de las cabeceras distintas de `x-retry-count` se normalizan desde la narración.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "the message is not going to be acknowledged",
+      "change": "Sin reintentos, un mensaje fallido queda sin confirmar en la cola.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "we don't want to continue this work after, for example, one hour, two hours",
+      "change": "Esperar indefinidamente no sirve: el trabajo pierde sentido y no hay alertas.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E3",
+      "line": 15,
+      "phrase": "if the message cannot be delivered in, for example, three times, then we want to send it to the dead letter queue",
+      "change": "Tras tres intentos fallidos, el mensaje sale del flujo normal.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E4",
+      "line": 21,
+      "phrase": "shared package called retry",
+      "change": "Paquete retry ya existente, independiente de RabbitMQ.",
+      "certainty": "Explícito; su código no se muestra."
+    },
+    {
+      "id": "E5",
+      "line": 23,
+      "phrase": "You can configure the amount of free trials, the initial weights and the max weights",
+      "change": "Config: máximo de reintentos, espera inicial y espera máxima.",
+      "certainty": "Normalizado: «free trials» = retries, «weights» = waits."
+    },
+    {
+      "id": "E6",
+      "line": 25,
+      "phrase": "instead call the retry dot width backoff",
+      "change": "retry.WithBackoff(ctx, cfg, operación).",
+      "certainty": "Normalizado desde la pronunciación."
+    },
+    {
+      "id": "E7",
+      "line": 27,
+      "phrase": "So our handler that we wrap this this guy right here we're going to call it inside of this function",
+      "change": "La operación reintentada es la llamada al handler con el contexto y el mensaje.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E8",
+      "line": 29,
+      "phrase": "more than three times, we're going to throw an error",
+      "change": "Agotados los intentos, WithBackoff devuelve error.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E9",
+      "line": 35,
+      "phrase": "one header that is going to be called x retry count",
+      "change": "Cabecera x-retry-count con el número de intentos.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E10",
+      "line": 37,
+      "phrase": "let's actually reject without review",
+      "change": "d.Reject(false): rechazar sin reencolar.",
+      "certainty": "Normalizado: «review» = requeue."
+    },
+    {
+      "id": "E11",
+      "line": 39,
+      "phrase": "we only act the message after the handler succeeds",
+      "change": "d.Ack(false) solo tras el éxito.",
+      "certainty": "Normalizado: «act» = ack."
+    },
+    {
+      "id": "E12",
+      "line": 39,
+      "phrase": "So I want to add the death reason",
+      "change": "Cabecera con el motivo del fallo (texto del error).",
+      "certainty": "Explícito; nombre de cabecera normalizado."
+    },
+    {
+      "id": "E13",
+      "line": 41,
+      "phrase": "Let's add the original exchange",
+      "change": "Cabeceras con el exchange y la routing key originales.",
+      "certainty": "Explícito; nombres normalizados."
+    },
+    {
+      "id": "E14",
+      "line": 45,
+      "phrase": "the retry attempt failed one second after two seconds. And then after four seconds",
+      "change": "Esperas observadas: 1 s, 2 s y 4 s (se duplican).",
+      "certainty": "Explícito en la ejecución."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Envolver el handler en un reintento con espera creciente",
+      "code": "cfg := retry.DefaultConfig()\n\nerr := retry.WithBackoff(context.Background(), cfg, func() error {\n\treturn handler(ctx, d)\n})",
+      "why": "Un fallo transitorio (servicio caído un momento) se resuelve solo; la espera creciente evita martillear al servicio.",
+      "check": "Con el handler forzado a fallar, el log muestra intentos tras 1, 2 y 4 segundos.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E4",
+        "E5",
+        "E6",
+        "E7",
+        "E14"
+      ]
+    },
+    {
+      "title": "Al agotar los intentos: anotar el motivo y rechazar",
+      "code": "if err != nil {\n\tlog.Printf(\"Message processing failed after %d retries for message %s: %v\", cfg.MaxRetries, d.MessageId, err)\n\n\theaders := amqp.Table{}\n\tif d.Headers != nil {\n\t\theaders = d.Headers\n\t}\n\n\theaders[\"x-retry-count\"] = cfg.MaxRetries\n\theaders[\"x-death-reason\"] = err.Error()\n\theaders[\"x-original-exchange\"] = d.Exchange\n\theaders[\"x-original-routing-key\"] = d.RoutingKey\n\td.Headers = headers\n\n\t_ = d.Reject(false)\n\treturn err\n}",
+      "why": "Un mensaje que no se puede procesar no debe quedarse para siempre: se marca con lo necesario para investigarlo (intentos, motivo, origen) y sale del flujo normal.",
+      "check": "En RabbitMQ el mensaje aparece como rechazado y ya no está en la cola.",
+      "evidence": [
+        "E3",
+        "E8",
+        "E9",
+        "E10",
+        "E12",
+        "E13"
+      ]
+    },
+    {
+      "title": "Confirmar solo tras el éxito",
+      "code": "_ = d.Ack(false)\nreturn nil",
+      "why": "Si el proceso cae antes de confirmar, el broker puede volver a entregar el mensaje.",
+      "check": "Un mensaje procesado bien desaparece de la cola con ack.",
+      "evidence": [
+        "E11"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "shared/messaging/rabbitmq.go (fragmento del consumo)",
+      "language": "go",
+      "code": "cfg := retry.DefaultConfig()\n\nerr := retry.WithBackoff(context.Background(), cfg, func() error {\n\treturn handler(ctx, d)\n})\nif err != nil {\n\tlog.Printf(\"Message processing failed after %d retries for message %s: %v\", cfg.MaxRetries, d.MessageId, err)\n\n\theaders := amqp.Table{}\n\tif d.Headers != nil {\n\t\theaders = d.Headers\n\t}\n\n\theaders[\"x-retry-count\"] = cfg.MaxRetries\n\theaders[\"x-death-reason\"] = err.Error()\n\theaders[\"x-original-exchange\"] = d.Exchange\n\theaders[\"x-original-routing-key\"] = d.RoutingKey\n\td.Headers = headers\n\n\t_ = d.Reject(false)\n\treturn err\n}\n\n_ = d.Ack(false)\nreturn nil",
+      "provenance": "E6–E13; ruta del archivo, texto del log y nombres de cabeceras (salvo x-retry-count) normalizados. El paquete retry no se reconstruye: su código no aparece en la clase."
+    }
+  ],
+  "temporary": "Para ver los reintentos, el consumidor de pagos devuelve un error a propósito; se deshabilita y vuelve a habilitar el servicio de pagos en Tilt para mostrar que, sin reintentos, el mensaje espera en la cola.",
+  "mental": "Reintentar con espera creciente y un máximo; al agotar los intentos, el fallo se vuelve definitivo, se guarda el motivo y el trabajo sale del flujo normal. Confirmar el éxito solo al final."
+}

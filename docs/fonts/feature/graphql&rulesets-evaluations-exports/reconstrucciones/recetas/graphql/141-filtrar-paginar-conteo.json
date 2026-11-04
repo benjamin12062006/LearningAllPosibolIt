@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 11 Entidad para el manejo de listas Maestro Detalle/141. Filtrar por lista, paginar y conteo.md",
+  "previous": [
+    "Sección 11 Entidad para el manejo de listas Maestro Detalle/139. Traer información de los items y conteos.md"
+  ],
+  "objective": "Filtrar el detalle por su maestro, paginarlo y contarlo: `items` recibe la lista padre, PaginationArgs y SearchArgs y usa un query builder por `listId`; un segundo @ResolveField `totalItems` cuenta los items de esa lista.",
+  "initial": "Clase 139: ListsResolver.getListItems(@Parent list) devuelve todos los ListItem con repository.find(); ItemsService.findAll(user, pagination, search) de la clase 125 ya construye un query builder paginado.",
+  "certainty": "Los argumentos del campo, el query builder copiado de ItemsService con el filtro por listId, el campo totalItems y el conteo por lista se recuperan con alta confianza. La búsqueda por nombre se copia tal cual de ItemsService («Tenemos el mismo nombre»), aunque ListItem no tiene columna name; la clase no la prueba. Los nombres de los métodos se dictan como «count list items by list» y se escriben countListItemsByList. El último cambio descomenta el @Field de la relación con Item en ListItem.",
+  "evidence": [
+    {"id": "E1", "line": 15, "phrase": "Ustedes pueden hacer aquí un console log de la lista", "change": "El padre identifica la lista de cada resolución.", "certainty": "Explícito; console.log temporal."},
+    {"id": "E2", "line": 17, "phrase": "va a ser la lista que nosotros necesitamos", "change": "El servicio recibe la lista, la paginación y la búsqueda.", "certainty": "Explícito."},
+    {"id": "E3", "line": 19, "phrase": "Primero voy a poner aquí arcos paréntesis", "change": "@Args() paginationArgs y @Args() searchArgs en el campo items.", "certainty": "Explícito."},
+    {"id": "E4", "line": 21, "phrase": "Estoy esperando la lista que va a ser de tipo list", "change": "findAll(list: List, paginationArgs, searchArgs).", "certainty": "Explícito."},
+    {"id": "E5", "line": 23, "phrase": "En el final del ítem service lo copian y lo pegan por aquí", "change": "Se copia el findAll de ItemsService y se cambia el repositorio.", "certainty": "Explícito."},
+    {"id": "E6", "line": 25, "phrase": "Lo que yo tengo es un list id", "change": "where `\"listId\" = :listId` con list.id.", "certainty": "Explícito."},
+    {"id": "E7", "line": 27, "phrase": "Me dice tres argumentos y mandamos cero en el item service", "change": "Otra llamada a findAll sin argumentos, en ListItemResolver, rompe la compilación.", "certainty": "Explícito."},
+    {"id": "E8", "line": 29, "phrase": "Por ahora, comentemos este", "change": "Se comenta la query de ListItemResolver que llamaba a findAll sin argumentos.", "certainty": "Explícito."},
+    {"id": "E9", "line": 31, "phrase": "Necesito que obviamente se llame total items", "change": "Campo totalItems con su propio método.", "certainty": "Explícito."},
+    {"id": "E10", "line": 35, "phrase": "Va a regresar, no un arreglo de ítems o a revisar un number", "change": "@ResolveField(() => Number, { name: 'totalItems' }).", "certainty": "Explícito."},
+    {"id": "E11", "line": 37, "phrase": "Voy a contarlos con la condición de que el wait de nuestro list", "change": "repository.count({ where: { list: { id: list.id } } }).", "certainty": "Explícito; «wait» = where."},
+    {"id": "E12", "line": 45, "phrase": "tenemos que des comentar esto", "change": "Se descomenta el @Field de la relación item en ListItem para ver el producto.", "certainty": "Explícito."}
+  ],
+  "phases": [
+    {
+      "title": "Argumentos del campo items",
+      "code": "@ResolveField(() => [ListItem], { name: 'items' })\nasync getListItems(\n  @Parent() list: List,\n  @Args() paginationArgs: PaginationArgs,\n  @Args() searchArgs: SearchArgs,\n): Promise<ListItem[]> {\n  return this.listItemService.findAll(list, paginationArgs, searchArgs);\n}",
+      "why": "Con el padre, el servicio sabe de qué lista son los items; con los argumentos, el cliente decide cuántos y desde dónde.",
+      "check": "lists { name items(limit: 1) { quantity } } devuelve solo items de cada lista.",
+      "evidence": ["E1", "E2", "E3"]
+    },
+    {
+      "title": "Consulta filtrada por el maestro",
+      "code": "async findAll(\n  list: List,\n  paginationArgs: PaginationArgs,\n  searchArgs: SearchArgs,\n): Promise<ListItem[]> {\n  const { limit, offset } = paginationArgs;\n  const { search } = searchArgs;\n\n  const queryBuilder = this.listItemsRepository\n    .createQueryBuilder()\n    .take(limit)\n    .skip(offset)\n    .where(`\"listId\" = :listId`, { listId: list.id });\n\n  if (search) {\n    queryBuilder.andWhere('LOWER(name) like :name', {\n      name: `%${search.toLowerCase()}%`,\n    });\n  }\n\n  return queryBuilder.getMany();\n}",
+      "why": "Es la consulta paginada de ItemsService con el repositorio de ListItem y el filtro por listId en lugar de userId.",
+      "check": "Cada lista muestra solo sus items.",
+      "evidence": ["E4", "E5", "E6", "E7", "E8"]
+    },
+    {
+      "title": "Conteo como campo aparte",
+      "code": "@ResolveField(() => Number, { name: 'totalItems' })\nasync countListItemsByList(@Parent() list: List): Promise<number> {\n  return this.listItemService.countListItemsByList(list);\n}\n\n// list-item.service.ts\nasync countListItemsByList(list: List): Promise<number> {\n  return this.listItemsRepository.count({\n    where: { list: { id: list.id } },\n  });\n}",
+      "why": "El cliente necesita el total para paginar; se calcula solo si se pide y no depende del límite aplicado a items.",
+      "check": "lists { totalItems } devuelve 2 y 1 para las dos listas de la prueba.",
+      "evidence": ["E9", "E10", "E11"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/lists/lists.resolver.ts (fragmento)",
+      "language": "ts",
+      "code": "@ResolveField(() => [ListItem], { name: 'items' })\nasync getListItems(\n  @Parent() list: List,\n  @Args() paginationArgs: PaginationArgs,\n  @Args() searchArgs: SearchArgs,\n): Promise<ListItem[]> {\n  return this.listItemService.findAll(list, paginationArgs, searchArgs);\n}\n\n@ResolveField(() => Number, { name: 'totalItems' })\nasync countListItemsByList(@Parent() list: List): Promise<number> {\n  return this.listItemService.countListItemsByList(list);\n}",
+      "provenance": "E1–E3, E9, E10."
+    },
+    {
+      "path": "src/list-item/list-item.service.ts (fragmento)",
+      "language": "ts",
+      "code": "async findAll(\n  list: List,\n  paginationArgs: PaginationArgs,\n  searchArgs: SearchArgs,\n): Promise<ListItem[]> {\n  const { limit, offset } = paginationArgs;\n  const { search } = searchArgs;\n\n  const queryBuilder = this.listItemsRepository\n    .createQueryBuilder()\n    .take(limit)\n    .skip(offset)\n    .where(`\"listId\" = :listId`, { listId: list.id });\n\n  if (search) {\n    queryBuilder.andWhere('LOWER(name) like :name', {\n      name: `%${search.toLowerCase()}%`,\n    });\n  }\n\n  return queryBuilder.getMany();\n}\n\nasync countListItemsByList(list: List): Promise<number> {\n  return this.listItemsRepository.count({\n    where: { list: { id: list.id } },\n  });\n}",
+      "provenance": "E4–E6, E11; búsqueda copiada sin probar (ver certeza)."
+    },
+    {
+      "path": "src/list-item/entities/list-item.entity.ts (fragmento)",
+      "language": "ts",
+      "code": "@ManyToOne(() => Item, (item) => item.listItem)\n@Field(() => Item)\nitem: Item;",
+      "provenance": "E12; opciones de la relación no consultadas (clases 135–136)."
+    }
+  ],
+  "temporary": "Se crea una segunda lista con una mutación y se mueve un item a ella en Table Plus para ver el filtro. Un console.log de la lista padre. La query de ListItemResolver que llamaba a findAll sin argumentos se comenta. Las tareas de la clase (totalItems y mostrar el item) se resuelven en el vídeo.",
+  "mental": "Detalle paginado de un maestro: @ResolveField con @Parent y argumentos, consulta filtrada por la clave del maestro y un campo de conteo separado para que el cliente sepa cuántas páginas hay."
+}

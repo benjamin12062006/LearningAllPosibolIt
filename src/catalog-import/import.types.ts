@@ -59,6 +59,15 @@ export type DeletedImport = {
   exportArtifactKeys: string[];
 };
 
+/**
+ * Lo que hay que retirar del disco tras borrar un proyecto: lo de cada
+ * importación y los archivos de las versiones de su feed.
+ */
+export type DeletedProject = {
+  imports: DeletedImport[];
+  feedArtifactKeys: string[];
+};
+
 /** Trabajo que el worker ha reclamado y está procesando. */
 export type ClaimedImport = {
   id: string;

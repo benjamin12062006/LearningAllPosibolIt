@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "date": "2026-11-02",
+  "originals": {
+    "Sección 7 Posts CRUD/43. Optimistic Concurrency Control.md": "6ebdc73f51d33adf26c66151e4720ba2c456216fb71dd860512329b88dae5534"
+  },
+  "guides": [
+    {
+      "source": "Sección 7 Posts CRUD/43. Optimistic Concurrency Control.md",
+      "guide": "Sección 7 Posts CRUD/43. Optimistic Concurrency Control - Reconstrucción guiada.md",
+      "sha256": "d4f35e6f2d09f0f420fdd01f3425512df62704a23e4a6dc04d1e29e4a9e30dcc"
+    }
+  ]
+}

@@ -33,5 +33,7 @@ import { EXPORT_OPTIONS, type ExportOptions } from './exports.types.js';
       useFactory: (): ExportOptions => ({ autoStart: true }),
     },
   ],
+  // La actualización automática del feed exporta con las mismas reglas.
+  exports: [ExportsService],
 })
 export class ExportsModule {}

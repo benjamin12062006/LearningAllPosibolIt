@@ -391,4 +391,124 @@ export const API_MESSAGES = {
     'El archivo de la exportación no está disponible en este momento.',
     'The export file is not available right now.',
   ),
+  [ErrorCodes.FEED_NOT_FOUND]: entry(
+    404,
+    'No se encontró el feed.',
+    'The feed was not found.',
+  ),
+  [ErrorCodes.FEED_ALREADY_EXISTS]: entry(
+    409,
+    'Este proyecto ya tiene un feed.',
+    'This project already has a feed.',
+  ),
+  [ErrorCodes.FEED_GENERATION_CONFLICT]: entry(
+    409,
+    'El feed cambió desde que lo consultaste: alguien publicó otra versión. Vuelve a consultarlo antes de publicar.',
+    'The feed changed since you fetched it: someone published another version. Fetch it again before publishing.',
+  ),
+  [ErrorCodes.FEED_FILE_UNAVAILABLE]: entry(
+    503,
+    'El archivo del feed no está disponible en este momento.',
+    'The feed file is not available right now.',
+  ),
+  [ErrorCodes.SOURCE_URL_NOT_ALLOWED]: entry(
+    422,
+    'La URL de la fuente no está permitida: debe ser https, sin usuario ni contraseña, y apuntar a un servidor público.',
+    'The source URL is not allowed: it must use https, have no user or password, and point to a public server.',
+  ),
+  [ErrorCodes.SOURCE_REDIRECT_NOT_ALLOWED]: entry(
+    422,
+    'La URL de la fuente redirige a otra dirección. Configura la URL final del archivo.',
+    'The source URL redirects to another address. Configure the final URL of the file.',
+  ),
+  [ErrorCodes.SOURCE_HTTP_ERROR]: entry(
+    502,
+    'El servidor de la fuente respondió con un error.',
+    'The source server responded with an error.',
+  ),
+  [ErrorCodes.SOURCE_UNREACHABLE]: entry(
+    502,
+    'No se pudo conectar con el servidor de la fuente.',
+    'Could not connect to the source server.',
+  ),
+  [ErrorCodes.SOURCE_TIMEOUT]: entry(
+    504,
+    'El servidor de la fuente tardó demasiado en enviar el archivo.',
+    'The source server took too long to send the file.',
+  ),
+  [ErrorCodes.SOURCE_TOO_LARGE]: entry(
+    413,
+    'El archivo de la fuente supera el tamaño máximo permitido.',
+    'The source file exceeds the maximum allowed size.',
+  ),
+  [ErrorCodes.FEED_SOURCE_NOT_CONFIGURED]: entry(
+    409,
+    'El feed no tiene fuente: configura antes la URL del CSV.',
+    'The feed has no source: configure the CSV URL first.',
+  ),
+  [ErrorCodes.FEED_REFRESH_ALREADY_ACTIVE]: entry(
+    409,
+    'El feed ya tiene una actualización en curso.',
+    'The feed already has an update in progress.',
+  ),
+  [ErrorCodes.FEED_REFRESH_NOT_FOUND]: entry(
+    404,
+    'No se encontró la actualización.',
+    'The update was not found.',
+  ),
+  [ErrorCodes.REFRESH_LEASE_EXPIRED]: entry(
+    503,
+    'La actualización se interrumpió y se reintentará.',
+    'The update was interrupted and will be retried.',
+  ),
+  [ErrorCodes.REFRESH_SOURCE_MISSING]: entry(
+    409,
+    'El feed se quedó sin fuente durante la actualización.',
+    'The feed lost its source during the update.',
+  ),
+  [ErrorCodes.REFRESH_POLICY_MISSING]: entry(
+    409,
+    'El feed se quedó sin política aprobada durante la actualización.',
+    'The feed lost its approved policy during the update.',
+  ),
+  [ErrorCodes.REFRESH_POLICY_VERSIONS_CHANGED]: entry(
+    409,
+    'Las comprobaciones de Google cambiaron desde que aprobaste la política. Revisa el resultado y vuelve a aprobarla.',
+    'The Google checks changed since you approved the policy. Review the result and approve it again.',
+  ),
+  [ErrorCodes.REFRESH_POLICY_NO_VALID_PRODUCTS]: entry(
+    409,
+    'La evaluación no tiene productos válidos: no se publica.',
+    'The evaluation has no valid products: nothing is published.',
+  ),
+  [ErrorCodes.REFRESH_POLICY_TOO_MANY_INVALID]: entry(
+    409,
+    'Hay más productos inválidos de los que permite la política.',
+    'There are more invalid products than the policy allows.',
+  ),
+  [ErrorCodes.REFRESH_POLICY_TOO_MANY_EXCLUDED]: entry(
+    409,
+    'Hay más productos excluidos de los que permite la política.',
+    'There are more excluded products than the policy allows.',
+  ),
+  [ErrorCodes.REFRESH_POLICY_PRODUCT_DROP]: entry(
+    409,
+    'El número de productos válidos cayó más de lo que permite la política.',
+    'The number of valid products dropped more than the policy allows.',
+  ),
+  [ErrorCodes.REFRESH_PUBLICATION_CONFLICT]: entry(
+    409,
+    'Alguien publicó otra versión durante la actualización: no se ha publicado esta.',
+    'Someone published another version during the update: this one was not published.',
+  ),
+  [ErrorCodes.FEED_POLICY_NOT_APPROVED]: entry(
+    409,
+    'El feed no tiene política aprobada: apruébala antes de actualizarlo.',
+    'The feed has no approved policy: approve it before updating.',
+  ),
+  [ErrorCodes.REFRESH_IMPORT_MISSING]: entry(
+    409,
+    'La importación de la actualización ya no existe; se volverá a descargar.',
+    'The update import no longer exists; it will be downloaded again.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

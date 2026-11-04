@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 11 Entidad para el manejo de listas Maestro Detalle/139. Traer información de los items y conteos.md",
+  "previous": [],
+  "objective": "Que una lista exponga su detalle como un campo `items` resuelto por el resolver de la lista: quitar el @Field de la relación, añadir un @ResolveField que recibe la lista con @Parent e inyectar ListItemService importando su módulo.",
+  "initial": "Lista (List) con relación @OneToMany a ListItem expuesta con @Field; ListItemModule exporta ListItemService y TypeOrmModule; ListsResolver solo inyecta ListsService. La estructura de las entidades viene de las clases 135–138, no consultadas: los nombres de la relación se toman de la transcripción.",
+  "certainty": "Comentar el @Field, el @ResolveField `items` con @Parent, la inyección de ListItemService, la corrección de exports a imports y el find sin filtro se recuperan con alta confianza. Nombres normalizados: «list item service» → ListItemService, «get list items» → getListItems. El método del servicio se dicta como «fin o» y se escribe findAll. Las opciones de la relación y el resto de campos de las entidades no se reconstruyen.",
+  "evidence": [
+    {"id": "E1", "line": 15, "phrase": "el item no tiene mucho sentido semántico tampoco ese nombre", "change": "El campo debería llamarse items y poder paginarse.", "certainty": "Explícito."},
+    {"id": "E2", "line": 17, "phrase": "Voy a comentar este field", "change": "Se comenta el @Field de la relación en List.", "certainty": "Explícito."},
+    {"id": "E3", "line": 19, "phrase": "Y aquí es donde quiero agregar un nuevo campo, un nuevo resolver", "change": "El campo nuevo vive en ListsResolver.", "certainty": "Explícito."},
+    {"id": "E4", "line": 21, "phrase": "Voy a crearme un nuevo resolver field", "change": "@ResolveField que devuelve [ListItem].", "certainty": "Explícito."},
+    {"id": "E5", "line": 25, "phrase": "coloquemos el name y le vamos a poner items", "change": "{ name: 'items' }: sin él, el campo tomaría el nombre del método.", "certainty": "Explícito."},
+    {"id": "E6", "line": 27, "phrase": "lo hacemos mediante el Parent", "change": "@Parent() list: List.", "certainty": "Explícito."},
+    {"id": "E7", "line": 29, "phrase": "en nuestro list item model ya habíamos colocado que íbamos a exportar el acting service", "change": "ListItemModule exporta su servicio.", "certainty": "Explícito."},
+    {"id": "E8", "line": 31, "phrase": "Debería estar en los imports", "change": "ListsModule importa ListItemModule.", "certainty": "Explícito; corrección del propio instructor."},
+    {"id": "E9", "line": 33, "phrase": "voy a colocarle de nombre list items service de tipo list item service", "change": "Inyección de ListItemService en ListsResolver.", "certainty": "Explícito; nombre normalizado."},
+    {"id": "E10", "line": 33, "phrase": "list, item, repositorio, find", "change": "findAll provisional que devuelve todos los items con repository.find().", "certainty": "Explícito; sin filtro todavía."}
+  ],
+  "phases": [
+    {
+      "title": "Quitar la relación directa del esquema",
+      "code": "@OneToMany(() => ListItem, (listItem) => listItem.list)\n// @Field(() => [ListItem])\nlistItem: ListItem[];",
+      "why": "La relación devolvería todos los items sin paginar y con un nombre poco claro; sin @Field deja de consultarse directamente.",
+      "check": "lists { listItem { id } } falla: el campo ya no existe.",
+      "evidence": ["E1", "E2"]
+    },
+    {
+      "title": "Campo items resuelto con el padre",
+      "code": "@ResolveField(() => [ListItem], { name: 'items' })\nasync getListItems(@Parent() list: List): Promise<ListItem[]> {\n  return this.listItemService.findAll();\n}",
+      "why": "Cada lista resuelve su campo items; @Parent da la lista que se está recorriendo. El nombre se fija para no exponer getListItems.",
+      "check": "lists { name items { id quantity completed } } responde (todavía con todos los items).",
+      "evidence": ["E3", "E4", "E5", "E6", "E10"]
+    },
+    {
+      "title": "Inyectar el servicio del detalle",
+      "code": "// lists.module.ts\nimports: [TypeOrmModule.forFeature([List]), ListItemModule],\n\n// lists.resolver.ts\nconstructor(\n  private readonly listsService: ListsService,\n  private readonly listItemService: ListItemService,\n) {}",
+      "why": "Para usar ListItemService en el resolver de listas, su módulo debe exportarlo y ListsModule importarlo; ponerlo en exports da el error de Nest que se ve en la clase.",
+      "check": "La aplicación arranca sin el error de proveedor no encontrado.",
+      "evidence": ["E7", "E8", "E9"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/lists/lists.resolver.ts (fragmento)",
+      "language": "ts",
+      "code": "@Resolver(() => List)\n@UseGuards(JwtAuthGuard)\nexport class ListsResolver {\n  constructor(\n    private readonly listsService: ListsService,\n    private readonly listItemService: ListItemService,\n  ) {}\n\n  // Queries y mutaciones de listas de las clases 132–134, sin cambios.\n\n  @ResolveField(() => [ListItem], { name: 'items' })\n  async getListItems(@Parent() list: List): Promise<ListItem[]> {\n    return this.listItemService.findAll();\n  }\n}",
+      "provenance": "E3–E6, E9, E10; decoradores de la clase heredados de las clases 132–134, no consultadas."
+    },
+    {
+      "path": "src/list-item/list-item.service.ts (fragmento)",
+      "language": "ts",
+      "code": "async findAll(): Promise<ListItem[]> {\n  return this.listItemsRepository.find();\n}",
+      "provenance": "E10; filtro y paginación en la clase 141."
+    },
+    {
+      "path": "src/lists/lists.module.ts (fragmento)",
+      "language": "ts",
+      "code": "@Module({\n  providers: [ListsResolver, ListsService],\n  imports: [TypeOrmModule.forFeature([List]), ListItemModule],\n  exports: [ListsService, TypeOrmModule],\n})\nexport class ListsModule {}",
+      "provenance": "E7, E8; exports heredados."
+    },
+    {
+      "path": "src/lists/entities/list.entity.ts (fragmento)",
+      "language": "ts",
+      "code": "@OneToMany(() => ListItem, (listItem) => listItem.list)\n// @Field(() => [ListItem])\nlistItem: ListItem[];",
+      "provenance": "E2; opciones de la relación no consultadas."
+    }
+  ],
+  "temporary": "Se cambian a mano dos cantidades en Table Plus para distinguir los items. El campo se crea primero con un throw new Error y con el nombre del método, y después se renombra a items. ListItemModule se coloca por error en exports de ListsModule y se corrige a imports.",
+  "mental": "El detalle de un maestro se expone como campo resuelto por el resolver del maestro, con @Parent. Así se controla qué se devuelve y se puede paginar después."
+}

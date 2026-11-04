@@ -35,6 +35,7 @@ model Project {
   owner          AppUser           @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   snapshots      CatalogSnapshot[]
   rulesets       RulesetVersion[]
+  feed           Feed?
 
   @@index([ownerId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_projects_owner_created")
   @@map("projects")
@@ -142,6 +143,7 @@ model Evaluation {
   ruleset          RulesetVersion  @relation(fields: [projectId, rulesetVersionId], references: [projectId, id], onDelete: Restrict, onUpdate: NoAction)
   rows             EvaluationRow[]
   exports          Export[]
+  feedVersions     FeedVersion[]
 
   @@unique([projectId, id])
   @@index([status, createdAt, id], map: "idx_evaluations_queue")
@@ -167,19 +169,113 @@ model EvaluationRow {
 }
 
 model Export {
-  id                     String     @id
-  projectId              String     @map("project_id")
-  evaluationId           String     @unique @map("evaluation_id")
-  approvedResultChecksum String     @map("approved_result_checksum")
-  acceptedInvalidCount   Int        @map("accepted_invalid_count")
-  acceptedExcludedCount  Int        @map("accepted_excluded_count")
-  rowCount               Int        @map("row_count")
-  artifactKey            String     @unique @map("artifact_key")
-  byteSize               Int        @map("byte_size")
-  tsvChecksum            String     @map("tsv_checksum")
-  createdAt              String     @map("created_at")
-  evaluation             Evaluation @relation(fields: [projectId, evaluationId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
+  id                     String        @id
+  projectId              String        @map("project_id")
+  evaluationId           String        @unique @map("evaluation_id")
+  approvedResultChecksum String        @map("approved_result_checksum")
+  acceptedInvalidCount   Int           @map("accepted_invalid_count")
+  acceptedExcludedCount  Int           @map("accepted_excluded_count")
+  rowCount               Int           @map("row_count")
+  artifactKey            String        @unique @map("artifact_key")
+  byteSize               Int           @map("byte_size")
+  tsvChecksum            String        @map("tsv_checksum")
+  createdAt              String        @map("created_at")
+  evaluation             Evaluation    @relation(fields: [projectId, evaluationId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
+  feedVersions           FeedVersion[]
 
   @@map("exports")
+  @@schema("estadistica_forms")
+}
+
+/// Feed del proyecto (uno por proyecto en la fase B). `generation` cuenta las
+/// publicaciones y es la versión que se compara al publicar (concurrencia
+/// optimista); `published_version_id` apunta a una versión del mismo feed. Del
+/// token de entrega solo se guarda su SHA-256; nulo = entrega desactivada. La
+/// fuente remota (URL, columna id y separador) va completa o no va.
+model Feed {
+  id                    String        @id
+  projectId             String        @unique @map("project_id")
+  generation            Int           @default(0)
+  publishedVersionId    String?       @map("published_version_id")
+  deliveryTokenHash     String?       @unique @map("delivery_token_hash")
+  sourceUrl             String?       @map("source_url")
+  sourceIdColumn        String?       @map("source_id_column")
+  sourceDelimiter       String?       @map("source_delimiter")
+  policyRulesetRevision Int?          @map("policy_ruleset_revision")
+  policyMaxInvalid      Int?          @map("policy_max_invalid")
+  policyMaxExcluded     Int?          @map("policy_max_excluded")
+  policyMaxDropPercent  Int?          @map("policy_max_drop_percent")
+  policyEngineVersion   String?       @map("policy_engine_version")
+  policyProfileVersion  String?       @map("policy_profile_version")
+  policyApprovedAt      String?       @map("policy_approved_at")
+  refreshEnabled        Boolean       @default(false) @map("refresh_enabled")
+  refreshTime           String?       @map("refresh_time")
+  timeZone              String?       @map("time_zone")
+  createdAt             String        @map("created_at")
+  updatedAt             String        @map("updated_at")
+  project               Project       @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  versions              FeedVersion[] @relation("FeedVersions")
+  refreshes             FeedRefresh[]
+  publishedVersion      FeedVersion?  @relation("PublishedVersion", fields: [id, publishedVersionId], references: [feedId, id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("feeds")
+  @@schema("estadistica_forms")
+}
+
+/// Versión publicada de un feed, con su propio archivo (`feeds/<id>.tsv`,
+/// enlace del TSV de la exportación). Evaluación y exportación son solo
+/// trazabilidad: si se borran, la versión y su archivo siguen.
+model FeedVersion {
+  id              String      @id
+  feedId          String      @map("feed_id")
+  evaluationId    String?     @map("evaluation_id")
+  exportId        String?     @map("export_id")
+  artifactKey     String?     @unique @map("artifact_key")
+  tsvChecksum     String      @map("tsv_checksum")
+  byteSize        Int         @map("byte_size")
+  rowCount        Int         @map("row_count")
+  publishedBy     String      @map("published_by")
+  createdAt       String      @map("created_at")
+  feed            Feed        @relation("FeedVersions", fields: [feedId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  evaluation      Evaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  export          Export?     @relation(fields: [exportId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  publishingFeeds Feed[]      @relation("PublishedVersion")
+
+  @@unique([feedId, id])
+  @@index([feedId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_feed_versions_feed_created")
+  @@map("feed_versions")
+  @@schema("estadistica_forms")
+}
+
+/// Actualización de un feed: un trabajo con lease y token de ejecución (plan
+/// feeds&publications, D2–D4). Los ids de snapshot, importación y evaluación se
+/// guardan antes de crearlos, por eso no son FK: al repetir un paso se ve si ya
+/// existe. `run_after` y `lease_until` usan el reloj de la base y solo se
+/// escriben con SQL: Prisma calcula `now()` en el cliente y lo envía sin zona
+/// horaria, y la sesión lo desplaza (ver el repositorio).
+model FeedRefresh {
+  id                 String    @id
+  feedId             String    @map("feed_id")
+  status             String
+  stage              String
+  attempts           Int       @default(0)
+  runAfter           DateTime  @default(now()) @map("run_after") @db.Timestamptz(3)
+  leaseUntil         DateTime? @map("lease_until") @db.Timestamptz(3)
+  executionToken     String?   @map("execution_token")
+  snapshotId         String?   @map("snapshot_id")
+  importJobId        String?   @map("import_job_id")
+  evaluationId       String?   @map("evaluation_id")
+  expectedGeneration Int?      @map("expected_generation")
+  scheduledFor       String?   @map("scheduled_for")
+  outcome            String?
+  error              Json?
+  createdAt          String    @map("created_at")
+  finishedAt         String?   @map("finished_at")
+  feed               Feed      @relation(fields: [feedId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([feedId, scheduledFor])
+  @@index([status, runAfter, id], map: "idx_feed_refreshes_queue")
+  @@index([feedId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_feed_refreshes_feed_created")
+  @@map("feed_refreshes")
   @@schema("estadistica_forms")
 }

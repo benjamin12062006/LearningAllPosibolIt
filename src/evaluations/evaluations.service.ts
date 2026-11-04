@@ -53,6 +53,22 @@ export class EvaluationsService {
     };
   }
 
+  /**
+   * Encola una evaluación con el id que quien llama ya guardó (la actualización
+   * del feed, D9 de feeds&publications). Mismas comprobaciones que `accept`; el
+   * propietario ya está resuelto.
+   */
+  async acceptPlanned(request: {
+    evaluationId: string;
+    ownerId: string;
+    projectId: string;
+    snapshotId: string;
+    rulesetRevision: number;
+  }) {
+    await this.repository.accept(request);
+    this.worker.wake();
+  }
+
   /** La evaluación y, solo si terminó bien, una muestra de sus primeras filas. */
   async findOne(
     identity: AuthenticatedIdentity,

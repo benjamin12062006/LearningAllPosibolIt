@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 12 NOC - Testing - Clean Architecture/184. Pruebas en CronService.md",
+  "previous": [
+    "Sección 8 Aplicación de Monitoreo - NOC/112. CronService.md"
+  ],
+  "objective": "Probar el adaptador `CronService`: crear un trabajo que se dispara cada segundo con una función simulada (`jest.fn`), esperar dos segundos y comprobar que se llamó dos veces; detener el trabajo al terminar.",
+  "initial": "`CronService.createJob(cronTime, onTick)` de la clase 112 crea, arranca y devuelve un `CronJob`.",
+  "certainty": "El nombre del archivo, el test, la función simulada, el `setTimeout` de dos segundos con `done`, la aserción de dos llamadas y `job.stop()` son explícitos. El nombre de la variable se dicta como «mockTick» o «mockTickFunction»; se usa mockTick. La clase usa `toBeCalledTimes`, alias de `toHaveBeenCalledTimes` en el Jest del curso.",
+  "evidence": [
+    {"id": "E1", "line": 13, "phrase": "simplemente es asegurarse de que la tarea sea llamada X cantidad de veces", "change": "Objetivo: comprobar cuántas veces se llama la tarea.", "certainty": "Explícito."},
+    {"id": "E2", "line": 13, "phrase": "efectivamente cada hora grabe", "change": "No se prueba la librería ni horarios largos, solo la configuración que se le pasa.", "certainty": "Explícito."},
+    {"id": "E3", "line": 15, "phrase": "cron-service.test.ts", "change": "Archivo de prueba junto al servicio.", "certainty": "Explícito."},
+    {"id": "E4", "line": 15, "phrase": "should create a job", "change": "Nombre del test.", "certainty": "Explícito."},
+    {"id": "E5", "line": 15, "phrase": "Le voy a mandar * * * * * * 6 asteriscos", "change": "Expresión de seis campos: cada segundo.", "certainty": "Explícito."},
+    {"id": "E6", "line": 17, "phrase": "que son superútiles", "change": "const mockTick = jest.fn().", "certainty": "Explícito; nombre de variable dictado de dos formas."},
+    {"id": "E7", "line": 17, "phrase": "Recuerden poner aquí el", "change": "El test recibe done y Jest espera a que se llame.", "certainty": "Explícito."},
+    {"id": "E8", "line": 19, "phrase": ".toBeCalledTimes( 2 )", "change": "A los dos segundos, la función se llamó dos veces.", "certainty": "Explícito."},
+    {"id": "E9", "line": 19, "phrase": "podemos mandar a llamar el", "change": "job.stop() para que el trabajo no siga disparándose después del test.", "certainty": "Explícito."},
+    {"id": "E10", "line": 19, "phrase": "Estábamos esperando 3 y se llamó 2.", "change": "Con una expectativa de 3 llamadas el test falla: confirma que la prueba detecta el error.", "certainty": "Explícito."},
+    {"id": "E11", "line": 21, "phrase": "podemos hacerle un mock completo a este objeto", "change": "Alternativa no aplicada: simular CronJob o espiarlo para comprobar los argumentos.", "certainty": "Solo mencionado."}
+  ],
+  "phases": [
+    {
+      "title": "Test con función simulada y espera real",
+      "code": "import { CronService } from './cron-service';\n\ndescribe('CronService', () => {\n  const mockTick = jest.fn();\n\n  test('should create a job', (done) => {\n    const job = CronService.createJob('* * * * * *', mockTick);\n\n    setTimeout(() => {\n      expect(mockTick).toBeCalledTimes(2);\n      job.stop();\n      done();\n    }, 2000);\n  });\n});",
+      "why": "Lo que se prueba es que el adaptador entrega a la librería el horario y la tarea; la función simulada cuenta las llamadas. Sin job.stop() el trabajo seguiría vivo tras el test.",
+      "check": "El test pasa con 2 y falla si se espera 3.",
+      "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10"]
+    },
+    {
+      "title": "Alternativa sin esperar",
+      "code": "// No implementado en la clase: simular CronJob o usar jest.spyOn\n// para comprobar que recibe la expresión y la función.",
+      "why": "Evita depender del reloj real en la prueba.",
+      "check": "No aplica.",
+      "evidence": ["E11"]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/presentation/cron/cron-service.test.ts",
+      "language": "ts",
+      "code": "import { CronService } from './cron-service';\n\ndescribe('CronService', () => {\n  const mockTick = jest.fn();\n\n  test('should create a job', (done) => {\n    const job = CronService.createJob('* * * * * *', mockTick);\n\n    setTimeout(() => {\n      expect(mockTick).toBeCalledTimes(2);\n      job.stop();\n      done();\n    }, 2000);\n  });\n});",
+      "provenance": "E3–E9; nombre de la variable normalizado."
+    }
+  ],
+  "temporary": "Se cambia un momento la expectativa a 3 llamadas para ver el test fallar y se vuelve a 2.",
+  "mental": "Un programador de tareas se prueba por su contrato (qué ejecuta y con qué horario), no por la librería. Cualquier trabajo creado en una prueba se detiene al final."
+}

@@ -146,7 +146,7 @@ describe('Borrado de importaciones y proyectos', () => {
     Pick<CatalogImportRepository, 'deleteSnapshot' | 'deleteProject'>
   >;
   let store: jest.Mocked<
-    Pick<ArtifactStore, 'removeArtifact' | 'removeExport'>
+    Pick<ArtifactStore, 'removeArtifact' | 'removeExport' | 'removeFeedVersion'>
   >;
   const steps: string[] = [];
 
@@ -163,10 +163,21 @@ describe('Borrado de importaciones y proyectos', () => {
         .fn<CatalogImportRepository['deleteProject']>()
         .mockImplementation(async () => {
           steps.push('commit');
-          return [
-            { snapshotId: 's1', artifactKey: 'k1.csv', exportArtifactKeys: [] },
-            { snapshotId: 's2', artifactKey: 'k2.csv', exportArtifactKeys: [] },
-          ];
+          return {
+            imports: [
+              {
+                snapshotId: 's1',
+                artifactKey: 'k1.csv',
+                exportArtifactKeys: [],
+              },
+              {
+                snapshotId: 's2',
+                artifactKey: 'k2.csv',
+                exportArtifactKeys: [],
+              },
+            ],
+            feedArtifactKeys: [],
+          };
         }),
     };
     store = {
@@ -179,6 +190,11 @@ describe('Borrado de importaciones y proyectos', () => {
         .fn<ArtifactStore['removeExport']>()
         .mockImplementation(async (key) => {
           steps.push(`tsv ${key}`);
+        }),
+      removeFeedVersion: jest
+        .fn<ArtifactStore['removeFeedVersion']>()
+        .mockImplementation(async (key) => {
+          steps.push(`feed ${key}`);
         }),
     };
     module = await Test.createTestingModule({
@@ -234,14 +250,17 @@ describe('Borrado de importaciones y proyectos', () => {
   it('retira también los TSV de las exportaciones borradas en cascada, después del commit', async () => {
     repository.deleteProject.mockImplementationOnce(async () => {
       steps.push('commit');
-      return [
-        {
-          snapshotId: 's1',
-          artifactKey: 'k1.csv',
-          exportArtifactKeys: ['e1.tsv'],
-        },
-        { snapshotId: 's2', artifactKey: 'k2.csv', exportArtifactKeys: [] },
-      ];
+      return {
+        imports: [
+          {
+            snapshotId: 's1',
+            artifactKey: 'k1.csv',
+            exportArtifactKeys: ['e1.tsv'],
+          },
+          { snapshotId: 's2', artifactKey: 'k2.csv', exportArtifactKeys: [] },
+        ],
+        feedArtifactKeys: [],
+      };
     });
 
     await service.deleteProject(alice, projectFixture().id);
@@ -252,6 +271,47 @@ describe('Borrado de importaciones y proyectos', () => {
       'tsv e1.tsv',
       'archivo k2.csv',
     ]);
+  });
+
+  it('borrar el proyecto retira los archivos de su feed, después del commit', async () => {
+    repository.deleteProject.mockImplementationOnce(async () => {
+      steps.push('commit');
+      return {
+        imports: [
+          { snapshotId: 's1', artifactKey: 'k1.csv', exportArtifactKeys: [] },
+        ],
+        feedArtifactKeys: ['v1.tsv', 'v2.tsv'],
+      };
+    });
+
+    await service.deleteProject(alice, projectFixture().id);
+
+    expect(steps).toEqual([
+      'commit',
+      'archivo k1.csv',
+      'feed v1.tsv',
+      'feed v2.tsv',
+    ]);
+  });
+
+  it('un fallo al retirar un archivo del feed se registra y sigue con los demás', async () => {
+    repository.deleteProject.mockImplementationOnce(async () => ({
+      imports: [],
+      feedArtifactKeys: ['v1.tsv', 'v2.tsv'],
+    }));
+    store.removeFeedVersion.mockRejectedValueOnce(new Error('EIO'));
+    const logError = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(
+      service.deleteProject(alice, projectFixture().id),
+    ).resolves.toBeUndefined();
+    expect(store.removeFeedVersion).toHaveBeenCalledWith('v2.tsv');
+    expect(logError).toHaveBeenCalledWith({
+      code: 'FEED_ORPHAN_RETAINED',
+      projectId: projectFixture().id,
+    });
   });
 
   it('un fallo al retirar un TSV se registra y no falla la petición', async () => {

@@ -19,6 +19,13 @@ export type ProductsTsv = Readonly<{
   rowCount: number;
 }>;
 
+/**
+ * IANA registra `text/tab-separated-values` con el juego de caracteres como
+ * parámetro (F21 de reviews&exports). Lo usan la descarga privada y la URL
+ * pública del feed.
+ */
+export const PRODUCTS_TSV_TYPE = 'text/tab-separated-values; charset=utf-8';
+
 /** `id` sale de la columna identificadora; el resto, de los atributos del perfil. */
 type Column = 'id' | ProductAttribute;
 

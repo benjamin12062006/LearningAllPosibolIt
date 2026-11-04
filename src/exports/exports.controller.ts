@@ -15,9 +15,7 @@ import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
 import { CreateExportDto } from './exports.dto.js';
 import { ExportsService } from './exports.service.js';
-
-/** IANA registra `text/tab-separated-values` con el juego de caracteres como parámetro (F21). */
-const PRODUCTS_TSV_TYPE = 'text/tab-separated-values; charset=utf-8';
+import { PRODUCTS_TSV_TYPE } from './products-tsv.js';
 
 @Controller('projects/:projectId/exports')
 @UseGuards(DescopeSessionGuard)

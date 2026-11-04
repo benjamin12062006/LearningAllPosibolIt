@@ -25,7 +25,7 @@ import {
   type ArtifactStoreOptions,
 } from './artifacts.types.js';
 
-type Folder = 'tmp' | 'artifacts' | 'exports';
+type Folder = 'tmp' | 'artifacts' | 'exports' | 'feeds';
 
 /** Carpetas donde un archivo queda guardado (no temporal). */
 type FinalFolder = Exclude<Folder, 'tmp'>;
@@ -40,23 +40,27 @@ export type WrittenArtifact = Readonly<{
 }>;
 
 /**
- * `<uuid>.csv` (importaciones) y `<uuid>.tsv` (exportaciones): impiden que una
- * clave salga de su carpeta (`../`) o apunte a otro archivo.
+ * `<uuid>.csv` (importaciones) y `<uuid>.tsv` (exportaciones y versiones del
+ * feed): impiden que una clave salga de su carpeta (`../`) o apunte a otro
+ * archivo.
  */
 const IMPORT_KEY_PATTERN = /^[0-9a-f-]{36}\.csv$/;
-const EXPORT_KEY_PATTERN = /^[0-9a-f-]{36}\.tsv$/;
+const TSV_KEY_PATTERN = /^[0-9a-f-]{36}\.tsv$/;
 
 /** `tmp/` recibe los dos tipos; cada carpeta final, solo el suyo. */
 const KEY_PATTERNS: Record<Folder, readonly RegExp[]> = {
-  tmp: [IMPORT_KEY_PATTERN, EXPORT_KEY_PATTERN],
+  tmp: [IMPORT_KEY_PATTERN, TSV_KEY_PATTERN],
   artifacts: [IMPORT_KEY_PATTERN],
-  exports: [EXPORT_KEY_PATTERN],
+  exports: [TSV_KEY_PATTERN],
+  feeds: [TSV_KEY_PATTERN],
 };
 
 /**
  * Archivos privados. Las subidas de las importaciones llegan a `tmp/` y, al
  * aceptarse, se enlazan en `artifacts/`, que es lo que lee el worker. Los TSV de
- * las exportaciones se escriben en `tmp/` y se enlazan en `exports/`.
+ * las exportaciones se escriben en `tmp/` y se enlazan en `exports/`. Al
+ * publicar, el TSV de una exportación se enlaza también en `feeds/` como
+ * archivo propio de la versión del feed.
  */
 @Injectable()
 export class ArtifactStore implements OnModuleInit {
@@ -66,13 +70,17 @@ export class ArtifactStore implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    for (const folder of ['', 'tmp', 'artifacts', 'exports']) {
+    for (const folder of ['', 'tmp', 'artifacts', 'exports', 'feeds']) {
       await mkdir(join(this.options.root, folder), {
         recursive: true,
         mode: 0o700,
       });
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Importaciones: subida en tmp/, aceptación en artifacts/ y lectura del worker.
+  // ---------------------------------------------------------------------------
 
   /** Guarda la subida en `tmp/` mientras cuenta los bytes y calcula su hash. */
   async receive(source: Readable, signal?: AbortSignal) {
@@ -116,6 +124,31 @@ export class ArtifactStore implements OnModuleInit {
     return this.linkInto('artifacts', temporary, key);
   }
 
+  openRead(key: string, signal?: AbortSignal): Readable {
+    return createReadStream(this.pathOf('artifacts', key), { signal });
+  }
+
+  /** Artefactos guardados y la fecha de su última escritura, para la limpieza. */
+  listArtifacts(): Promise<StoredArtifact[]> {
+    return this.list('artifacts');
+  }
+
+  removeArtifact(key: string) {
+    return this.remove('artifacts', key);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Temporales: los usan las dos features.
+  // ---------------------------------------------------------------------------
+
+  removeTemporary(key: string) {
+    return this.remove('tmp', key);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Exportaciones: TSV generados por la API en exports/.
+  // ---------------------------------------------------------------------------
+
   /**
    * Guarda un TSV generado por la API (plan de reviews y exports, D6). Solo lo
    * deja en `exports/` si al releerlo coincide en tamaño y SHA-256 con lo
@@ -131,13 +164,9 @@ export class ArtifactStore implements OnModuleInit {
 
     await this.writeTemporary(written.key, content);
     await this.moveToExports(written.key);
-    await this.verifyExport(written);
+    await this.verifyStored('exports', written);
 
     return written;
-  }
-
-  openRead(key: string, signal?: AbortSignal): Readable {
-    return createReadStream(this.pathOf('artifacts', key), { signal });
   }
 
   /**
@@ -151,26 +180,78 @@ export class ArtifactStore implements OnModuleInit {
     return file.createReadStream();
   }
 
-  /** Artefactos guardados y la fecha de su última escritura, para la limpieza. */
-  listArtifacts(): Promise<StoredArtifact[]> {
-    return this.list('artifacts');
-  }
-
   /** TSV guardados y la fecha de su última escritura, para la limpieza. */
   listExports(): Promise<StoredArtifact[]> {
     return this.list('exports');
   }
 
-  removeTemporary(key: string) {
-    return this.remove('tmp', key);
-  }
-
-  removeArtifact(key: string) {
-    return this.remove('artifacts', key);
-  }
-
   removeExport(key: string) {
     return this.remove('exports', key);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Versiones del feed: enlaces de TSV de exportaciones en feeds/.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Da al TSV de una exportación un segundo nombre, `feeds/<versionKey>`, sin
+   * copiar bytes (plan feeds&publications, D5; F30). Borrar después la
+   * exportación no borra el archivo de la versión. Se relee antes de devolverlo:
+   * la versión solo se publica con un archivo completo y verificado.
+   */
+  async linkFeedVersion(
+    exportKey: string,
+    versionKey: string,
+    expected: Pick<WrittenArtifact, 'byteSize' | 'checksum'>,
+  ): Promise<WrittenArtifact> {
+    const linked = {
+      key: versionKey,
+      byteSize: expected.byteSize,
+      checksum: expected.checksum,
+    };
+
+    // `link` es exclusivo: una colisión no reemplaza un archivo ya existente.
+    await link(
+      this.pathOf('exports', exportKey),
+      this.pathOf('feeds', versionKey),
+    );
+    try {
+      await this.syncDirectory('feeds');
+    } catch (error) {
+      await this.removeFeedVersion(versionKey);
+      throw error;
+    }
+    await this.verifyStored('feeds', linked);
+
+    return linked;
+  }
+
+  /** Abre el archivo antes de responder, por el mismo motivo que `openExport`. */
+  async openFeedVersion(key: string): Promise<Readable> {
+    const file = await open(this.pathOf('feeds', key), 'r');
+    return file.createReadStream();
+  }
+
+  /** Archivos de versiones y la fecha de su última escritura, para la limpieza. */
+  listFeedVersions(): Promise<StoredArtifact[]> {
+    return this.list('feeds');
+  }
+
+  removeFeedVersion(key: string) {
+    return this.remove('feeds', key);
+  }
+
+  private async linkInto(folder: FinalFolder, temporary: string, key: string) {
+    // `link` es exclusivo: una colisión no reemplaza un archivo ya existente.
+    await link(this.pathOf('tmp', temporary), this.pathOf(folder, key));
+    try {
+      await this.syncDirectory(folder);
+      await this.removeTemporary(temporary);
+    } catch (error) {
+      // El enlace es de esta operación y todavía no tiene referencia en SQL.
+      await this.remove(folder, key);
+      throw error;
+    }
   }
 
   private async list(folder: FinalFolder): Promise<StoredArtifact[]> {
@@ -191,19 +272,6 @@ export class ArtifactStore implements OnModuleInit {
       }
     }
     return stored;
-  }
-
-  private async linkInto(folder: FinalFolder, temporary: string, key: string) {
-    // `link` es exclusivo: una colisión no reemplaza un archivo ya existente.
-    await link(this.pathOf('tmp', temporary), this.pathOf(folder, key));
-    try {
-      await this.syncDirectory(folder);
-      await this.removeTemporary(temporary);
-    } catch (error) {
-      // El enlace es de esta operación y todavía no tiene referencia en SQL.
-      await this.remove(folder, key);
-      throw error;
-    }
   }
 
   private async writeTemporary(key: string, content: Buffer) {
@@ -230,18 +298,15 @@ export class ArtifactStore implements OnModuleInit {
   }
 
   /**
-   * Si releer el archivo falla, queda en `exports/` sin referencia y la limpieza
-   * de huérfanos lo retira (D6).
+   * Si releer el archivo falla, queda sin referencia y la limpieza de huérfanos
+   * lo retira (plan de reviews y exports, D6).
    */
-  private async verifyExport(written: WrittenArtifact) {
-    const stored = await readFile(this.pathOf('exports', written.key));
-    if (
-      stored.length === written.byteSize &&
-      sha256(stored) === written.checksum
-    ) {
+  private async verifyStored(folder: FinalFolder, written: WrittenArtifact) {
+    const stored = await readFile(this.pathOf(folder, written.key));
+    if (isSameContent(stored, written)) {
       return;
     }
-    await this.removeExport(written.key);
+    await this.remove(folder, written.key);
     throw new Error('El archivo guardado no coincide con el generado.');
   }
 
@@ -280,6 +345,13 @@ function isValidKey(folder: Folder, key: string) {
 
 function sha256(content: Buffer) {
   return createHash('sha256').update(content).digest('hex');
+}
+
+/** Mismo tamaño y misma suma SHA-256 que lo que se generó. */
+function isSameContent(stored: Buffer, written: WrittenArtifact) {
+  return (
+    stored.length === written.byteSize && sha256(stored) === written.checksum
+  );
 }
 
 /** El archivo no existe (`ENOENT`). */

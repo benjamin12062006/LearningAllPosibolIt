@@ -258,6 +258,8 @@ Los recursos ajenos devuelven `404`, igual que en projects e imports.
 
 Fuera de este plan. Se añadirá en un plan `02` cuando REST esté verificado, siguiendo la capa separada existente. [F14]
 
+Actualización 2026-11-02: el usuario aplazó GraphQL al final del backend; el «plan `02`» se sustituye por el [plan aplazado de sincronización con GraphQL](../graphql&rulesets-evaluations-exports/01-plan-aplazado-sincronizacion-graphql.md).
+
 ### D13 — Pruebas
 
 Detalle en «Comprobación prevista». Los DTO se prueban con `plainToInstance` + `validate` [RC3] y buscando el error por `property` dentro de `children` [RC4, RC5, C13]. El motor, sin Nest. La integración, con PGlite y el E2E, con dos propietarios, como en la feature anterior. [F15]

@@ -22,7 +22,9 @@ export function configureHttp(app: INestApplication) {
       exceptionFactory: validationException,
     }),
   );
-  app.setGlobalPrefix('api');
+  // La URL pública del feed se sirve en `/feeds/<token>.tsv`, fuera de `/api`;
+  // su controlador además es neutral a la versión (plan feeds&publications, D7).
+  app.setGlobalPrefix('api', { exclude: ['feeds/:file'] });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.enableCors({
     origin: [

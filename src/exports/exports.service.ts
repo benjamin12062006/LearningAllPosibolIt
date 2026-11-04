@@ -7,7 +7,7 @@ import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import { ProjectsService } from '../projects/projects.service.js';
 import { UsersService } from '../users/users.service.js';
-import { assertCanExport, type ExportApproval } from './export-approval.js';
+import { assertCanExport } from './export-approval.js';
 import type { CreateExportDto } from './exports.dto.js';
 import { ExportsRepository } from './exports.repository.js';
 import type { ExportView, NewExport } from './exports.types.js';
@@ -38,30 +38,40 @@ export class ExportsService {
     projectId: string,
     input: CreateExportDto,
   ) {
-    const owner = await this.usersService.findCurrent(identity);
-    await this.projectsService.findOwned(identity, projectId);
-    const approval = toApproval(input);
-    assertCanExport(
-      await this.repository.findEvaluationToExport(
-        owner.id,
-        projectId,
-        input.evaluationId,
-      ),
-      approval,
+    const ownerId = await this.ownerOf(identity, projectId);
+    return this.createForOwner(ownerId, projectId, input);
+  }
+
+  /**
+   * Lo mismo que `create`, con el propietario ya resuelto: lo usa la
+   * actualización automática del feed, que aprueba con la política (D11 de
+   * feeds&publications) lo que el operador aprobaría a mano.
+   */
+  async createForOwner(
+    ownerId: string,
+    projectId: string,
+    input: CreateExportDto,
+  ) {
+    const evaluation = await this.repository.findEvaluationToExport(
+      ownerId,
+      projectId,
+      input.evaluationId,
     );
+    // El body ya tiene la forma de la aprobación: suma y conteos aceptados.
+    assertCanExport(evaluation, input);
 
     const saved =
       (await this.findExisting(input.evaluationId)) ??
       (await this.generateAndSave({
-        ownerId: owner.id,
+        ownerId,
         projectId,
         evaluationId: input.evaluationId,
-        approval,
+        approval: input,
       }));
 
     return {
       ...saved,
-      downloadUrl: `/api/v1/projects/${projectId}/exports/${saved.export.id}/productos.tsv`,
+      downloadUrl: downloadUrlOf(projectId, saved.export.id),
     };
   }
 
@@ -70,10 +80,9 @@ export class ExportsService {
     projectId: string,
     exportId: string,
   ) {
-    const owner = await this.usersService.findCurrent(identity);
-    await this.projectsService.findOwned(identity, projectId);
+    const ownerId = await this.ownerOf(identity, projectId);
     const found = await this.repository.findByOwner(
-      owner.id,
+      ownerId,
       projectId,
       exportId,
     );
@@ -89,10 +98,9 @@ export class ExportsService {
     projectId: string,
     exportId: string,
   ): Promise<ExportDownload> {
-    const owner = await this.usersService.findCurrent(identity);
-    await this.projectsService.findOwned(identity, projectId);
+    const ownerId = await this.ownerOf(identity, projectId);
     const file = await this.repository.findFileByOwner(
-      owner.id,
+      ownerId,
       projectId,
       exportId,
     );
@@ -103,6 +111,16 @@ export class ExportsService {
       content: await this.openFile(exportId, file.artifactKey),
       byteSize: file.byteSize,
     };
+  }
+
+  /**
+   * El usuario actual, después de comprobar que el proyecto es suyo: si no lo
+   * es, `findOwned` responde 404 antes de buscar nada más.
+   */
+  private async ownerOf(identity: AuthenticatedIdentity, projectId: string) {
+    const owner = await this.usersService.findCurrent(identity);
+    await this.projectsService.findOwned(identity, projectId);
+    return owner.id;
   }
 
   private async findExisting(
@@ -191,10 +209,6 @@ export class ExportsService {
   }
 }
 
-function toApproval(input: CreateExportDto): ExportApproval {
-  return {
-    resultChecksum: input.resultChecksum,
-    acceptedInvalidCount: input.acceptedInvalidCount,
-    acceptedExcludedCount: input.acceptedExcludedCount,
-  };
+function downloadUrlOf(projectId: string, exportId: string) {
+  return `/api/v1/projects/${projectId}/exports/${exportId}/productos.tsv`;
 }

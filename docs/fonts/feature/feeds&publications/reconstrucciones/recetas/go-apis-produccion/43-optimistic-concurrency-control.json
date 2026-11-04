@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 7 Posts CRUD/43. Optimistic Concurrency Control.md",
+  "previous": [],
+  "objective": "Evitar que dos actualizaciones simultáneas del mismo post se pisen: añadir una columna `version`, leerla junto al post, actualizar solo si sigue siendo la leída (`WHERE version = $n`), incrementarla en la misma sentencia y devolver la nueva con `RETURNING`. Si no se actualiza ninguna fila, la operación falla.",
+  "initial": "API de posts en Go con PostgreSQL. El handler PATCH lee el post (GetByID en un middleware de contexto), cambia los campos recibidos y llama a `Update` del store, que hace un UPDATE sin condición de versión. Un script lanza dos peticiones a la vez: una cambia el título y otra el contenido.",
+  "certainty": "La transcripción está traducida automáticamente al alemán; los nombres de código se normalizan desde esa traducción («Abfrage Zeile Kontext» → QueryRowContext, «Abwurfsäule» → DROP COLUMN). El mecanismo (columna, condición, incremento, RETURNING y error por fila no encontrada) es explícito. No se ven en pantalla la firma exacta de `Update`, los nombres de las columnas `title`/`content` ni el número de la migración; se escriben según lo que se narra. El instructor deja la respuesta 409 como reto y no la implementa: en la clase el conflicto acaba en un 500.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 17,
+      "phrase": "Und dann wird dieser Typ die Inhalte aktualisieren",
+      "change": "Dos usuarios actualizan a la vez el mismo post: uno el título y otro el contenido.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E2",
+      "line": 21,
+      "phrase": "Sehen Sie das Problem hier?",
+      "change": "El segundo escribe sobre una copia leída antes del primer cambio y lo pierde (actualización perdida).",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E3",
+      "line": 31,
+      "phrase": "um theoretisch vor der Aktualisierung die Version hinzuzufügen",
+      "change": "Solución: una columna de versión en la tabla de posts.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E4",
+      "line": 35,
+      "phrase": "Und das wird scheitern, weil wir eine Versionskontrolle durchführen werden.",
+      "change": "Si la versión leída ya no es la guardada, la actualización falla.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E5",
+      "line": 37,
+      "phrase": "Denn die Isolationsebene von SQL in unserer Datenbank ist hoch genug",
+      "change": "Funciona porque la condición se evalúa en la propia sentencia UPDATE de cada transacción.",
+      "certainty": "Explicación del instructor; no se demuestra en la clase."
+    },
+    {
+      "id": "E6",
+      "line": 39,
+      "phrase": "Spalte Version, die ein int sein wird",
+      "change": "Migración up: ALTER TABLE posts ADD COLUMN version INT DEFAULT 0.",
+      "certainty": "Explícito; valor por defecto narrado como «Null» por la traducción, interpretado como 0."
+    },
+    {
+      "id": "E7",
+      "line": 39,
+      "phrase": "Die Abwurfsäule wird die Version sein",
+      "change": "Migración down: ALTER TABLE posts DROP COLUMN version.",
+      "certainty": "Normalizado desde la traducción."
+    },
+    {
+      "id": "E8",
+      "line": 41,
+      "phrase": "dass wir ein wo Version gleich tun",
+      "change": "UPDATE … WHERE id = $n AND version = $m con la versión del post leído.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E9",
+      "line": 41,
+      "phrase": "Fügen wir die um-Version am Ende hinzu",
+      "change": "GetByID también selecciona la columna version.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E10",
+      "line": 43,
+      "phrase": "eine Rückgabe der Version",
+      "change": "RETURNING version para rellenar la estructura con la versión nueva.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E11",
+      "line": 45,
+      "phrase": "Lassen Sie uns eine Abfrage Zeile Kontext zu tun",
+      "change": "ExecContext se cambia por QueryRowContext(…).Scan(&post.Version).",
+      "certainty": "Normalizado desde la traducción."
+    },
+    {
+      "id": "E12",
+      "line": 47,
+      "phrase": "es wird ein Fehler nicht gefunden",
+      "change": "sql.ErrNoRows se traduce a ErrNotFound; el resto de errores se devuelve igual.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E13",
+      "line": 51,
+      "phrase": "die Version gleich der Version plus eins zu setzen",
+      "change": "SET … version = version + 1 en la misma sentencia.",
+      "certainty": "Explícito."
+    },
+    {
+      "id": "E14",
+      "line": 55,
+      "phrase": "Bei diesem Fehler könnten Sie sogar eine 409 zurückgeben",
+      "change": "Recomendación (no implementada): responder 409 Conflict al conflicto de versión.",
+      "certainty": "Explícito; queda como reto."
+    }
+  ],
+  "phases": [
+    {
+      "title": "Reproducir la actualización perdida",
+      "code": "// Dos peticiones PATCH simultáneas sobre el mismo post:\n// A envía { \"title\": \"new title\" } y B envía { \"content\": \"new content\" }.\n// Las dos leen el post antes de escribir, así que la última pisa el cambio de la otra.",
+      "why": "El handler lee, modifica en memoria y escribe la fila entera; entre leer y escribir otra petición puede haber cambiado el registro.",
+      "check": "Tras varias ejecuciones, a veces solo queda el título nuevo y a veces solo el contenido nuevo.",
+      "evidence": [
+        "E1",
+        "E2"
+      ]
+    },
+    {
+      "title": "Columna de versión",
+      "code": "-- up\nALTER TABLE posts ADD COLUMN version INT DEFAULT 0;\n\n-- down\nALTER TABLE posts DROP COLUMN version;",
+      "why": "La versión identifica qué estado del registro leyó cada petición.",
+      "check": "Tras migrar, todos los posts tienen version = 0.",
+      "evidence": [
+        "E3",
+        "E6",
+        "E7"
+      ]
+    },
+    {
+      "title": "Leer la versión con el post",
+      "code": "query := `\n\tSELECT /* columnas que ya leía GetByID */, version\n\tFROM posts\n\tWHERE id = $1\n`",
+      "why": "Quien actualiza necesita saber qué versión tenía el post cuando lo leyó.",
+      "check": "El post del contexto lleva su versión.",
+      "evidence": [
+        "E9"
+      ]
+    },
+    {
+      "title": "Actualizar solo si la versión no cambió",
+      "code": "func (s *PostStore) Update(ctx context.Context, post *Post) error {\n\tquery := `\n\t\tUPDATE posts\n\t\tSET title = $1, content = $2, version = version + 1\n\t\tWHERE id = $3 AND version = $4\n\t\tRETURNING version\n\t`\n\n\terr := s.db.QueryRowContext(ctx, query, post.Title, post.Content, post.ID, post.Version).Scan(&post.Version)\n\tif err != nil {\n\t\tswitch {\n\t\tcase errors.Is(err, sql.ErrNoRows):\n\t\t\treturn ErrNotFound\n\t\tdefault:\n\t\t\treturn err\n\t\t}\n\t}\n\n\treturn nil\n}",
+      "why": "La comprobación y el incremento ocurren en una sola sentencia: si otra petición ya subió la versión, la condición no encuentra la fila y no se escribe nada. RETURNING devuelve la versión nueva sin otra consulta.",
+      "check": "Con dos peticiones simultáneas, una responde 200 y la otra falla; el registro conserva un cambio completo, nunca una mezcla.",
+      "evidence": [
+        "E4",
+        "E5",
+        "E8",
+        "E10",
+        "E11",
+        "E12",
+        "E13"
+      ]
+    },
+    {
+      "title": "Responder al conflicto",
+      "code": "// Reto propuesto: en el handler, ante ErrNotFound por conflicto de versión,\n// responder 409 Conflict en lugar de 500.",
+      "why": "El cliente debe saber que su copia estaba desactualizada y volver a leer.",
+      "check": "En la clase el conflicto aún aparece como 500 en los logs.",
+      "evidence": [
+        "E14"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "cmd/migrate/migrations/XXXXXX_add_version_to_posts.up.sql y .down.sql",
+      "language": "sql",
+      "code": "-- up\nALTER TABLE posts ADD COLUMN version INT DEFAULT 0;\n\n-- down\nALTER TABLE posts DROP COLUMN version;",
+      "provenance": "E6, E7; nombre de archivo y número no visibles."
+    },
+    {
+      "path": "internal/store/posts.go (Update)",
+      "language": "go",
+      "code": "func (s *PostStore) Update(ctx context.Context, post *Post) error {\n\tquery := `\n\t\tUPDATE posts\n\t\tSET title = $1, content = $2, version = version + 1\n\t\tWHERE id = $3 AND version = $4\n\t\tRETURNING version\n\t`\n\n\terr := s.db.QueryRowContext(ctx, query, post.Title, post.Content, post.ID, post.Version).Scan(&post.Version)\n\tif err != nil {\n\t\tswitch {\n\t\tcase errors.Is(err, sql.ErrNoRows):\n\t\t\treturn ErrNotFound\n\t\tdefault:\n\t\t\treturn err\n\t\t}\n\t}\n\n\treturn nil\n}",
+      "provenance": "E8, E10–E13; firma y columnas según lo narrado."
+    }
+  ],
+  "temporary": "El script de concurrencia con una WaitGroup y dos peticiones al post 13 ya estaba preparado antes de la clase y se ejecuta varias veces porque el fallo depende del orden de las goroutines.",
+  "mental": "Concurrencia optimista: cada escritura dice qué versión leyó; la base de datos solo acepta la escritura si esa versión sigue vigente y la incrementa en la misma sentencia. Si no coincide, nadie se bloquea: la petición tardía falla y debe volver a leer."
+}

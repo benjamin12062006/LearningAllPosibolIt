@@ -535,8 +535,9 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
       await worker.runUntilIdle();
 
       const deleted = await repository.deleteProject(ownerId, projectId);
-      expect(deleted).toHaveLength(2);
-      expect(deleted).toEqual(
+      expect(deleted.feedArtifactKeys).toEqual([]);
+      expect(deleted.imports).toHaveLength(2);
+      expect(deleted.imports).toEqual(
         expect.arrayContaining([
           {
             snapshotId: first.snapshotId,

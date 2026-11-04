@@ -18,6 +18,19 @@ type EvaluationToExportRow = {
   hasNewerEvaluation: boolean;
 };
 
+/** Una evaluación terminada: la base exige los tres conteos juntos. */
+type CountedEvaluationRow = EvaluationToExportRow & {
+  validCount: number;
+  invalidCount: number;
+  excludedCount: number;
+};
+
+/** Qué evaluación se lee: la del proyecto de este propietario. */
+type EvaluationTarget = Pick<
+  NewExport,
+  'ownerId' | 'projectId' | 'evaluationId'
+>;
+
 /** El archivo de una exportación: solo lo ve el servidor. */
 export type ExportFile = { artifactKey: string; byteSize: number };
 
@@ -41,9 +54,6 @@ const EXPORT_COLUMNS = Prisma.sql`
   x.created_at AS "createdAt"
 `;
 
-/** Claves por consulta en la limpieza: el mismo lote que la de importaciones. */
-const ARTIFACT_KEYS_PER_QUERY = 500;
-
 /**
  * FOR SHARE sobre la evaluación y su snapshot: borrar una importación o un
  * proyecto los bloquea con FOR UPDATE, así que o el borrado espera a que se
@@ -51,20 +61,37 @@ const ARTIFACT_KEYS_PER_QUERY = 500;
  */
 const LOCK_FOR_EXPORT = Prisma.sql`FOR SHARE OF e, s`;
 
+/** Claves por consulta en la limpieza: el mismo lote que la de importaciones. */
+const ARTIFACT_KEYS_PER_QUERY = 500;
+
 @Injectable()
 export class ExportsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ---------------------------------------------------------------------------
+  // Exportar: comprobar la evaluación, leer sus productos y guardar la fila.
+  // ---------------------------------------------------------------------------
+
   /** La evaluación del proyecto del propietario con lo que comprueba D1–D3. */
-  async findEvaluationToExport(
+  findEvaluationToExport(
     ownerId: string,
     projectId: string,
     evaluationId: string,
   ): Promise<EvaluationToExport | null> {
-    const rows = await this.prisma.$queryRaw<EvaluationToExportRow[]>(
-      evaluationToExportQuery(ownerId, projectId, evaluationId, Prisma.empty),
+    return readEvaluationToExport(
+      this.prisma,
+      { ownerId, projectId, evaluationId },
+      Prisma.empty,
     );
-    return rows[0] ? toEvaluationToExport(rows[0]) : null;
+  }
+
+  /** Solo se llama tras comprobar que la evaluación es del propietario. */
+  async findByEvaluation(evaluationId: string): Promise<ExportView | null> {
+    const rows = await this.prisma.$queryRaw<ExportView[]>`
+      SELECT ${EXPORT_COLUMNS}
+      FROM estadistica_forms.exports x
+      WHERE x.evaluation_id = ${evaluationId}`;
+    return rows[0] ?? null;
   }
 
   /** Productos válidos en orden de `source_row`: como mucho 5.000. */
@@ -80,6 +107,26 @@ export class ExportsRepository {
       ORDER BY source_row`;
     return rows.map(toExportableRow);
   }
+
+  /**
+   * Guarda la exportación si la evaluación sigue pudiéndose exportar con esta
+   * aprobación. Devuelve `null` si otra petición guardó antes la exportación de
+   * la misma evaluación (índice único, D7).
+   */
+  async insert(record: NewExport): Promise<ExportView | null> {
+    try {
+      return await this.insertChecked(record);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Consultar y descargar una exportación del propietario.
+  // ---------------------------------------------------------------------------
 
   async findByOwner(
     ownerId: string,
@@ -113,6 +160,10 @@ export class ExportsRepository {
     return rows[0] ?? null;
   }
 
+  // ---------------------------------------------------------------------------
+  // Limpieza de huérfanos al arrancar.
+  // ---------------------------------------------------------------------------
+
   /** De las claves dadas, las que todavía usa alguna exportación. */
   async findReferencedArtifactKeys(keys: string[]): Promise<Set<string>> {
     const referenced = new Set<string>();
@@ -129,49 +180,18 @@ export class ExportsRepository {
     return referenced;
   }
 
-  /** Solo se llama tras comprobar que la evaluación es del propietario. */
-  async findByEvaluation(evaluationId: string): Promise<ExportView | null> {
-    const rows = await this.prisma.$queryRaw<ExportView[]>`
-      SELECT ${EXPORT_COLUMNS}
-      FROM estadistica_forms.exports x
-      WHERE x.evaluation_id = ${evaluationId}`;
-    return rows[0] ?? null;
-  }
-
-  /**
-   * Guarda la exportación si la evaluación sigue pudiéndose exportar con esta
-   * aprobación. Devuelve `null` si otra petición guardó antes la exportación de
-   * la misma evaluación (índice único, D7).
-   */
-  async insert(record: NewExport): Promise<ExportView | null> {
-    try {
-      return await this.insertChecked(record);
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        return null;
-      }
-      throw error;
-    }
-  }
-
   /**
    * Repite D1–D3 con la evaluación bloqueada: entre la primera comprobación y
    * este momento pudo terminar otra evaluación o borrarse el snapshot.
    */
   private insertChecked(record: NewExport) {
     return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<EvaluationToExportRow[]>(
-        evaluationToExportQuery(
-          record.ownerId,
-          record.projectId,
-          record.evaluationId,
-          LOCK_FOR_EXPORT,
-        ),
+      const evaluation = await readEvaluationToExport(
+        tx,
+        record,
+        LOCK_FOR_EXPORT,
       );
-      assertCanExport(
-        rows[0] ? toEvaluationToExport(rows[0]) : null,
-        record.approval,
-      );
+      assertCanExport(evaluation, record.approval);
 
       // Con la API del modelo, el índice único llega como P2002 (trampa 3 del traspaso).
       const created = await tx.export.create({
@@ -195,15 +215,26 @@ export class ExportsRepository {
 }
 
 /**
+ * La misma lectura sirve fuera de la transacción (sin bloqueo) y dentro de ella
+ * (con `LOCK_FOR_EXPORT`). `null`: la evaluación no existe o no es del proyecto
+ * del propietario.
+ */
+async function readEvaluationToExport(
+  client: Prisma.TransactionClient,
+  target: EvaluationTarget,
+  lock: Prisma.Sql,
+): Promise<EvaluationToExport | null> {
+  const rows = await client.$queryRaw<EvaluationToExportRow[]>(
+    evaluationToExportQuery(target, lock),
+  );
+  return rows[0] ? toEvaluationToExport(rows[0]) : null;
+}
+
+/**
  * «Más reciente» ordena por `created_at` (ISO, comparable como texto) y desempata
  * por `id`. Una evaluación posterior `failed` no reemplaza a nadie (D3).
  */
-function evaluationToExportQuery(
-  ownerId: string,
-  projectId: string,
-  evaluationId: string,
-  lock: Prisma.Sql,
-) {
+function evaluationToExportQuery(target: EvaluationTarget, lock: Prisma.Sql) {
   return Prisma.sql`
     SELECT
       e.status,
@@ -224,9 +255,9 @@ function evaluationToExportQuery(
     JOIN estadistica_forms.projects p ON p.id = e.project_id
     JOIN estadistica_forms.catalog_snapshots s
       ON s.project_id = e.project_id AND s.id = e.snapshot_id
-    WHERE e.id = ${evaluationId}
-      AND p.id = ${projectId}
-      AND p.owner_id = ${ownerId}
+    WHERE e.id = ${target.evaluationId}
+      AND p.id = ${target.projectId}
+      AND p.owner_id = ${target.ownerId}
     ${lock}`;
 }
 
@@ -241,13 +272,8 @@ function toEvaluationToExport(row: EvaluationToExportRow): EvaluationToExport {
   };
 }
 
-/** La base exige los tres conteos juntos o ninguno (CHECK de evaluaciones). */
 function toCounts(row: EvaluationToExportRow) {
-  if (
-    row.validCount === null ||
-    row.invalidCount === null ||
-    row.excludedCount === null
-  ) {
+  if (!hasCounts(row)) {
     return null;
   }
   return {
@@ -255,6 +281,15 @@ function toCounts(row: EvaluationToExportRow) {
     invalid: row.invalidCount,
     excluded: row.excludedCount,
   };
+}
+
+/** La base exige los tres conteos juntos o ninguno (CHECK de evaluaciones). */
+function hasCounts(row: EvaluationToExportRow): row is CountedEvaluationRow {
+  return (
+    row.validCount !== null &&
+    row.invalidCount !== null &&
+    row.excludedCount !== null
+  );
 }
 
 /** Solo el worker escribe estas filas; una forma distinta es un error del backend. */

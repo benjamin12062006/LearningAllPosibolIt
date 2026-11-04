@@ -8,6 +8,8 @@ import { GraphqlApiModule } from './graphql/graphql-api.module.js';
 import { RulesetsModule } from './rulesets/rulesets.module.js';
 import { EvaluationsModule } from './evaluations/evaluations.module.js';
 import { ExportsModule } from './exports/exports.module.js';
+import { FeedRefreshesModule } from './feed-refreshes/feed-refreshes.module.js';
+import { FeedsModule } from './feeds/feeds.module.js';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { ExportsModule } from './exports/exports.module.js';
     RulesetsModule,
     EvaluationsModule,
     ExportsModule,
+    FeedsModule,
+    FeedRefreshesModule,
     GraphqlApiModule,
   ],
 })
