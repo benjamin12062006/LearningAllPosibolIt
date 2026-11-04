@@ -3,7 +3,12 @@ import { randomUUID } from 'node:crypto';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
-import { fetchWindow, resolvePage, toPage } from '../common/http/pagination.js';
+import {
+  fetchWindow,
+  resolvePage,
+  toPage,
+  type PaginationQueryDto,
+} from '../common/http/pagination.js';
 import { ProjectsService } from '../projects/projects.service.js';
 import { UsersService } from '../users/users.service.js';
 import { buildErrorsCsv } from './errors-csv.js';
@@ -102,6 +107,27 @@ export class EvaluationsService {
       query.outcome,
     );
     return toPage(rows, page);
+  }
+
+  /**
+   * Evaluaciones del proyecto, de la más reciente a la más antigua y sin
+   * muestra. Un proyecto ajeno responde 404 como en el resto de listados.
+   */
+  async findAll(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    query: PaginationQueryDto,
+  ) {
+    const owner = await this.usersService.findCurrent(identity);
+    await this.projectsService.findOwned(identity, projectId);
+
+    const page = resolvePage(query);
+    const evaluations = await this.repository.findAllByOwner(
+      owner.id,
+      projectId,
+      fetchWindow(page),
+    );
+    return toPage(evaluations, page);
   }
 
   async buildErrorsCsv(

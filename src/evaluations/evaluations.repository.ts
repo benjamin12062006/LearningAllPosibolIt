@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import type { PageRequest } from '../common/http/pagination.js';
 import {
   localizeStoredError,
   publicError,
@@ -72,6 +73,33 @@ type StoredEvaluationRow = {
 
 const ACTIVE_STATUSES: EvaluationStatus[] = ['queued', 'running'];
 
+/** Vista pública de una evaluación; la comparten la consulta de una y el listado. */
+const EVALUATION_COLUMNS = Prisma.sql`
+  e.id,
+  e.snapshot_id AS "snapshotId",
+  r.revision AS "rulesetRevision",
+  e.engine_version AS "engineVersion",
+  e.profile_version AS "profileVersion",
+  e.status,
+  e.total_count AS "totalCount",
+  e.valid_count AS "validCount",
+  e.invalid_count AS "invalidCount",
+  e.excluded_count AS "excludedCount",
+  e.result_checksum AS "resultChecksum",
+  e.created_at AS "createdAt",
+  e.started_at AS "startedAt",
+  e.finished_at AS "finishedAt",
+  e.error
+`;
+
+/** El proyecto da el propietario y la versión de reglas da su número de revisión. */
+const EVALUATION_SOURCE = Prisma.sql`
+  FROM estadistica_forms.evaluations e
+  JOIN estadistica_forms.projects p ON p.id = e.project_id
+  JOIN estadistica_forms.ruleset_versions r
+    ON r.project_id = e.project_id AND r.id = e.ruleset_version_id
+`;
+
 const ROW_COLUMNS = Prisma.sql`
   source_row AS "sourceRow",
   external_id AS "externalId",
@@ -107,30 +135,32 @@ export class EvaluationsRepository {
     evaluationId: string,
   ): Promise<EvaluationView | null> {
     const rows = await this.prisma.$queryRaw<EvaluationRow[]>`
-      SELECT
-        e.id,
-        e.snapshot_id AS "snapshotId",
-        r.revision AS "rulesetRevision",
-        e.engine_version AS "engineVersion",
-        e.profile_version AS "profileVersion",
-        e.status,
-        e.total_count AS "totalCount",
-        e.valid_count AS "validCount",
-        e.invalid_count AS "invalidCount",
-        e.excluded_count AS "excludedCount",
-        e.result_checksum AS "resultChecksum",
-        e.created_at AS "createdAt",
-        e.started_at AS "startedAt",
-        e.finished_at AS "finishedAt",
-        e.error
-      FROM estadistica_forms.evaluations e
-      JOIN estadistica_forms.projects p ON p.id = e.project_id
-      JOIN estadistica_forms.ruleset_versions r
-        ON r.project_id = e.project_id AND r.id = e.ruleset_version_id
+      SELECT ${EVALUATION_COLUMNS}
+      ${EVALUATION_SOURCE}
       WHERE e.id = ${evaluationId}
         AND p.id = ${projectId}
         AND p.owner_id = ${ownerId}`;
     return rows[0] ? toEvaluationView(rows[0]) : null;
+  }
+
+  /**
+   * Evaluaciones del proyecto, de la más reciente a la más antigua. El `id`
+   * desempata las creadas en el mismo instante para que las páginas no
+   * repitan ni salten filas.
+   */
+  async findAllByOwner(
+    ownerId: string,
+    projectId: string,
+    window: PageRequest,
+  ): Promise<EvaluationView[]> {
+    const rows = await this.prisma.$queryRaw<EvaluationRow[]>`
+      SELECT ${EVALUATION_COLUMNS}
+      ${EVALUATION_SOURCE}
+      WHERE p.id = ${projectId}
+        AND p.owner_id = ${ownerId}
+      ORDER BY e.created_at DESC, e.id DESC
+      LIMIT ${window.limit} OFFSET ${window.offset}`;
+    return rows.map(toEvaluationView);
   }
 
   /** Filas de una evaluación en orden de `source_row`, opcionalmente de un resultado. */

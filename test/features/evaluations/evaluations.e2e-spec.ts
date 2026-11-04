@@ -366,4 +366,96 @@ describe('Evaluaciones HTTP con guard, DTOs, worker y persistencia reales', () =
       }
     });
   });
+
+  describe('historial (plan 02)', () => {
+    type ListedEvaluation = { id: string; createdAt: string; status: string };
+
+    /** Más reciente primero; a igual fecha, el id mayor primero. */
+    const isNewestFirst = (items: ListedEvaluation[]) =>
+      items.every((item, index) => {
+        const next = items[index + 1];
+        if (!next) return true;
+        if (item.createdAt !== next.createdAt) {
+          return item.createdAt > next.createdAt;
+        }
+        return item.id > next.id;
+      });
+
+    /** Acepta y, si se pide, deja que el worker la termine antes de la siguiente. */
+    const evaluate = async (finish: boolean) => {
+      const { body } = await accept({ snapshotId, rulesetRevision: 1 }).expect(
+        202,
+      );
+      if (finish) await worker.runUntilIdle();
+      return body.evaluationId as string;
+    };
+
+    it('sin evaluaciones devuelve una lista vacía', async () => {
+      await getEvaluation(evaluationsOf(projectId))
+        .expect(200)
+        .expect(({ body }) =>
+          expect(body).toEqual({
+            evaluations: [],
+            page: { limit: 20, offset: 0, hasMore: false },
+          }),
+        );
+    });
+
+    it('lista de la más reciente a la más antigua, por páginas y sin muestra', async () => {
+      const created = [
+        await evaluate(true),
+        await evaluate(true),
+        await evaluate(false),
+      ];
+
+      const first = await getEvaluation(
+        `${evaluationsOf(projectId)}?limit=2`,
+      ).expect(200);
+      expect(first.body.page).toEqual({ limit: 2, offset: 0, hasMore: true });
+      expect(first.body.evaluations).toHaveLength(2);
+
+      const second = await getEvaluation(
+        `${evaluationsOf(projectId)}?limit=2&offset=2`,
+      ).expect(200);
+      expect(second.body.page).toEqual({ limit: 2, offset: 2, hasMore: false });
+
+      const listed: ListedEvaluation[] = [
+        ...first.body.evaluations,
+        ...second.body.evaluations,
+      ];
+      expect(listed.map((item) => item.id).sort()).toEqual([...created].sort());
+      expect(isNewestFirst(listed)).toBe(true);
+      expect(listed.find((item) => item.id === created[2])).toMatchObject({
+        status: 'queued',
+        counts: null,
+      });
+      expect(listed.find((item) => item.id === created[0])).toMatchObject({
+        snapshotId,
+        rulesetRevision: 1,
+        status: 'succeeded',
+        counts: { total: 6, valid: 2, invalid: 2, excluded: 2 },
+      });
+      expect(first.body).not.toHaveProperty('sample');
+      expect(first.body.evaluations[0]).not.toHaveProperty('sample');
+    });
+
+    it('protege el historial de Alice: 404 para Bob y para un proyecto inexistente', async () => {
+      await evaluate(true);
+      await getEvaluation(evaluationsOf(projectId), 'bob-session')
+        .expect(404)
+        .expect(({ body }) =>
+          expect(body).toMatchObject(publicError('PROJECT_NOT_FOUND')),
+        );
+      await getEvaluation(
+        evaluationsOf('00000000-0000-4000-8000-000000000009'),
+      ).expect(404);
+    });
+
+    it.each(['?limit=0', '?limit=101', '?offset=-1', '?status=queued'])(
+      'rechaza la consulta %s con 400',
+      async (query) => {
+        await getEvaluation(`${evaluationsOf(projectId)}${query}`).expect(400);
+      },
+    );
+  });
 });

@@ -27,6 +27,12 @@ GET {{apiUrl}}/projects/{{projectId}}/evaluations/{{evaluationId}}
 Accept: application/json
 Authorization: Bearer {{TEST_SESSION_JWT}}
 
+### Historial del proyecto, de la más reciente a la más antigua y sin muestra (respuesta { evaluations, page })
+# @name listEvaluations
+GET {{apiUrl}}/projects/{{projectId}}/evaluations?limit=20&offset=0
+Accept: application/json
+Authorization: Bearer {{TEST_SESSION_JWT}}
+
 ### Informe paginado: filas inválidas con problema y corrección sugerida en es/en (respuesta { rows, page })
 # @name listInvalidRows
 GET {{apiUrl}}/projects/{{projectId}}/evaluations/{{evaluationId}}/rows?outcome=invalid&limit=20&offset=0
