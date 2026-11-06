@@ -10,21 +10,25 @@ datasource db {
 }
 
 model AppUser {
-  id                   String                   @id
-  identityIssuer       String                   @map("identity_issuer")
-  identitySubject      String                   @map("identity_subject")
+  id                   String                       @id
+  identityIssuer       String                       @map("identity_issuer")
+  identitySubject      String                       @map("identity_subject")
   email                String?
-  displayName          String?                  @map("display_name")
-  createdAt            String                   @map("created_at")
-  updatedAt            String                   @map("updated_at")
+  displayName          String?                      @map("display_name")
+  createdAt            String                       @map("created_at")
+  updatedAt            String                       @map("updated_at")
   projects             Project[]
   personalOrganization Organization?
   memberships          OrganizationMember[]
-  sentInvitations      OrganizationInvitation[] @relation("InvitedBy")
-  acceptedInvitations  OrganizationInvitation[] @relation("AcceptedBy")
+  sentInvitations      OrganizationInvitation[]     @relation("InvitedBy")
+  acceptedInvitations  OrganizationInvitation[]     @relation("AcceptedBy")
   createdWorkbooks     Workbook[]
   createdWorksheets    Worksheet[]
   createdRevisions     WorksheetRevision[]
+  authoredChangesets   WorksheetChangeset[]
+  changesetDecisions   WorksheetChangesetDecision[]
+  operationReceipts    OperationReceipt[]
+  auditEvents          AuditEvent[]
 
   @@unique([identityIssuer, identitySubject])
   @@map("app_users")
@@ -273,6 +277,43 @@ model FeedVersion {
   @@schema("estadistica_forms")
 }
 
+/// Empresa dueña de proyectos (ampliación E1). `personalOwnerId` marca la
+/// organización personal de un usuario: como mucho una por usuario, lo que hace
+/// repetible el backfill de los propietarios heredados.
+model Organization {
+  id                String                   @id
+  name              String
+  personalOwnerId   String?                  @unique @map("personal_owner_id")
+  createdAt         String                   @map("created_at")
+  /// Nula = activa (E1.4). Una organización personal nunca se archiva.
+  archivedAt        String?                  @map("archived_at")
+  personalOwner     AppUser?                 @relation(fields: [personalOwnerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  members           OrganizationMember[]
+  invitations       OrganizationInvitation[]
+  projects          Project[]
+  operationReceipts OperationReceipt[]
+  auditEvents       AuditEvent[]
+
+  @@map("organizations")
+  @@schema("estadistica_forms")
+}
+
+/// Rol de una persona en una organización. La migración limita `role` a
+/// owner, admin, manager, editor y viewer.
+model OrganizationMember {
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  role           String
+  createdAt      String       @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user           AppUser      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, userId])
+  @@index([userId, organizationId], map: "idx_organization_members_user")
+  @@map("organization_members")
+  @@schema("estadistica_forms")
+}
+
 /// Actualización de un feed: un trabajo con lease y token de ejecución (plan
 /// feeds&publications, D2–D4). Los ids de snapshot, importación y evaluación se
 /// guardan antes de crearlos, por eso no son FK: al repetir un paso se ve si ya
@@ -303,63 +344,6 @@ model FeedRefresh {
   @@index([status, runAfter, id], map: "idx_feed_refreshes_queue")
   @@index([feedId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_feed_refreshes_feed_created")
   @@map("feed_refreshes")
-  @@schema("estadistica_forms")
-}
-
-/// Bandeja de salida (plan jobs&files, D8): efectos fuera de la base que se
-/// guardan en la transacción que los provoca y ejecuta después el relay, con
-/// lease y token. `done` es el recibo del manejador. Los `CHECK` de estado están
-/// en la migración.
-model OutboxEvent {
-  id             String    @id
-  type           String
-  payload        Json
-  status         String    @default("pending")
-  attempts       Int       @default(0)
-  runAfter       DateTime? @map("run_after") @db.Timestamptz(3)
-  leaseUntil     DateTime? @map("lease_until") @db.Timestamptz(3)
-  executionToken String?   @map("execution_token")
-  error          Json?
-  createdAt      String    @map("created_at")
-  processedAt    String?   @map("processed_at")
-
-  @@index([status, createdAt, id], map: "idx_outbox_events_ready")
-  @@map("outbox_events")
-  @@schema("estadistica_forms")
-}
-
-/// Empresa dueña de proyectos (ampliación E1). `personalOwnerId` marca la
-/// organización personal de un usuario: como mucho una por usuario, lo que hace
-/// repetible el backfill de los propietarios heredados.
-model Organization {
-  id              String                   @id
-  name            String
-  personalOwnerId String?                  @unique @map("personal_owner_id")
-  createdAt       String                   @map("created_at")
-  /// Nula = activa (E1.4). Una organización personal nunca se archiva.
-  archivedAt      String?                  @map("archived_at")
-  personalOwner   AppUser?                 @relation(fields: [personalOwnerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  members         OrganizationMember[]
-  invitations     OrganizationInvitation[]
-  projects        Project[]
-
-  @@map("organizations")
-  @@schema("estadistica_forms")
-}
-
-/// Rol de una persona en una organización. La migración limita `role` a
-/// owner, admin, manager, editor y viewer.
-model OrganizationMember {
-  organizationId String       @map("organization_id")
-  userId         String       @map("user_id")
-  role           String
-  createdAt      String       @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  user           AppUser      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: NoAction)
-
-  @@id([organizationId, userId])
-  @@index([userId, organizationId], map: "idx_organization_members_user")
-  @@map("organization_members")
   @@schema("estadistica_forms")
 }
 
@@ -430,6 +414,7 @@ model Worksheet {
   columns        WorksheetColumnVersion[]
   revisions      WorksheetRevision[]      @relation("WorksheetRevisions")
   rowVersions    WorksheetRowVersion[]
+  changesets     WorksheetChangeset[]
 
   @@unique([workbookId, nameNormalized])
   @@unique([organizationId, id])
@@ -450,6 +435,10 @@ model WorksheetColumnVersion {
   type           String
   position       Int
   required       Boolean
+  /// Solo en selección: `[{ id, label }]`.
+  options        Json?
+  /// Solo en calculada: `{ engine, expression, scale, rounding }`.
+  formula        Json?
   worksheet      Worksheet @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
 
   @@id([worksheetId, schemaVersion, columnId])
@@ -470,11 +459,15 @@ model WorksheetRevision {
   rowCount       Int                   @map("row_count")
   createdBy      String                @map("created_by")
   createdAt      String                @map("created_at")
+  /// Borrador que la produjo; nulo en la revisión `initialize`.
+  changesetId    String?               @unique @map("changeset_id")
   worksheet      Worksheet             @relation("WorksheetRevisions", fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
   creator        AppUser               @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
   headOf         Worksheet[]           @relation("WorksheetHead")
   openedRows     WorksheetRowVersion[] @relation("RowFrom")
   closedRows     WorksheetRowVersion[] @relation("RowTo")
+  changeset      WorksheetChangeset?   @relation("ChangesetRevision", fields: [organizationId, changesetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  baseOf         WorksheetChangeset[]  @relation("ChangesetBase")
 
   @@unique([worksheetId, sequence])
   @@unique([worksheetId, id])
@@ -501,5 +494,119 @@ model WorksheetRowVersion {
   @@id([worksheetId, rowId, fromSequence])
   @@index([worksheetId, fromSequence, sortKey, rowId], map: "idx_worksheet_row_versions_revision")
   @@map("worksheet_row_versions")
+  @@schema("estadistica_forms")
+}
+
+/// Borrador de cambios sobre una hoja (E4). `operations` es la lista
+/// normalizada; `draftVersion` es su ETag; `contentHash` existe desde el envío.
+model WorksheetChangeset {
+  id                String                       @id
+  organizationId    String                       @map("organization_id")
+  projectId         String                       @map("project_id")
+  worksheetId       String                       @map("worksheet_id")
+  authorId          String                       @map("author_id")
+  source            String
+  title             String
+  status            String
+  draftVersion      Int                          @map("draft_version")
+  baseRevisionId    String                       @map("base_revision_id")
+  baseSequence      Int                          @map("base_sequence")
+  baseSchemaVersion Int                          @map("base_schema_version")
+  operations        Json
+  contentHash       String?                      @map("content_hash")
+  appliedRevisionId String?                      @map("applied_revision_id")
+  createdAt         String                       @map("created_at")
+  updatedAt         String                       @map("updated_at")
+  worksheet         Worksheet                    @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  baseRevision      WorksheetRevision            @relation("ChangesetBase", fields: [worksheetId, baseRevisionId], references: [worksheetId, id], onDelete: Restrict, onUpdate: NoAction)
+  author            AppUser                      @relation(fields: [authorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  decisions         WorksheetChangesetDecision[]
+  /// Como mucho una: lo garantiza el índice único de `changeset_id`.
+  revisions         WorksheetRevision[]          @relation("ChangesetRevision")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, worksheetId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_worksheet_changesets_worksheet_created")
+  @@map("worksheet_changesets")
+  @@schema("estadistica_forms")
+}
+
+/// Decisión de revisión (solo se añaden filas). `policy` dice por qué se
+/// permitió: otra persona (`peer`) o empresa de un solo miembro.
+model WorksheetChangesetDecision {
+  id             String             @id
+  organizationId String             @map("organization_id")
+  changesetId    String             @map("changeset_id")
+  actorId        String             @map("actor_id")
+  decision       String
+  contentHash    String             @map("content_hash")
+  draftVersion   Int                @map("draft_version")
+  headRevisionId String             @map("head_revision_id")
+  policy         String
+  reason         String?
+  createdAt      String             @map("created_at")
+  changeset      WorksheetChangeset @relation(fields: [organizationId, changesetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  actor          AppUser            @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([changesetId, createdAt], map: "idx_worksheet_changeset_decisions_changeset")
+  @@map("worksheet_changeset_decisions")
+  @@schema("estadistica_forms")
+}
+
+/// Recibo de una operación idempotente (parte de E2): misma clave y mismo
+/// cuerpo devuelven `result` sin repetir el efecto.
+model OperationReceipt {
+  organizationId String       @map("organization_id")
+  actorId        String       @map("actor_id")
+  operation      String
+  resourceId     String       @map("resource_id")
+  idempotencyKey String       @map("idempotency_key")
+  payloadHash    String       @map("payload_hash")
+  result         Json
+  createdAt      String       @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  actor          AppUser      @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, actorId, operation, resourceId, idempotencyKey])
+  @@map("operation_receipts")
+  @@schema("estadistica_forms")
+}
+
+/// Evento de auditoría (solo se añaden filas).
+model AuditEvent {
+  id             String       @id
+  organizationId String       @map("organization_id")
+  actorId        String       @map("actor_id")
+  action         String
+  resourceType   String       @map("resource_type")
+  resourceId     String       @map("resource_id")
+  details        Json
+  createdAt      String       @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  actor          AppUser      @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([organizationId, resourceType, resourceId, createdAt], map: "idx_audit_events_resource")
+  @@map("audit_events")
+  @@schema("estadistica_forms")
+}
+
+/// Bandeja de salida (plan jobs&files, D8): efectos fuera de la base que se
+/// guardan en la transacción que los provoca y ejecuta después el relay, con
+/// lease y token. `done` es el recibo del manejador. Los `CHECK` de estado están
+/// en la migración.
+model OutboxEvent {
+  id             String    @id
+  type           String
+  payload        Json
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  runAfter       DateTime? @map("run_after") @db.Timestamptz(3)
+  leaseUntil     DateTime? @map("lease_until") @db.Timestamptz(3)
+  executionToken String?   @map("execution_token")
+  error          Json?
+  createdAt      String    @map("created_at")
+  processedAt    String?   @map("processed_at")
+
+  @@index([status, createdAt, id], map: "idx_outbox_events_ready")
+  @@map("outbox_events")
   @@schema("estadistica_forms")
 }

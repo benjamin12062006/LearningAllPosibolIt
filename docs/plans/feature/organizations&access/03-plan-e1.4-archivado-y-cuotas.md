@@ -2,7 +2,7 @@
 
 Fecha de creación: 2026-11-03  
 Última actualización: 2026-11-03 (implementado)  
-Estado: Implementado y verificado en local ([bitácora 03](../../../../bitacora-construccion/feature/organizations&access/03-archivar-organizaciones-y-cuotas.md)); migración sin aplicar en Neon.  
+Estado: Implementado y verificado en local ([bitácora 03](../../../../bitacora-construccion/feature/organizations&access/03-archivar-organizaciones-y-cuotas.md)); migración aplicada en Neon el 2026-11-03 (confirmado con `pnpm db:status` el 2026-11-05).  
 Ámbito: incremento E1.4 del [plan 01](01-plan-organizaciones-y-acceso.md). Solo backend y REST.  
 Relacionada con: [fuentes 03](../../../fonts/feature/organizations&access/03-fuentes-de-archivado-y-cuotas.md), [plan 02](02-plan-e1.3-equipos-e-invitaciones.md), [bitácora 02](../../../../bitacora-construccion/feature/organizations&access/02-equipos-invitaciones-y-ultimo-owner.md).  
 Revisión de referencia: `37a5d44` en `feature/organizations-access` (E1.1 y E1.3).

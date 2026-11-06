@@ -71,8 +71,17 @@ const COLUMN_COLUMNS = Prisma.sql`
   name,
   type,
   position,
-  required
+  required,
+  options,
+  formula
 `;
+
+/** Fila tal como sale de SQL: `options` y `formula` son nulas en casi todas. */
+type ColumnRow = Omit<WorksheetColumn, 'options' | 'formula'> &
+  Readonly<{
+    options: WorksheetColumn['options'] | null;
+    formula: WorksheetColumn['formula'] | null;
+  }>;
 
 /**
  * La organización y el proyecto de la ruta se comprueban en cada consulta:
@@ -379,15 +388,21 @@ async function insertColumns(
       ${column.nameNormalized},
       ${column.type},
       ${column.position},
-      ${column.required}
+      ${column.required},
+      ${jsonOrNull(column.options)}::jsonb,
+      ${jsonOrNull(column.formula)}::jsonb
     )`,
   );
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO estadistica_forms.worksheet_column_versions
       (organization_id, worksheet_id, schema_version, column_id, name,
-       name_normalized, type, position, required)
+       name_normalized, type, position, required, options, formula)
     VALUES ${Prisma.join(values)}
   `);
+}
+
+function jsonOrNull(value: unknown) {
+  return value === undefined ? null : JSON.stringify(value);
 }
 
 async function insertInitialRevision(
@@ -448,15 +463,44 @@ async function findWorksheetIn(
     return null;
   }
 
-  const columns = await client.$queryRaw<WorksheetColumn[]>(Prisma.sql`
+  const columns = await findColumnsIn(
+    client,
+    scope,
+    worksheetId,
+    row.schemaVersion,
+  );
+  return { ...toSummary(row), columns };
+}
+
+/**
+ * Columnas de una versión de esquema, en orden. La comparten la lectura de la
+ * hoja y la de filas. El llamador ya comprobó el acceso a la hoja.
+ */
+export async function findColumnsIn(
+  client: Prisma.TransactionClient,
+  scope: ProjectScope,
+  worksheetId: string,
+  schemaVersion: number,
+): Promise<WorksheetColumn[]> {
+  const rows = await client.$queryRaw<ColumnRow[]>(Prisma.sql`
     SELECT ${COLUMN_COLUMNS}
     FROM estadistica_forms.worksheet_column_versions
     WHERE worksheet_id = ${worksheetId}
       AND organization_id = ${scope.organizationId}
-      AND schema_version = ${row.schemaVersion}
+      AND schema_version = ${schemaVersion}
     ORDER BY position
   `);
-  return { ...toSummary(row), columns };
+  return rows.map(toColumn);
+}
+
+/** Opciones y fórmula solo aparecen en las columnas que las tienen. */
+function toColumn(row: ColumnRow): WorksheetColumn {
+  const { options, formula, ...column } = row;
+  return {
+    ...column,
+    ...(options ? { options } : {}),
+    ...(formula ? { formula } : {}),
+  };
 }
 
 function toSummary(row: WorksheetRow): WorksheetSummary {

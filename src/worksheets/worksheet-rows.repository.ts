@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { PageRequest } from '../common/http/pagination.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { findColumnsIn } from './worksheets.repository.js';
 import type { ProjectScope, WorksheetColumn } from './worksheets.types.js';
 
 /** Revisión que se lee: su número fija las filas y su esquema, las columnas. */
@@ -67,24 +68,12 @@ export class WorksheetRowsRepository {
     return rows[0] ?? null;
   }
 
-  async findColumns(
+  findColumns(
     scope: ProjectScope,
     worksheetId: string,
     schemaVersion: number,
   ): Promise<WorksheetColumn[]> {
-    return this.prisma.$queryRaw<WorksheetColumn[]>(Prisma.sql`
-      SELECT
-        column_id AS "id",
-        name,
-        type,
-        position,
-        required
-      FROM estadistica_forms.worksheet_column_versions
-      WHERE worksheet_id = ${worksheetId}
-        AND organization_id = ${scope.organizationId}
-        AND schema_version = ${schemaVersion}
-      ORDER BY position
-    `);
+    return findColumnsIn(this.prisma, scope, worksheetId, schemaVersion);
   }
 
   /**

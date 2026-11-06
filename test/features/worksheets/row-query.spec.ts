@@ -63,7 +63,7 @@ describe('Valores canónicos de celda', () => {
     ['boolean', false, true],
     ['boolean', 'true', false],
   ] as const)('%s %p → %s', (type, value, expected) => {
-    expect(isCanonicalValue(type, value)).toBe(expected);
+    expect(isCanonicalValue({ type }, value)).toBe(expected);
   });
 });
 

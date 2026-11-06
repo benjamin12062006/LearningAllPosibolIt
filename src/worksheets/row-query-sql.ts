@@ -88,6 +88,7 @@ function cellSql(column: QueryColumn): Prisma.Sql {
 
   switch (column.type) {
     case 'text':
+    case 'selection':
       return asText;
     case 'integer':
     case 'decimal':
@@ -97,6 +98,9 @@ function cellSql(column: QueryColumn): Prisma.Sql {
       return Prisma.sql`(CASE WHEN ${asText} ~ ${SQL_PATTERNS.date} THEN ${asText} END)`;
     case 'boolean':
       return Prisma.sql`(CASE WHEN jsonb_typeof(r.cell_values -> ${column.id}) = 'boolean' THEN (r.cell_values -> ${column.id})::boolean END)`;
+    case 'calculated':
+      // El analizador no deja filtrar ni ordenar por una calculada (V8).
+      return Prisma.sql`NULL`;
   }
 }
 

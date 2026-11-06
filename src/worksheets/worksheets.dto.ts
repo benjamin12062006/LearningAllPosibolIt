@@ -37,6 +37,14 @@ export class CreateWorkbookDto {
   name!: string;
 }
 
+export class SelectionOptionDto {
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(WORKSHEET_LIMITS.nameLength)
+  label!: string;
+}
+
 export class ColumnDefinitionDto {
   @Transform(trim)
   @IsString()
@@ -51,6 +59,22 @@ export class ColumnDefinitionDto {
   @IsOptional()
   @IsBoolean()
   required?: boolean;
+
+  /** Solo en `selection`; lo comprueba `planColumns`. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(WORKSHEET_LIMITS.optionsPerColumn)
+  @ValidateNested({ each: true })
+  @Type(() => SelectionOptionDto)
+  options?: SelectionOptionDto[];
+
+  /**
+   * Solo en `calculated`. Es un árbol: lo valida `planColumns`, que además
+   * necesita las demás columnas para resolver los nombres.
+   */
+  @IsOptional()
+  @IsObject()
+  formula?: Record<string, unknown>;
 }
 
 export class CreateWorksheetDto {

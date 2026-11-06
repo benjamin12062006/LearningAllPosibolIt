@@ -2,7 +2,7 @@
 
 Fecha de creación: 2026-11-02  
 Última actualización: 2026-11-03 (implementado)  
-Estado: Implementado y verificado en local ([bitácora 02](../../../../bitacora-construccion/feature/organizations&access/02-equipos-invitaciones-y-ultimo-owner.md)); migración sin aplicar en Neon.  
+Estado: Implementado y verificado en local ([bitácora 02](../../../../bitacora-construccion/feature/organizations&access/02-equipos-invitaciones-y-ultimo-owner.md)); migración aplicada en Neon el 2026-11-03 (confirmado con `pnpm db:status` el 2026-11-05).  
 Ámbito: incremento E1.3 del [plan 01](01-plan-organizaciones-y-acceso.md). Solo backend y REST.  
 Relacionada con: [plan 01](01-plan-organizaciones-y-acceso.md) (O1–O10), [fuentes 02](../../../fonts/feature/organizations&access/02-fuentes-de-equipos-e-invitaciones.md), [fuentes 01](../../../fonts/feature/organizations&access/01-fuentes-de-acceso-y-organizaciones.md), [bitácora 01](../../../../bitacora-construccion/feature/organizations&access/01-organizacion-personal-y-contexto-de-acceso.md).  
 Revisión de referencia: `f6b4bf9` con E1.1 sin commit y trabajo de feeds de otra sesión.

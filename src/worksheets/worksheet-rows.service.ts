@@ -16,6 +16,7 @@ import {
   type ParsedRowQuery,
   type QueryIssue,
 } from './row-query.js';
+import { evaluateRow } from './row-evaluation.js';
 import { orderSql, whereSql } from './row-query-sql.js';
 import {
   WorksheetRowsRepository,
@@ -24,12 +25,14 @@ import {
 } from './worksheet-rows.repository.js';
 import type { QueryRowsDto } from './worksheets.dto.js';
 import { WorksheetsRepository } from './worksheets.repository.js';
-import type { ProjectScope } from './worksheets.types.js';
+import type { ProjectScope, WorksheetColumn } from './worksheets.types.js';
 
 export type RowItem = Readonly<{
   rowId: string;
   /** Todas las columnas pedidas; una celda sin valor es `null`. */
   values: Readonly<Record<string, unknown>>;
+  /** Celdas que no cumplen su columna y cálculos sin resultado (V7, V8). */
+  problems: readonly Readonly<{ columnId: string; code: string }>[];
 }>;
 
 /**
@@ -83,7 +86,7 @@ export class WorksheetRowsService {
 
     const hasMore = stored.length > limit;
     return {
-      items: stored.slice(0, limit).map((row) => toItem(row, query)),
+      items: stored.slice(0, limit).map((row) => toItem(row, columns, query)),
       nextCursor: hasMore
         ? encodeRowCursor({
             revisionId: revision.id,
@@ -168,10 +171,23 @@ function toIssue(issue: QueryIssue) {
   return { field: issue.field, ...publicError(issue.code) };
 }
 
-function toItem(row: StoredRow, query: ParsedRowQuery): RowItem {
-  const values: Record<string, unknown> = {};
-  for (const columnId of query.columnIds) {
-    values[columnId] = row.cellValues[columnId] ?? null;
-  }
-  return { rowId: row.rowId, values };
+/** Valores de las columnas pedidas, con las calculadas ya resueltas, y sus problemas. */
+function toItem(
+  row: StoredRow,
+  columns: readonly WorksheetColumn[],
+  query: ParsedRowQuery,
+): RowItem {
+  const { values, problems } = evaluateRow(
+    columns,
+    row.cellValues,
+    query.columnIds,
+  );
+  return {
+    rowId: row.rowId,
+    values,
+    problems: problems.map(({ columnId, code }) => ({
+      columnId,
+      ...publicError(code),
+    })),
+  };
 }

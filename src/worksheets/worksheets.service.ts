@@ -12,9 +12,11 @@ import { publicError } from '../common/http/public-error.js';
 import { can } from '../organizations/organization-roles.js';
 import { UsersService } from '../users/users.service.js';
 import {
-  buildNewWorksheet,
-  duplicateColumnPositions,
-} from './new-worksheet.js';
+  planColumns,
+  type ColumnRequest,
+  type PlannedColumn,
+} from './column-plan.js';
+import { buildNewWorksheet } from './new-worksheet.js';
 import type { CreateWorksheetDto } from './worksheets.dto.js';
 import {
   WorksheetsRepository,
@@ -68,12 +70,15 @@ export class WorksheetsService {
     workbookId: string,
     input: CreateWorksheetDto,
   ) {
-    const columns = input.columns.map((column) => ({
-      name: column.name,
-      type: column.type,
-      required: column.required ?? false,
-    }));
-    assertUniqueColumnNames(columns);
+    const columns = planOrReject(
+      input.columns.map((column) => ({
+        name: column.name,
+        type: column.type,
+        required: column.required ?? false,
+        options: column.options,
+        formula: column.formula,
+      })),
+    );
 
     const user = await this.usersService.findCurrent(identity);
     const { worksheet, access } = await this.repository.createWorksheet(
@@ -151,21 +156,18 @@ function capabilitiesOf(access: ProjectAccess): WorksheetCapabilities {
 }
 
 /**
- * Como en reglas: `VALIDATION_FAILED` con un `issue` por columna repetida
- * (`columns.3.name`), que lleva el código concreto.
+ * Como en reglas: `VALIDATION_FAILED` con un `issue` por problema
+ * (`columns.3.name`, `columns.2.formula`), que lleva el código concreto.
  */
-function assertUniqueColumnNames(
-  columns: Parameters<typeof duplicateColumnPositions>[0],
-) {
-  const duplicates = duplicateColumnPositions(columns);
-  if (duplicates.length === 0) {
-    return;
+function planOrReject(
+  requests: readonly ColumnRequest[],
+): readonly PlannedColumn[] {
+  const plan = planColumns(requests);
+  if (plan.ok) {
+    return plan.columns;
   }
   throw apiError(
     ErrorCodes.VALIDATION_FAILED,
-    duplicates.map((position) => ({
-      field: `columns.${position}.name`,
-      ...publicError(ErrorCodes.WORKSHEET_COLUMN_DUPLICATE),
-    })),
+    plan.issues.map(({ field, code }) => ({ field, ...publicError(code) })),
   );
 }

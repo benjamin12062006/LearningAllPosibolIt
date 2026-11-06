@@ -626,4 +626,49 @@ export const API_MESSAGES = {
     'El valor no tiene el formato del tipo de la columna. El campo indica cuál.',
     'The value does not have the format of the column type. The field shows which one.',
   ),
+  [ErrorCodes.COLUMN_OPTIONS_INVALID]: entry(
+    400,
+    'Una columna de selección necesita entre 1 y 100 opciones con etiquetas distintas, y solo ella lleva opciones. El campo indica cuál.',
+    'A selection column needs between 1 and 100 options with different labels, and only it can have options. The field shows which one.',
+  ),
+  [ErrorCodes.COLUMN_FORMULA_INVALID]: entry(
+    400,
+    'La fórmula no es válida o supera los límites (5 niveles, 25 elementos, escala de 0 a 6), o la columna no es calculada. El campo indica dónde.',
+    'The formula is invalid or exceeds the limits (5 levels, 25 elements, scale 0 to 6), or the column is not calculated. The field shows where.',
+  ),
+  [ErrorCodes.COLUMN_FORMULA_REFERENCE_INVALID]: entry(
+    400,
+    'La fórmula nombra una columna que no existe o que no es numérica. El campo indica cuál.',
+    'The formula names a column that does not exist or is not numeric. The field shows which one.',
+  ),
+  [ErrorCodes.COLUMN_FORMULA_CYCLE]: entry(
+    400,
+    'Las fórmulas se usan entre sí en círculo. El campo indica cada columna del ciclo.',
+    'The formulas use each other in a loop. The field shows each column in the loop.',
+  ),
+  [ErrorCodes.CELL_REQUIRED]: entry(
+    400,
+    'La columna es obligatoria y la celda está vacía.',
+    'The column is required and the cell is empty.',
+  ),
+  [ErrorCodes.CELL_VALUE_INVALID]: entry(
+    400,
+    'El valor de la celda no tiene el formato de su columna.',
+    'The cell value does not have the format of its column.',
+  ),
+  [ErrorCodes.CALC_DIVISION_BY_ZERO]: entry(
+    400,
+    'El cálculo divide entre cero: no tiene resultado.',
+    'The calculation divides by zero: it has no result.',
+  ),
+  [ErrorCodes.CALC_INPUT_INVALID]: entry(
+    400,
+    'El cálculo usa una celda que no tiene un número válido.',
+    'The calculation uses a cell that does not have a valid number.',
+  ),
+  [ErrorCodes.ROW_SORT_UNSUPPORTED]: entry(
+    400,
+    'Todavía no se puede ordenar por una columna calculada.',
+    'Sorting by a calculated column is not available yet.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

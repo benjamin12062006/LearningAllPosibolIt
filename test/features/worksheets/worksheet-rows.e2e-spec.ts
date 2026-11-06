@@ -146,6 +146,7 @@ describe('Consulta de filas por HTTP, con guard y persistencia reales', () => {
         [col.since]: null,
         [col.active]: null,
       },
+      problems: [],
     });
   });
 

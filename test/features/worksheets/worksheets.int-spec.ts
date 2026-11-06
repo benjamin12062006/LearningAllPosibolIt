@@ -15,7 +15,7 @@ import {
   UsersRepository,
   type LocalUser,
 } from '../../../src/users/users.repository.js';
-import { buildNewWorksheet } from '../../../src/worksheets/new-worksheet.js';
+import { newWorksheet } from './support/new-worksheet-fixture.js';
 import { WorksheetsRepository } from '../../../src/worksheets/worksheets.repository.js';
 import type { ProjectScope } from '../../../src/worksheets/worksheets.types.js';
 import { alice, bob, projectInput } from '../support/project-fixtures.js';
@@ -99,7 +99,7 @@ describe('Libros y hojas vacías con PostgreSQL temporal', () => {
       owner.id,
       scope,
       workbook.id,
-      buildNewWorksheet('Inventario', columns),
+      newWorksheet('Inventario', columns),
     );
 
     expect(worksheet).toEqual({
@@ -140,7 +140,7 @@ describe('Libros y hojas vacías con PostgreSQL temporal', () => {
 
   it('si una inserción falla no queda nada: ni hoja sin revisión ni columnas sueltas', async () => {
     const workbook = await worksheets.createWorkbook(owner.id, scope, 'Libro');
-    const valid = buildNewWorksheet('Rota', columns);
+    const valid = newWorksheet('Rota', columns);
     // Dos columnas en la misma posición: la restricción única de la base falla
     // en mitad de la transacción, después de insertar la hoja.
     const broken = {
@@ -162,7 +162,7 @@ describe('Libros y hojas vacías con PostgreSQL temporal', () => {
       owner.id,
       scope,
       workbook.id,
-      buildNewWorksheet('Inventario', []),
+      newWorksheet('Inventario', []),
     );
 
     await expect(
@@ -173,7 +173,7 @@ describe('Libros y hojas vacías con PostgreSQL temporal', () => {
         owner.id,
         scope,
         workbook.id,
-        buildNewWorksheet('INVENTARIO', []),
+        newWorksheet('INVENTARIO', []),
       ),
     ).rejects.toMatchObject(rejectedWith('WORKSHEET_NAME_TAKEN'));
   });
@@ -184,7 +184,7 @@ describe('Libros y hojas vacías con PostgreSQL temporal', () => {
       owner.id,
       scope,
       workbook.id,
-      buildNewWorksheet('Inventario', columns),
+      newWorksheet('Inventario', columns),
     );
     const mixedScope = {
       organizationId: otherScope.organizationId,
@@ -208,7 +208,7 @@ describe('Libros y hojas vacías con PostgreSQL temporal', () => {
         other.id,
         otherScope,
         workbook.id,
-        buildNewWorksheet('Intrusión', []),
+        newWorksheet('Intrusión', []),
       ),
     ).rejects.toMatchObject(rejectedWith('WORKBOOK_NOT_FOUND'));
   });
@@ -253,7 +253,7 @@ describe('Libros y hojas vacías con PostgreSQL temporal', () => {
       owner.id,
       scope,
       workbook.id,
-      buildNewWorksheet('Inventario', columns),
+      newWorksheet('Inventario', columns),
     );
 
     await expect(

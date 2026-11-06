@@ -33,6 +33,9 @@ const OPERATORS_BY_TYPE: Record<ColumnType, readonly FilterOperator[]> = {
   decimal: ['equals', 'not_equals', ...ORDERED, 'in', 'is_null'],
   date: ['equals', 'not_equals', ...ORDERED, 'in', 'is_null'],
   boolean: ['equals', 'not_equals', 'is_null'],
+  selection: ['equals', 'not_equals', 'in', 'is_null'],
+  // Su valor no está en SQL hasta que E4 guarde los resultados (V8).
+  calculated: [],
 };
 
 export type QueryColumn = Readonly<{ id: string; type: ColumnType }>;
@@ -131,6 +134,10 @@ class RowQueryParser {
           `sort.${index}.columnId`,
           ErrorCodes.ROW_FILTER_COLUMN_UNKNOWN,
         );
+        return;
+      }
+      if (column.type === 'calculated') {
+        this.report(`sort.${index}.columnId`, ErrorCodes.ROW_SORT_UNSUPPORTED);
         return;
       }
       terms.push({ column, direction: term.direction });
@@ -276,7 +283,7 @@ function literalsFor(
   if (op === 'in') {
     return isLiteralList(column, value) ? value : null;
   }
-  return isCanonicalValue(column.type, value) ? [value] : null;
+  return isCanonicalValue(column, value) ? [value] : null;
 }
 
 /** Entre 1 y 100 literales, todos con la forma del tipo de la columna. */
@@ -288,6 +295,6 @@ function isLiteralList(
     Array.isArray(value) &&
     value.length >= 1 &&
     value.length <= ROW_QUERY_LIMITS.inValues &&
-    value.every((item: unknown) => isCanonicalValue(column.type, item))
+    value.every((item: unknown) => isCanonicalValue(column, item))
   );
 }

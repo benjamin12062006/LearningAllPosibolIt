@@ -1,4 +1,4 @@
-import type { ColumnType } from './worksheet-columns.js';
+import type { ColumnType, SelectionOption } from './worksheet-columns.js';
 
 /**
  * Forma canónica de cada tipo de celda (plan worksheets 02, R4). Entero y
@@ -21,12 +21,23 @@ export const MAX_TEXT_LENGTH = 8192;
 
 export type CellLiteral = string | boolean;
 
-/** El valor tiene la forma canónica del tipo de la columna. */
+/** Lo que hace falta de una columna para validar un valor. */
+export type ValueRules = Readonly<{
+  type: ColumnType;
+  options?: readonly SelectionOption[];
+}>;
+
+export type CellProblem = 'CELL_REQUIRED' | 'CELL_VALUE_INVALID';
+
+/**
+ * El valor tiene la forma canónica de la columna. Una calculada no guarda
+ * valor (V6): nada es canónico para ella.
+ */
 export function isCanonicalValue(
-  type: ColumnType,
+  column: ValueRules,
   value: unknown,
 ): value is CellLiteral {
-  switch (type) {
+  switch (column.type) {
     case 'text':
       return typeof value === 'string' && value.length <= MAX_TEXT_LENGTH;
     case 'integer':
@@ -37,7 +48,28 @@ export function isCanonicalValue(
       return typeof value === 'string' && isCivilDate(value);
     case 'boolean':
       return typeof value === 'boolean';
+    case 'selection':
+      return (
+        typeof value === 'string' &&
+        (column.options ?? []).some((option) => option.id === value)
+      );
+    case 'calculated':
+      return false;
   }
+}
+
+/**
+ * Problema de una celda guardada (V7), o `null`. Una hoja libre admite datos
+ * incompletos en borrador (H17): esto informa, no rechaza.
+ */
+export function cellProblem(
+  column: ValueRules & Readonly<{ required: boolean }>,
+  value: unknown,
+): CellProblem | null {
+  if (value === undefined || value === null) {
+    return column.required ? 'CELL_REQUIRED' : null;
+  }
+  return isCanonicalValue(column, value) ? null : 'CELL_VALUE_INVALID';
 }
 
 /** `2026-02-30` tiene la forma, pero no existe: `Date` lo desplazaría a marzo. */

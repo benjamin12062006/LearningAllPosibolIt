@@ -13,7 +13,7 @@ import {
   UsersRepository,
   type LocalUser,
 } from '../../../src/users/users.repository.js';
-import { buildNewWorksheet } from '../../../src/worksheets/new-worksheet.js';
+import { newWorksheet } from './support/new-worksheet-fixture.js';
 import {
   parseRowQuery,
   type RowQueryInput,
@@ -83,7 +83,7 @@ describe('Filas de una revisión con filtros y orden, en PostgreSQL temporal', (
       owner.id,
       scope,
       workbook.id,
-      buildNewWorksheet(
+      newWorksheet(
         'Inventario',
         FIXTURE_COLUMNS.map((column) => ({ ...column, required: false })),
       ),
