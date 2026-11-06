@@ -10,14 +10,21 @@ datasource db {
 }
 
 model AppUser {
-  id              String    @id
-  identityIssuer  String    @map("identity_issuer")
-  identitySubject String    @map("identity_subject")
-  email           String?
-  displayName     String?   @map("display_name")
-  createdAt       String    @map("created_at")
-  updatedAt       String    @map("updated_at")
-  projects        Project[]
+  id                   String                   @id
+  identityIssuer       String                   @map("identity_issuer")
+  identitySubject      String                   @map("identity_subject")
+  email                String?
+  displayName          String?                  @map("display_name")
+  createdAt            String                   @map("created_at")
+  updatedAt            String                   @map("updated_at")
+  projects             Project[]
+  personalOrganization Organization?
+  memberships          OrganizationMember[]
+  sentInvitations      OrganizationInvitation[] @relation("InvitedBy")
+  acceptedInvitations  OrganizationInvitation[] @relation("AcceptedBy")
+  createdWorkbooks     Workbook[]
+  createdWorksheets    Worksheet[]
+  createdRevisions     WorksheetRevision[]
 
   @@unique([identityIssuer, identitySubject])
   @@map("app_users")
@@ -32,12 +39,19 @@ model Project {
   country        String?
   currency       String?
   channelProfile String?           @map("channel_profile")
+  /// Nulo admitido hasta E1.2 (plan organizations&access O3); `ownerId` queda
+  /// como procedencia de quien lo creó.
+  organizationId String?           @map("organization_id")
   owner          AppUser           @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   snapshots      CatalogSnapshot[]
   rulesets       RulesetVersion[]
   feed           Feed?
+  workbooks      Workbook[]
 
+  @@unique([organizationId, id])
   @@index([ownerId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_projects_owner_created")
+  @@index([organizationId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_projects_organization_created")
   @@map("projects")
   @@schema("estadistica_forms")
 }
@@ -311,5 +325,181 @@ model OutboxEvent {
 
   @@index([status, createdAt, id], map: "idx_outbox_events_ready")
   @@map("outbox_events")
+  @@schema("estadistica_forms")
+}
+
+/// Empresa dueña de proyectos (ampliación E1). `personalOwnerId` marca la
+/// organización personal de un usuario: como mucho una por usuario, lo que hace
+/// repetible el backfill de los propietarios heredados.
+model Organization {
+  id              String                   @id
+  name            String
+  personalOwnerId String?                  @unique @map("personal_owner_id")
+  createdAt       String                   @map("created_at")
+  /// Nula = activa (E1.4). Una organización personal nunca se archiva.
+  archivedAt      String?                  @map("archived_at")
+  personalOwner   AppUser?                 @relation(fields: [personalOwnerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  members         OrganizationMember[]
+  invitations     OrganizationInvitation[]
+  projects        Project[]
+
+  @@map("organizations")
+  @@schema("estadistica_forms")
+}
+
+/// Rol de una persona en una organización. La migración limita `role` a
+/// owner, admin, manager, editor y viewer.
+model OrganizationMember {
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  role           String
+  createdAt      String       @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user           AppUser      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, userId])
+  @@index([userId, organizationId], map: "idx_organization_members_user")
+  @@map("organization_members")
+  @@schema("estadistica_forms")
+}
+
+/// Invitación a una organización (E1.3). Del token solo se guarda su SHA-256.
+/// La migración añade un índice único parcial que Prisma no expresa: como mucho
+/// una invitación pendiente (sin aceptar ni revocar) por organización y correo.
+model OrganizationInvitation {
+  id              String       @id
+  organizationId  String       @map("organization_id")
+  emailNormalized String       @map("email_normalized")
+  role            String
+  tokenHash       String       @unique @map("token_hash")
+  invitedBy       String       @map("invited_by")
+  createdAt       String       @map("created_at")
+  expiresAt       String       @map("expires_at")
+  acceptedAt      String?      @map("accepted_at")
+  acceptedBy      String?      @map("accepted_by")
+  revokedAt       String?      @map("revoked_at")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  inviter         AppUser      @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  acceptor        AppUser?     @relation("AcceptedBy", fields: [acceptedBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([organizationId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_organization_invitations_organization_created")
+  @@map("organization_invitations")
+  @@schema("estadistica_forms")
+}
+
+/// Libro de un proyecto (ampliación E3.1). Agrupa hojas. La FK compuesta
+/// `(organizationId, projectId)` impide colocarlo en otra organización.
+model Workbook {
+  id             String      @id
+  organizationId String      @map("organization_id")
+  projectId      String      @map("project_id")
+  name           String
+  nameNormalized String      @map("name_normalized")
+  createdBy      String      @map("created_by")
+  createdAt      String      @map("created_at")
+  project        Project     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator        AppUser     @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  worksheets     Worksheet[]
+
+  @@unique([projectId, nameNormalized])
+  @@unique([organizationId, projectId, id])
+  @@index([organizationId, projectId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_workbooks_project_created")
+  @@map("workbooks")
+  @@schema("estadistica_forms")
+}
+
+/// Hoja libre (E3.1). `headRevisionId` apunta a una revisión de la propia hoja;
+/// solo es nulo dentro de la transacción que la crea. `generation` cuenta las
+/// revisiones.
+model Worksheet {
+  id             String                   @id
+  organizationId String                   @map("organization_id")
+  projectId      String                   @map("project_id")
+  workbookId     String                   @map("workbook_id")
+  name           String
+  nameNormalized String                   @map("name_normalized")
+  mode           String
+  schemaVersion  Int                      @map("schema_version")
+  generation     Int
+  headRevisionId String?                  @map("head_revision_id")
+  createdBy      String                   @map("created_by")
+  createdAt      String                   @map("created_at")
+  workbook       Workbook                 @relation(fields: [organizationId, projectId, workbookId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  headRevision   WorksheetRevision?       @relation("WorksheetHead", fields: [id, headRevisionId], references: [worksheetId, id], onDelete: NoAction, onUpdate: NoAction)
+  creator        AppUser                  @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  columns        WorksheetColumnVersion[]
+  revisions      WorksheetRevision[]      @relation("WorksheetRevisions")
+  rowVersions    WorksheetRowVersion[]
+
+  @@unique([workbookId, nameNormalized])
+  @@unique([organizationId, id])
+  @@index([organizationId, workbookId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_worksheets_workbook_created")
+  @@map("worksheets")
+  @@schema("estadistica_forms")
+}
+
+/// Columna de una hoja en una versión de esquema. `columnId` no cambia al
+/// renombrar ni al mover la columna.
+model WorksheetColumnVersion {
+  organizationId String    @map("organization_id")
+  worksheetId    String    @map("worksheet_id")
+  schemaVersion  Int       @map("schema_version")
+  columnId       String    @map("column_id")
+  name           String
+  nameNormalized String    @map("name_normalized")
+  type           String
+  position       Int
+  required       Boolean
+  worksheet      Worksheet @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([worksheetId, schemaVersion, columnId])
+  @@unique([worksheetId, schemaVersion, nameNormalized])
+  @@unique([worksheetId, schemaVersion, position])
+  @@map("worksheet_column_versions")
+  @@schema("estadistica_forms")
+}
+
+/// Revisión inmutable de una hoja, numerada desde 1.
+model WorksheetRevision {
+  id             String                @id
+  organizationId String                @map("organization_id")
+  worksheetId    String                @map("worksheet_id")
+  sequence       Int
+  schemaVersion  Int                   @map("schema_version")
+  source         String
+  rowCount       Int                   @map("row_count")
+  createdBy      String                @map("created_by")
+  createdAt      String                @map("created_at")
+  worksheet      Worksheet             @relation("WorksheetRevisions", fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator        AppUser               @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  headOf         Worksheet[]           @relation("WorksheetHead")
+  openedRows     WorksheetRowVersion[] @relation("RowFrom")
+  closedRows     WorksheetRowVersion[] @relation("RowTo")
+
+  @@unique([worksheetId, sequence])
+  @@unique([worksheetId, id])
+  @@map("worksheet_revisions")
+  @@schema("estadistica_forms")
+}
+
+/// Versión de una fila válida en las revisiones [fromSequence, toSequence)
+/// (E3.2). `toSequence` nulo = vigente; la migración añade un índice único
+/// parcial que Prisma no expresa: una sola versión vigente por fila.
+model WorksheetRowVersion {
+  organizationId String             @map("organization_id")
+  worksheetId    String             @map("worksheet_id")
+  rowId          String             @map("row_id")
+  fromSequence   Int                @map("from_sequence")
+  toSequence     Int?               @map("to_sequence")
+  sortKey        String             @map("sort_key")
+  cellValues     Json               @map("cell_values")
+  isDeleted      Boolean            @default(false) @map("is_deleted")
+  worksheet      Worksheet          @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  fromRevision   WorksheetRevision  @relation("RowFrom", fields: [worksheetId, fromSequence], references: [worksheetId, sequence], onDelete: Restrict, onUpdate: NoAction)
+  toRevision     WorksheetRevision? @relation("RowTo", fields: [worksheetId, toSequence], references: [worksheetId, sequence], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([worksheetId, rowId, fromSequence])
+  @@index([worksheetId, fromSequence, sortKey, rowId], map: "idx_worksheet_row_versions_revision")
+  @@map("worksheet_row_versions")
   @@schema("estadistica_forms")
 }

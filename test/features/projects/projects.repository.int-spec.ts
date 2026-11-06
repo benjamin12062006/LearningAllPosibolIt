@@ -153,7 +153,7 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
     const { rows } = await database.connection.pool.query(
       'SELECT migration_name, rolled_back_at FROM estadistica_forms._prisma_migrations ORDER BY migration_name',
     );
-    expect(rows).toHaveLength(18);
+    expect(rows).toHaveLength(23);
     expect(rows.every((row) => row.rolled_back_at === null)).toBe(true);
   });
 });

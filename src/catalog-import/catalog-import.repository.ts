@@ -371,6 +371,9 @@ export class CatalogImportRepository {
       if (await hasActiveEvaluation(tx, { projectId })) {
         throw apiError(ErrorCodes.EVALUATION_IN_PROGRESS);
       }
+      if (await hasWorkbooks(tx, projectId)) {
+        throw apiError(ErrorCodes.PROJECT_HAS_WORKBOOKS);
+      }
 
       // El proyecto bloqueado no detiene una exportación en curso, que bloquea
       // su snapshot con FOR SHARE: bloquear aquí los snapshots espera a que
@@ -664,6 +667,20 @@ async function hasActiveEvaluation(
  * módulo `exports`, pero la lectura vive aquí porque el borrado es de este
  * módulo. Los snapshots deben estar bloqueados con FOR UPDATE en `tx`.
  */
+/**
+ * Las revisiones de hojas no se borran desde proyectos (plan worksheets 01,
+ * W11): la FK de `workbooks` es `RESTRICT`. Sin esta comprobación, borrar el
+ * proyecto fallaría con un error de clave foránea (500) en lugar de un 409.
+ */
+async function hasWorkbooks(tx: Prisma.TransactionClient, projectId: string) {
+  const rows = await tx.$queryRaw<IdRow[]>`
+    SELECT id
+    FROM estadistica_forms.workbooks
+    WHERE project_id = ${projectId}
+    LIMIT 1`;
+  return rows.length > 0;
+}
+
 async function findExportKeys(
   tx: Prisma.TransactionClient,
   snapshotIds: string[],

@@ -1,0 +1,177 @@
+import { Injectable } from '@nestjs/common';
+import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
+import { apiError } from '../common/http/api-error.js';
+import { ErrorCodes } from '../common/http/error-codes.js';
+import { publicError } from '../common/http/public-error.js';
+import { UsersService } from '../users/users.service.js';
+import {
+  decodeRowCursor,
+  encodeRowCursor,
+  hashRowQuery,
+  type RowCursor,
+} from './row-cursor.js';
+import {
+  parseRowQuery,
+  ROW_QUERY_LIMITS,
+  type ParsedRowQuery,
+  type QueryIssue,
+} from './row-query.js';
+import { orderSql, whereSql } from './row-query-sql.js';
+import {
+  WorksheetRowsRepository,
+  type ReadableRevision,
+  type StoredRow,
+} from './worksheet-rows.repository.js';
+import type { QueryRowsDto } from './worksheets.dto.js';
+import { WorksheetsRepository } from './worksheets.repository.js';
+import type { ProjectScope } from './worksheets.types.js';
+
+export type RowItem = Readonly<{
+  rowId: string;
+  /** Todas las columnas pedidas; una celda sin valor es `null`. */
+  values: Readonly<Record<string, unknown>>;
+}>;
+
+/**
+ * Lectura de filas de una revisión fija (E3.2): filtro tipado, orden y páginas
+ * con un cursor que no cambia de revisión ni de consulta (T05).
+ */
+@Injectable()
+export class WorksheetRowsService {
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly worksheets: WorksheetsRepository,
+    private readonly rows: WorksheetRowsRepository,
+  ) {}
+
+  async query(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    input: QueryRowsDto,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    await this.requireProjectAccess(user.id, scope);
+
+    const cursor = readCursor(input);
+    const revision = await this.requireRevision(
+      user.id,
+      scope,
+      worksheetId,
+      cursor?.revisionId ?? input.revisionId ?? null,
+    );
+    const columns = await this.rows.findColumns(
+      scope,
+      worksheetId,
+      revision.schemaVersion,
+    );
+    const query = parseOrReject(input, columns);
+    const queryHash = hashRowQuery(query);
+    assertCursorMatches(cursor, queryHash);
+
+    const limit = input.limit ?? ROW_QUERY_LIMITS.defaultPageSize;
+    const offset = cursor?.offset ?? 0;
+    const stored = await this.rows.findRows({
+      scope,
+      worksheetId,
+      sequence: revision.sequence,
+      where: whereSql(query.filter),
+      order: orderSql(query.sort),
+      // Una fila de más dice si hay otra página sin contar todas.
+      page: { limit: limit + 1, offset },
+    });
+
+    const hasMore = stored.length > limit;
+    return {
+      items: stored.slice(0, limit).map((row) => toItem(row, query)),
+      nextCursor: hasMore
+        ? encodeRowCursor({
+            revisionId: revision.id,
+            queryHash,
+            offset: offset + limit,
+          })
+        : null,
+      revisionId: revision.id,
+      schemaVersion: revision.schemaVersion,
+    };
+  }
+
+  private async requireProjectAccess(userId: string, scope: ProjectScope) {
+    if (!(await this.worksheets.findAccess(userId, scope))) {
+      throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+    }
+  }
+
+  /**
+   * Sin revisión pedida, la actual: si no aparece, es la hoja la que no existe.
+   * Con revisión pedida, una de otra hoja responde igual que una inexistente.
+   */
+  private async requireRevision(
+    userId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    revisionId: string | null,
+  ): Promise<ReadableRevision> {
+    const revision = await this.rows.findRevision(
+      userId,
+      scope,
+      worksheetId,
+      revisionId,
+    );
+    if (revision) {
+      return revision;
+    }
+    if (revisionId) {
+      throw apiError(ErrorCodes.WORKSHEET_REVISION_NOT_FOUND);
+    }
+    throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
+  }
+}
+
+/**
+ * Un cursor ilegible, o uno que pide otra revisión que la enviada, no se
+ * acepta: seguir leyendo nunca cambia de revisión.
+ */
+function readCursor(input: QueryRowsDto): RowCursor | null {
+  if (input.cursor === undefined) {
+    return null;
+  }
+  const cursor = decodeRowCursor(input.cursor);
+  const contradictsRevision =
+    cursor !== null &&
+    input.revisionId !== undefined &&
+    input.revisionId !== cursor.revisionId;
+  if (!cursor || contradictsRevision) {
+    throw apiError(ErrorCodes.WORKSHEET_CURSOR_INVALID);
+  }
+  return cursor;
+}
+
+function assertCursorMatches(cursor: RowCursor | null, queryHash: string) {
+  if (cursor && cursor.queryHash !== queryHash) {
+    throw apiError(ErrorCodes.WORKSHEET_CURSOR_INVALID);
+  }
+}
+
+function parseOrReject(
+  input: QueryRowsDto,
+  columns: Parameters<typeof parseRowQuery>[1],
+): ParsedRowQuery {
+  const result = parseRowQuery(input, columns);
+  if (!result.ok) {
+    throw apiError(ErrorCodes.VALIDATION_FAILED, result.issues.map(toIssue));
+  }
+  return result.query;
+}
+
+function toIssue(issue: QueryIssue) {
+  return { field: issue.field, ...publicError(issue.code) };
+}
+
+function toItem(row: StoredRow, query: ParsedRowQuery): RowItem {
+  const values: Record<string, unknown> = {};
+  for (const columnId of query.columnIds) {
+    values[columnId] = row.cellValues[columnId] ?? null;
+  }
+  return { rowId: row.rowId, values };
+}
