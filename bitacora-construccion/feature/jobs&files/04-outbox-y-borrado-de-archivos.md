@@ -1,7 +1,7 @@
 # 04 — Outbox y borrado de archivos tras el commit (E4)
 
 Fecha de creación: 2026-11-05  
-Estado: Implementado y verificado en local. Migración `20261105000300_create_outbox_events` creada y probada con PGlite; **sin aplicar en Neon**.  
+Estado: Implementado y verificado en local. Migración `20261105000300_create_outbox_events` creada, probada con PGlite y **aplicada en Neon el 2026-11-05** (`pnpm db:migrate`, lanzado por el usuario, junto con las de hojas y borradores; todas aditivas).  
 Ámbito: etapa E4 del [plan 01](../../../docs/plans/feature/jobs&files/01-plan-ejecucion-y-archivos.md) (D8–D10).  
 Relacionada con: [plan 01](../../../docs/plans/feature/jobs&files/01-plan-ejecucion-y-archivos.md), fichas [01](../../../docs/fonts/feature/jobs&files/01-estado-real-y-antecedentes.md) (E6–E8) y [02](../../../docs/fonts/feature/jobs&files/02-fuentes-tecnicas-y-cursos.md) (C1–C4, C6, F2, F3), [bitácoras 01–03](01-bucle-comun-y-sql-de-lease.md).  
 Revisión de partida: `612b745` con E1–E3 sin commit.

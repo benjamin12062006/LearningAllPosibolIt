@@ -1,7 +1,7 @@
 # 02 — Importación con lease, token y reintentos (E2)
 
 Fecha de creación: 2026-11-05  
-Estado: Implementado y verificado en local. Migración `20261105000100_add_import_job_lease` creada y probada con PGlite; **sin aplicar en Neon**.  
+Estado: Implementado y verificado en local. Migración `20261105000100_add_import_job_lease` creada, probada con PGlite y **aplicada en Neon el 2026-11-05** (`pnpm db:migrate`, lanzado por el usuario, junto con las de hojas y borradores; todas aditivas).  
 Ámbito: etapa E2 del [plan 01](../../../docs/plans/feature/jobs&files/01-plan-ejecucion-y-archivos.md) (D4–D6).  
 Relacionada con: [plan 01](../../../docs/plans/feature/jobs&files/01-plan-ejecucion-y-archivos.md), [bitácora 01](01-bucle-comun-y-sql-de-lease.md), fichas [01](../../../docs/fonts/feature/jobs&files/01-estado-real-y-antecedentes.md) (E2, E3, E4, E11) y [02](../../../docs/fonts/feature/jobs&files/02-fuentes-tecnicas-y-cursos.md) (C6, F1, F3, F7), [bitácora 04 de feeds](../feeds&publications/04-trabajo-de-actualizacion-con-lease.md) (fallo de zona horaria de Prisma).  
 Revisión de partida: `612b745` con E1 sin commit.

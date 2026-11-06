@@ -2,7 +2,7 @@
 
 Fecha de creación: 2026-11-05  
 Última actualización: 2026-11-05 (plan cerrado)  
-Estado: E1–E4, E6 y E7 implementadas y verificadas en local ([bitácoras 01–06](../../../../bitacora-construccion/feature/jobs&files/)); E5 absorbida por la E4 de borradores. **Plan cerrado.** Migraciones de E2–E4 sin aplicar en Neon.  
+Estado: E1–E4, E6 y E7 implementadas y verificadas en local ([bitácoras 01–06](../../../../bitacora-construccion/feature/jobs&files/)); E5 absorbida por la E4 de borradores. **Plan cerrado.** Commit `e6c6bff`; migraciones de E2–E4 aplicadas en Neon el 2026-11-05.  
 Ámbito: `claudeLearningAllPosibolIt`, solo backend y REST. E2 de [docs-diagrams/18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md) («Ejecución y archivos»). No confundir con la E2 del plan de feeds.  
 Relacionada con: fichas [01](../../../fonts/feature/jobs&files/01-estado-real-y-antecedentes.md), [02](../../../fonts/feature/jobs&files/02-fuentes-tecnicas-y-cursos.md) y [03](../../../fonts/feature/jobs&files/03-mapa-de-necesidades-para-el-plan.md); [plan de feeds](../feeds&publications/01-plan-feeds-y-publicaciones.md) (D2–D4: lease y reintentos); [docs-diagrams/17](../../../../../docs-diagrams/17-trabajos-integraciones-operacion-y-expansion.md) y [13](../../../../../docs-diagrams/13-revisiones-aprobaciones-y-conflictos.md).  
 Revisión de referencia: `612b745` (`feature/feeds-publications`), con cambios sin commit de organizaciones y hojas de cálculo que este plan no toca.

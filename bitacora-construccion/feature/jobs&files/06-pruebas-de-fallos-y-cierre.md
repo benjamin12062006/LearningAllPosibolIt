@@ -1,7 +1,7 @@
 # 06 — Pruebas de fallos y cierre de E2 (E7)
 
 Fecha de creación: 2026-11-05  
-Estado: Cerrado. Plan cerrado. Las tres migraciones (`20261105000100`, `000200` y `000300`) están **sin aplicar en Neon**.  
+Estado: Cerrado. Plan cerrado. Código en el commit `e6c6bff` (`feature/jobs-files`). Las tres migraciones se aplicaron en Neon el 2026-11-05.  
 Ámbito: etapa E7 del [plan 01](../../../docs/plans/feature/jobs&files/01-plan-ejecucion-y-archivos.md) (D13) y actualización de docs-diagrams.  
 Relacionada con: [plan 01](../../../docs/plans/feature/jobs&files/01-plan-ejecucion-y-archivos.md), bitácoras [01](01-bucle-comun-y-sql-de-lease.md)–[05](05-observabilidad.md), docs-diagrams [06](../../../../docs-diagrams/06-dominio-y-datos-postgresql.md), [07](../../../../docs-diagrams/07-arquitectura-y-contratos.md), [08](../../../../docs-diagrams/08-secuencias-y-estados.md), [17](../../../../docs-diagrams/17-trabajos-integraciones-operacion-y-expansion.md) y [18](../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md).  
 Revisión de partida: `612b745` con E1–E6 sin commit.
@@ -47,7 +47,7 @@ Cifras finales: 69 suites y 1.176 pruebas en verde; 37 defectos a propósito (5 
 
 ## Pendientes
 
-- **Neon:** aplicar las tres migraciones con `pnpm db:status` y `pnpm db:migrate` cuando el usuario lo pida.
+- ~~Neon~~: hecho el 2026-11-05. El usuario lanzó `pnpm db:migrate`, que aplicó también las dos de hojas (`20261104090000`, `20261104100000`) y la de borradores (`20261105100000`), pendientes en el mismo orden. Las seis eran aditivas. El agente no pudo lanzarlo: el control de permisos lo bloquea como despliegue a producción. Nota para el futuro: `pnpm db:status` termina con código 1 cuando hay pendientes, así que `db:status && db:migrate` nunca llega a migrar.
 - **Crear proyecto con doble clic** repite la operación (E5 absorbida). Se puede resolver en la web (desactivar el botón) o con un recibo.
 - **La E2E «multipart incompleto devuelve 400 y limpia cualquier temporal»** falla a veces con la batería completa, por un borrado asíncrono en `import-upload.interceptor.ts` ([bitácora 03](03-evaluacion-con-lease-y-reintentos.md)).
 - **Fuera del plan:** BullMQ/Redis, `inbox_events` (E9), `unknown_outcome` (E9), Prometheus, almacén S3 y concurrencia por organización.

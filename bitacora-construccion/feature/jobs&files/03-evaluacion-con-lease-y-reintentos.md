@@ -1,7 +1,7 @@
 # 03 — Evaluación con lease, token y reintentos (E3)
 
 Fecha de creación: 2026-11-05  
-Estado: Implementado y verificado en local. Migración `20261105000200_add_evaluation_lease` creada y probada con PGlite; **sin aplicar en Neon**.  
+Estado: Implementado y verificado en local. Migración `20261105000200_add_evaluation_lease` creada, probada con PGlite y **aplicada en Neon el 2026-11-05** (`pnpm db:migrate`, lanzado por el usuario, junto con las de hojas y borradores; todas aditivas).  
 Ámbito: etapa E3 del [plan 01](../../../docs/plans/feature/jobs&files/01-plan-ejecucion-y-archivos.md) (D5–D7).  
 Relacionada con: [plan 01](../../../docs/plans/feature/jobs&files/01-plan-ejecucion-y-archivos.md), [bitácora 02](02-importacion-con-lease-y-reintentos.md) (el mismo diseño para la importación), ficha [01](../../../docs/fonts/feature/jobs&files/01-estado-real-y-antecedentes.md) (E2, E3, E11).  
 Revisión de partida: `612b745` con E1 y E2 sin commit.
