@@ -1,0 +1,535 @@
+import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
+import { apiError } from '../common/http/api-error.js';
+import { ErrorCodes } from '../common/http/error-codes.js';
+import { publicError } from '../common/http/public-error.js';
+import { UsersService } from '../users/users.service.js';
+import { evaluateRow } from '../worksheets/row-evaluation.js';
+import type {
+  ProjectScope,
+  WorksheetColumn,
+} from '../worksheets/worksheets.types.js';
+import {
+  compareOperations,
+  contentHash,
+  countByStatus,
+  resultingRows,
+  type DiffEntry,
+} from './changeset-diff.js';
+import {
+  mentionedRowIds,
+  normalizeOperations,
+  type Operation,
+  type OperationIssue,
+} from './changeset-operations.js';
+import { inverseOperations } from './changeset-revert.js';
+import type {
+  ApplyChangesetDto,
+  ConflictResolutionDto,
+  DecisionDto,
+} from './changesets.dto.js';
+import {
+  ChangesetsRepository,
+  HeadChangedError,
+} from './changesets.repository.js';
+import type { Changeset, RevisionPointer } from './changesets.types.js';
+
+/** `If-Match: "3"`: la versión del borrador que se editó (F45). */
+const IF_MATCH_PATTERN = /^"(\d+)"$/;
+
+/** Problemas que impiden enviar: celdas que no cumplen su columna (D5). */
+const BLOCKING_PROBLEMS = new Set(['CELL_REQUIRED', 'CELL_VALUE_INVALID']);
+
+/** Lo que una persona ve antes de enviar o aprobar (D4). */
+export type ChangesetReview = Readonly<{
+  baseRevisionId: string;
+  headRevisionId: string;
+  contentHash: string;
+  entries: readonly DiffEntry[];
+  counts: ReturnType<typeof countByStatus>;
+  problems: readonly Readonly<{
+    rowId: string;
+    columnId: string;
+    code: string;
+  }>[];
+}>;
+
+/**
+ * Borradores de hojas (E4): guardar sin perder cambios, revisar, aprobar,
+ * aplicar de forma atómica e idempotente, resolver conflictos y revertir.
+ * Las reglas de cada transición están en el repositorio, dentro de su
+ * transacción; aquí se preparan los datos que no dependen del estado vivo.
+ */
+@Injectable()
+export class ChangesetsService {
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly repository: ChangesetsRepository,
+  ) {}
+
+  async create(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    title: string,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    const head = await this.requireHead(user.id, scope, worksheetId);
+    return this.repository.create(user.id, scope, {
+      worksheetId,
+      title,
+      source: 'manual',
+      base: head,
+      operations: [],
+    });
+  }
+
+  async find(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    changesetId: string,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    return this.requireChangeset(user.id, scope, changesetId);
+  }
+
+  /** Guardar (D3): sin `If-Match` 428, con otra versión 412. */
+  async saveOperations(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    changesetId: string,
+    ifMatch: string | undefined,
+    input: readonly unknown[],
+  ) {
+    const expectedVersion = parseIfMatch(ifMatch);
+    const user = await this.usersService.findCurrent(identity);
+    const changeset = await this.requireChangeset(user.id, scope, changesetId);
+
+    const operations = await this.normalizeOrReject(scope, changeset, input);
+    return this.repository.saveOperations(
+      user.id,
+      scope,
+      changesetId,
+      expectedVersion,
+      operations,
+    );
+  }
+
+  async review(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    changesetId: string,
+  ): Promise<ChangesetReview> {
+    const user = await this.usersService.findCurrent(identity);
+    const changeset = await this.requireChangeset(user.id, scope, changesetId);
+    return this.buildReview(user.id, scope, changeset);
+  }
+
+  /** Enviar (D5): sobre el head actual, sin conflictos y sin problemas. */
+  async submit(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    changesetId: string,
+    draftVersion: number,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    const changeset = await this.requireChangeset(user.id, scope, changesetId);
+    const review = await this.buildReview(user.id, scope, changeset);
+
+    if (review.headRevisionId !== changeset.baseRevisionId) {
+      throw apiError(ErrorCodes.CHANGESET_BASE_OUTDATED);
+    }
+    assertNoBlockingProblems(review);
+    return this.repository.submit(
+      user.id,
+      scope,
+      changesetId,
+      draftVersion,
+      review.contentHash,
+    );
+  }
+
+  async reopen(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    changesetId: string,
+    draftVersion: number,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    return this.repository.reopen(user.id, scope, changesetId, draftVersion);
+  }
+
+  async cancel(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    changesetId: string,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    return this.repository.cancel(user.id, scope, changesetId);
+  }
+
+  async decide(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    changesetId: string,
+    input: DecisionDto,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    return this.repository.decide(user.id, scope, changesetId, {
+      decision: input.decision,
+      contentHash: input.contentHash,
+      draftVersion: input.draftVersion,
+      expectedHeadRevisionId: input.expectedHeadRevisionId,
+      reason: input.reason ?? null,
+    });
+  }
+
+  /**
+   * Aplicar (D8). El recibo se guarda por la huella del cuerpo: reintentar con
+   * la misma clave devuelve el mismo resultado; con otro cuerpo, 422 (F47).
+   */
+  async apply(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    changesetId: string,
+    idempotencyKey: string | undefined,
+    input: ApplyChangesetDto,
+  ) {
+    const key = requireIdempotencyKey(idempotencyKey);
+    const user = await this.usersService.findCurrent(identity);
+    try {
+      return await this.repository.apply(user.id, scope, changesetId, {
+        idempotencyKey: key,
+        payloadHash: payloadHashOf(input),
+        contentHash: input.contentHash,
+        expectedHeadRevisionId: input.expectedHeadRevisionId,
+      });
+    } catch (error) {
+      await this.recordConflictIfHeadChanged(
+        error,
+        scope,
+        changesetId,
+        user.id,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Rebase (D9): lo ya hecho o sin cambio se descarta; cada conflicto necesita
+   * una elección. Sin elección para alguno, 409 y el borrador no cambia.
+   */
+  async rebase(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    changesetId: string,
+    draftVersion: number,
+    resolutions: readonly ConflictResolutionDto[],
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    const changeset = await this.requireChangeset(user.id, scope, changesetId);
+    const head = await this.requireHead(user.id, scope, changeset.worksheetId);
+    const entries = await this.compareWithHead(scope, changeset, head);
+
+    const operations = keepAfterRebase(
+      changeset.operations,
+      entries,
+      resolutions,
+    );
+    return this.repository.rebase(user.id, scope, changesetId, {
+      expectedVersion: draftVersion,
+      head,
+      operations,
+    });
+  }
+
+  /** Propuesta de reversión (D10): un borrador nuevo; nunca mueve el head atrás. */
+  async proposeRevert(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    revisionId: string,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    const revision = await this.repository.findRevisionChanges(
+      user.id,
+      scope,
+      revisionId,
+    );
+    if (!revision) {
+      throw apiError(ErrorCodes.WORKSHEET_REVISION_NOT_FOUND);
+    }
+    const head = await this.requireHead(user.id, scope, revision.worksheetId);
+    const headRows = await this.repository.findRowsAt(
+      scope,
+      revision.worksheetId,
+      head.sequence,
+      revision.changes.map(({ rowId }) => rowId),
+    );
+
+    const operations = inverseOperations(revision.changes, headRows);
+    if (operations.length === 0) {
+      throw apiError(ErrorCodes.REVERT_NOTHING_TO_UNDO);
+    }
+    return this.repository.create(user.id, scope, {
+      worksheetId: revision.worksheetId,
+      title: `Revertir la revisión ${revision.sequence}`,
+      source: 'revert',
+      base: head,
+      operations,
+    });
+  }
+
+  // ── Pasos internos ──
+
+  private async requireChangeset(
+    userId: string,
+    scope: ProjectScope,
+    changesetId: string,
+  ): Promise<Changeset> {
+    const changeset = await this.repository.findChangeset(
+      userId,
+      scope,
+      changesetId,
+    );
+    if (!changeset) {
+      throw apiError(ErrorCodes.CHANGESET_NOT_FOUND);
+    }
+    return changeset;
+  }
+
+  private async requireHead(
+    userId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+  ): Promise<RevisionPointer> {
+    const head = await this.repository.findHead(userId, scope, worksheetId);
+    if (!head) {
+      throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
+    }
+    return head;
+  }
+
+  /** La base es inmutable: leerla fuera de la transacción es seguro. */
+  private async normalizeOrReject(
+    scope: ProjectScope,
+    changeset: Changeset,
+    input: readonly unknown[],
+  ): Promise<readonly Operation[]> {
+    const columns = await this.repository.findColumns(
+      scope,
+      changeset.worksheetId,
+      changeset.baseSchemaVersion,
+    );
+    const baseRows = await this.repository.findRowsAt(
+      scope,
+      changeset.worksheetId,
+      changeset.baseSequence,
+      mentionedRowIds(input),
+    );
+    const savedAt = new Date().toISOString();
+    const result = normalizeOperations(input, {
+      columns,
+      baseRows,
+      // Una fila insertada sin clave va detrás de las de este momento.
+      defaultSortKey: (index) => `${savedAt}#${String(index).padStart(4, '0')}`,
+    });
+    if (!result.ok) {
+      throw validationError(result.issues);
+    }
+    return result.operations;
+  }
+
+  private async buildReview(
+    userId: string,
+    scope: ProjectScope,
+    changeset: Changeset,
+  ): Promise<ChangesetReview> {
+    const head = await this.requireHead(userId, scope, changeset.worksheetId);
+    const rowIds = changeset.operations.map(({ rowId }) => rowId);
+    const [columns, baseRows] = await Promise.all([
+      this.repository.findColumns(
+        scope,
+        changeset.worksheetId,
+        changeset.baseSchemaVersion,
+      ),
+      this.repository.findRowsAt(
+        scope,
+        changeset.worksheetId,
+        changeset.baseSequence,
+        rowIds,
+      ),
+    ]);
+    const headRows = await this.repository.findRowsAt(
+      scope,
+      changeset.worksheetId,
+      head.sequence,
+      rowIds,
+    );
+
+    const entries = compareOperations(changeset.operations, baseRows, headRows);
+    return {
+      baseRevisionId: changeset.baseRevisionId,
+      headRevisionId: head.id,
+      contentHash: contentHash({
+        worksheetId: changeset.worksheetId,
+        baseRevisionId: changeset.baseRevisionId,
+        baseSchemaVersion: changeset.baseSchemaVersion,
+        operations: changeset.operations,
+      }),
+      entries,
+      counts: countByStatus(entries),
+      problems: blockingProblems(
+        columns,
+        resultingRows(changeset.operations, baseRows),
+      ),
+    };
+  }
+
+  private async compareWithHead(
+    scope: ProjectScope,
+    changeset: Changeset,
+    head: RevisionPointer,
+  ) {
+    const rowIds = changeset.operations.map(({ rowId }) => rowId);
+    const baseRows = await this.repository.findRowsAt(
+      scope,
+      changeset.worksheetId,
+      changeset.baseSequence,
+      rowIds,
+    );
+    const headRows = await this.repository.findRowsAt(
+      scope,
+      changeset.worksheetId,
+      head.sequence,
+      rowIds,
+    );
+    return compareOperations(changeset.operations, baseRows, headRows);
+  }
+
+  /** El conflicto se registra después del rollback, en su propia transacción. */
+  private async recordConflictIfHeadChanged(
+    error: unknown,
+    scope: ProjectScope,
+    changesetId: string,
+    userId: string,
+  ) {
+    if (!(error instanceof HeadChangedError)) {
+      return;
+    }
+    await this.repository.markConflicted(scope, changesetId, userId);
+    throw apiError(ErrorCodes.WORKSHEET_HEAD_CHANGED);
+  }
+}
+
+function parseIfMatch(ifMatch: string | undefined): number {
+  if (ifMatch === undefined) {
+    throw apiError(ErrorCodes.CHANGESET_VERSION_REQUIRED);
+  }
+  const match = IF_MATCH_PATTERN.exec(ifMatch.trim());
+  if (!match) {
+    throw apiError(ErrorCodes.CHANGESET_VERSION_MISMATCH);
+  }
+  return Number(match[1]);
+}
+
+/** Una clave de 1 a 255 caracteres visibles; sin ella, 400 (F47). */
+function requireIdempotencyKey(key: string | undefined): string {
+  const trimmed = key?.trim() ?? '';
+  if (trimmed.length === 0 || trimmed.length > 255) {
+    throw apiError(ErrorCodes.IDEMPOTENCY_KEY_REQUIRED);
+  }
+  return trimmed;
+}
+
+function payloadHashOf(input: ApplyChangesetDto) {
+  const canonical = [input.contentHash, input.expectedHeadRevisionId];
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function blockingProblems(
+  columns: readonly WorksheetColumn[],
+  rows: ReadonlyMap<string, Readonly<Record<string, unknown>>>,
+) {
+  const columnIds = columns.map(({ id }) => id);
+  const problems: { rowId: string; columnId: string; code: string }[] = [];
+  for (const [rowId, values] of rows) {
+    for (const problem of evaluateRow(columns, values, columnIds).problems) {
+      if (BLOCKING_PROBLEMS.has(problem.code)) {
+        problems.push({
+          rowId,
+          columnId: problem.columnId,
+          code: problem.code,
+        });
+      }
+    }
+  }
+  return problems;
+}
+
+/** `issues` con el campo `rows.<rowId>.<columnId>`, como el resto de validaciones. */
+function assertNoBlockingProblems(review: ChangesetReview) {
+  if (review.problems.length === 0) {
+    return;
+  }
+  throw validationError(
+    review.problems.map(({ rowId, columnId, code }) => ({
+      field: `rows.${rowId}.${columnId}`,
+      code:
+        code === 'CELL_REQUIRED'
+          ? ErrorCodes.CELL_REQUIRED
+          : ErrorCodes.CELL_VALUE_INVALID,
+    })),
+  );
+}
+
+function validationError(issues: readonly OperationIssue[]) {
+  return apiError(
+    ErrorCodes.VALIDATION_FAILED,
+    issues.map(({ field, code }) => ({ field, ...publicError(code) })),
+  );
+}
+
+/**
+ * Qué operaciones siguen tras el rebase: los cambios, y los conflictos donde
+ * se eligió la propuesta. Lo satisfecho o sin cambio sobra.
+ */
+function keepAfterRebase(
+  operations: readonly Operation[],
+  entries: readonly DiffEntry[],
+  resolutions: readonly ConflictResolutionDto[],
+): Operation[] {
+  const choices = new Map(
+    resolutions.map((resolution) => [
+      conflictKey(resolution.rowId, resolution.columnId),
+      resolution.choice,
+    ]),
+  );
+  const kept: Operation[] = [];
+  let unresolved = 0;
+
+  entries.forEach((entry, index) => {
+    if (entry.status === 'change') {
+      kept.push(operations[index]);
+      return;
+    }
+    if (entry.status !== 'conflict') {
+      return;
+    }
+    const choice = choices.get(conflictKey(entry.rowId, entry.columnId));
+    if (choice === 'proposed') {
+      kept.push(operations[index]);
+    } else if (choice === undefined) {
+      unresolved += 1;
+    }
+  });
+
+  if (unresolved > 0) {
+    throw apiError(ErrorCodes.CHANGESET_CONFLICTS);
+  }
+  return kept;
+}
+
+function conflictKey(rowId: string, columnId: string | null) {
+  return `${rowId}:${columnId ?? ''}`;
+}

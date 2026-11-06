@@ -671,4 +671,89 @@ export const API_MESSAGES = {
     'Todavía no se puede ordenar por una columna calculada.',
     'Sorting by a calculated column is not available yet.',
   ),
+  [ErrorCodes.OPERATION_INVALID]: entry(
+    400,
+    'La operación no tiene una forma válida o no se puede hacer en esta fila. El campo indica cuál.',
+    'The operation has an invalid shape or cannot be done on this row. The field shows which one.',
+  ),
+  [ErrorCodes.OPERATION_ROW_UNKNOWN]: entry(
+    400,
+    'La fila no existe en la revisión base del borrador. El campo indica cuál.',
+    'The row does not exist in the base revision of the draft. The field shows which one.',
+  ),
+  [ErrorCodes.OPERATION_ROW_EXISTS]: entry(
+    400,
+    'Ya existe una fila con ese ID. El campo indica cuál.',
+    'A row with that ID already exists. The field shows which one.',
+  ),
+  [ErrorCodes.OPERATION_COLUMN_UNKNOWN]: entry(
+    400,
+    'La columna no existe en la hoja. El campo indica cuál.',
+    'The column does not exist in the worksheet. The field shows which one.',
+  ),
+  [ErrorCodes.OPERATION_VALUE_INVALID]: entry(
+    400,
+    'El valor no tiene el formato de su columna o la columna es calculada. El campo indica cuál.',
+    'The value does not have the format of its column, or the column is calculated. The field shows which one.',
+  ),
+  [ErrorCodes.CHANGESET_NOT_FOUND]: entry(
+    404,
+    'No se encontró el borrador.',
+    'The draft was not found.',
+  ),
+  [ErrorCodes.CHANGESET_VERSION_REQUIRED]: entry(
+    428,
+    'Envía la versión del borrador que estás editando en la cabecera If-Match.',
+    'Send the version of the draft you are editing in the If-Match header.',
+  ),
+  [ErrorCodes.CHANGESET_VERSION_MISMATCH]: entry(
+    412,
+    'El borrador cambió desde que lo abriste. Vuelve a cargarlo antes de guardar.',
+    'The draft changed since you opened it. Reload it before saving.',
+  ),
+  [ErrorCodes.CHANGESET_STATE_INVALID]: entry(
+    409,
+    'El borrador no está en un estado que permita esta acción.',
+    'The draft is not in a state that allows this action.',
+  ),
+  [ErrorCodes.CHANGESET_BASE_OUTDATED]: entry(
+    409,
+    'La hoja cambió desde que empezó el borrador. Actualízalo sobre la revisión actual (rebase).',
+    'The worksheet changed since the draft started. Update it onto the current revision (rebase).',
+  ),
+  [ErrorCodes.CHANGESET_STALE]: entry(
+    409,
+    'Lo que revisaste ya no coincide con el borrador o con la hoja. Vuelve a revisarlo.',
+    'What you reviewed no longer matches the draft or the worksheet. Review it again.',
+  ),
+  [ErrorCodes.CHANGESET_SELF_APPROVAL]: entry(
+    403,
+    'No puedes aprobar tu propio borrador: hace falta otra persona con permiso.',
+    'You cannot approve your own draft: another person with permission is needed.',
+  ),
+  [ErrorCodes.CHANGESET_CONFLICTS]: entry(
+    409,
+    'Hay conflictos sin resolver. Elige qué valor se queda en cada uno.',
+    'There are unresolved conflicts. Choose which value stays in each one.',
+  ),
+  [ErrorCodes.WORKSHEET_HEAD_CHANGED]: entry(
+    409,
+    'La hoja cambió después de aprobar el borrador. No se aplicó nada; resuelve el conflicto y vuelve a revisarlo.',
+    'The worksheet changed after the draft was approved. Nothing was applied; resolve the conflict and review it again.',
+  ),
+  [ErrorCodes.IDEMPOTENCY_KEY_REQUIRED]: entry(
+    400,
+    'Envía una cabecera Idempotency-Key para poder reintentar sin repetir el cambio.',
+    'Send an Idempotency-Key header so the request can be retried without repeating the change.',
+  ),
+  [ErrorCodes.IDEMPOTENCY_KEY_REUSED]: entry(
+    422,
+    'Esa Idempotency-Key ya se usó con otra petición. Usa una clave nueva.',
+    'That Idempotency-Key was already used with a different request. Use a new key.',
+  ),
+  [ErrorCodes.REVERT_NOTHING_TO_UNDO]: entry(
+    409,
+    'No hay nada que deshacer: la hoja ya no tiene los cambios de esa revisión.',
+    'There is nothing to undo: the worksheet no longer has the changes from that revision.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

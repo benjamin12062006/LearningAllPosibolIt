@@ -11,6 +11,7 @@ import {
 } from '../organizations/organization-lock.js';
 import {
   can,
+  type OrganizationPermission,
   type OrganizationRole,
 } from '../organizations/organization-roles.js';
 import type { NewWorksheet } from './new-worksheet.js';
@@ -181,7 +182,7 @@ export class WorksheetsRepository {
     name: string,
   ): Promise<Workbook> {
     return this.prisma.$transaction(async (tx) => {
-      await lockWritableProject(tx, actorId, scope);
+      await lockProjectFor(tx, actorId, scope, 'worksheet.write');
       if (await workbookNameTaken(tx, scope, name)) {
         throw apiError(ErrorCodes.WORKBOOK_NAME_TAKEN);
       }
@@ -217,7 +218,12 @@ export class WorksheetsRepository {
     const now = new Date().toISOString();
 
     return this.prisma.$transaction(async (tx) => {
-      const access = await lockWritableProject(tx, actorId, scope);
+      const access = await lockProjectFor(
+        tx,
+        actorId,
+        scope,
+        'worksheet.write',
+      );
       if (!(await workbookInScope(tx, scope, workbookId))) {
         throw apiError(ErrorCodes.WORKBOOK_NOT_FOUND);
       }
@@ -260,12 +266,14 @@ function isMember(actorId: string, organizationColumn: Prisma.Sql) {
 /**
  * Primer paso de toda escritura (W7): bloquea la organización (F39) y, ya
  * dentro de la transacción, comprueba por este orden: miembro y proyecto de
- * esa organización (404), archivada (409) y permiso `worksheet.write` (403).
+ * esa organización (404), archivada (409) y el permiso pedido (403). Lo usan
+ * también los borradores de E4, que dependen de este módulo.
  */
-async function lockWritableProject(
+export async function lockProjectFor(
   tx: Prisma.TransactionClient,
   actorId: string,
   scope: ProjectScope,
+  permission: OrganizationPermission,
 ): Promise<ProjectAccess> {
   const organization = await lockOrganization(tx, scope.organizationId);
   const rows = await tx.$queryRaw<{ role: OrganizationRole }[]>(Prisma.sql`
@@ -281,7 +289,7 @@ async function lockWritableProject(
     throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
   }
   assertNotArchived(organization);
-  if (!can(role, 'worksheet.write')) {
+  if (!can(role, permission)) {
     throw apiError(ErrorCodes.FORBIDDEN);
   }
   return { role, isArchived: false };

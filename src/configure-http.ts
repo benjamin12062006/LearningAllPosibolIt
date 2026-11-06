@@ -40,12 +40,17 @@ export function configureHttp(app: INestApplication) {
       'http://127.0.0.1:3000',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    // `If-Match` y `Idempotency-Key` los usan los borradores de hojas (E4):
+    // guardar sin perder cambios y aplicar sin repetirlo. `ETag` lleva la
+    // versión del borrador de vuelta al navegador.
     allowedHeaders: [
       'Accept',
       'Authorization',
       'Content-Type',
+      'If-Match',
+      'Idempotency-Key',
       REQUEST_ID_HEADER,
     ],
-    exposedHeaders: [REQUEST_ID_HEADER],
+    exposedHeaders: ['ETag', REQUEST_ID_HEADER],
   });
 }

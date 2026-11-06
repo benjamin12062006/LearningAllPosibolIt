@@ -10,9 +10,10 @@ import { EvaluationsModule } from './evaluations/evaluations.module.js';
 import { ExportsModule } from './exports/exports.module.js';
 import { FeedRefreshesModule } from './feed-refreshes/feed-refreshes.module.js';
 import { FeedsModule } from './feeds/feeds.module.js';
-import { HealthModule } from './health/health.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { WorksheetsModule } from './worksheets/worksheets.module.js';
+import { ChangesetsModule } from './changesets/changesets.module.js';
+import { HealthModule } from './health/health.module.js';
 
 @Module({
   imports: [
@@ -27,8 +28,9 @@ import { WorksheetsModule } from './worksheets/worksheets.module.js';
     ExportsModule,
     FeedsModule,
     FeedRefreshesModule,
-    HealthModule,
     WorksheetsModule,
+    ChangesetsModule,
+    HealthModule,
     GraphqlApiModule,
   ],
 })
