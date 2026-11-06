@@ -11,6 +11,14 @@ import {
 import type { ImportRow } from '../catalog-import/import.types.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import {
+  claimIsCurrent,
+  LostClaimError,
+  newExecutionToken,
+  nowPlus,
+  type JobClaim,
+} from '../jobs/lease-sql.js';
+import { retryDelay, type RetryOptions } from '../jobs/retry-delay.js';
 import { describeProblem, isRowProblem } from './problem-messages.js';
 import { ENGINE_VERSION, type RowOutcome } from './engine/evaluate-row.js';
 import type { EvaluationResult } from './engine/evaluation-summary.js';
@@ -23,6 +31,7 @@ import {
 import { isRuleset, type AttributeMapping } from './engine/ruleset.js';
 import type { InvalidRow } from './errors-csv.js';
 import {
+  EVALUATION_JOB_DEFAULTS,
   EvaluationFailure,
   type ClaimedEvaluation,
   type EvaluationCountsView,
@@ -39,7 +48,11 @@ type SnapshotForEvaluationRow = { status: string; headers: unknown };
 
 type RulesetForEvaluationRow = { id: string; mapping: unknown; rules: unknown };
 
-type StatusRow = { status: EvaluationStatus };
+/** Una evaluación `running` con el lease vencido, a punto de recuperarse. */
+type ExpiredEvaluationRow = { id: string; attempts: number };
+
+/** Una evaluación lista para reclamar, con lo que el motor necesita. */
+type ReadyEvaluationRow = Omit<ClaimedEvaluation, 'token' | 'leaseMs'>;
 
 type OutcomeCountRow = { outcome: RowOutcome['outcome']; count: number };
 
@@ -202,15 +215,49 @@ export class EvaluationsRepository {
   // ---------------------------------------------------------------------------
 
   /**
-   * Toma la evaluación en cola más antigua y la marca como `running`, con todo
-   * lo que el motor necesita. SKIP LOCKED evita que dos workers tomen la misma.
+   * Las evaluaciones `running` con el lease vencido no pueden seguir: su
+   * proceso cayó o se quedó colgado. Cuenta como un fallo temporal (plan
+   * jobs&files, D6 y D7): vuelven a la cola desde cero o, sin intentos, fallan
+   * con `EVALUATION_INTERRUPTED`. Su token deja de valer.
    */
-  claim(): Promise<ClaimedEvaluation | null> {
+  recoverExpiredLeases(retry: RetryOptions): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<ClaimedEvaluation[]>`
+      const expired = await tx.$queryRaw<ExpiredEvaluationRow[]>`
+        SELECT id, attempts
+        FROM estadistica_forms.evaluations
+        WHERE status = 'running'
+          AND lease_until <= now()
+        FOR UPDATE SKIP LOCKED`;
+      for (const evaluation of expired) {
+        const attempts = evaluation.attempts + 1;
+        if (attempts >= retry.maxAttempts) {
+          const error = publicError(ErrorCodes.EVALUATION_INTERRUPTED);
+          await failLocked(tx, evaluation.id, attempts, error);
+        } else {
+          const delayMs = retryDelay(attempts, retry);
+          await requeueLocked(tx, evaluation.id, attempts, delayMs);
+        }
+      }
+      return expired.length;
+    });
+  }
+
+  /**
+   * Toma la evaluación lista más antigua y la marca `running` con un token
+   * nuevo, su lease y todo lo que el motor necesita. SKIP LOCKED evita que dos
+   * workers tomen la misma. `skip`: las que este worker ya atendió en la
+   * pasada actual.
+   */
+  claim(
+    leaseMs: number = EVALUATION_JOB_DEFAULTS.leaseMs,
+    skip: readonly string[] = [],
+  ): Promise<ClaimedEvaluation | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<ReadyEvaluationRow[]>`
         SELECT
           e.id,
           e.snapshot_id AS "snapshotId",
+          e.attempts,
           s.row_count AS "rowCount",
           s.project_configuration ->> 'currency' AS "currency",
           r.mapping,
@@ -221,6 +268,8 @@ export class EvaluationsRepository {
         JOIN estadistica_forms.ruleset_versions r
           ON r.project_id = e.project_id AND r.id = e.ruleset_version_id
         WHERE e.status = 'queued'
+          AND (e.run_after IS NULL OR e.run_after <= now())
+          AND e.id <> ALL(${[...skip]}::text[])
         ORDER BY e.created_at, e.id
         LIMIT 1
         FOR UPDATE OF e SKIP LOCKED`;
@@ -229,11 +278,16 @@ export class EvaluationsRepository {
         return null;
       }
 
-      await tx.evaluation.update({
-        where: { id: evaluation.id },
-        data: { status: 'running', startedAt: new Date().toISOString() },
-      });
-      return evaluation;
+      const token = newExecutionToken();
+      await tx.$executeRaw`
+        UPDATE estadistica_forms.evaluations
+        SET
+          status = 'running',
+          started_at = ${new Date().toISOString()},
+          lease_until = ${nowPlus(leaseMs)},
+          execution_token = ${token}
+        WHERE id = ${evaluation.id}`;
+      return { ...evaluation, token, leaseMs };
     });
   }
 
@@ -255,11 +309,19 @@ export class EvaluationsRepository {
       LIMIT ${limit}`;
   }
 
-  appendRows(evaluationId: string, outcomes: readonly RowOutcome[]) {
+  /** Guarda un lote y renueva el lease; sin el reclamo vigente, no guarda nada. */
+  appendRows(evaluation: ClaimedEvaluation, outcomes: readonly RowOutcome[]) {
     return this.prisma.$transaction(async (tx) => {
-      await lockRunning(tx, evaluationId);
+      const renewed = await tx.$queryRaw<IdRow[]>`
+        UPDATE estadistica_forms.evaluations
+        SET lease_until = ${nowPlus(evaluation.leaseMs)}
+        WHERE ${claimIsCurrent(evaluation)}
+        RETURNING id`;
+      if (renewed.length !== 1) {
+        throw new LostClaimError();
+      }
       await tx.evaluationRow.createMany({
-        data: outcomes.map((outcome) => toStoredRow(evaluationId, outcome)),
+        data: outcomes.map((outcome) => toStoredRow(evaluation.id, outcome)),
       });
     });
   }
@@ -270,65 +332,67 @@ export class EvaluationsRepository {
    */
   complete(evaluation: ClaimedEvaluation, result: EvaluationResult) {
     return this.prisma.$transaction(async (tx) => {
-      await lockRunning(tx, evaluation.id);
+      await lockCurrentClaim(tx, evaluation);
       const stored = await countStoredOutcomes(tx, evaluation.id);
       if (!matchesResult(stored, result, evaluation.rowCount)) {
         throw new EvaluationFailure(ErrorCodes.EVALUATION_INTEGRITY_FAILED);
       }
 
-      await tx.evaluation.update({
-        where: { id: evaluation.id },
-        data: {
-          status: 'succeeded',
-          totalCount: result.counts.total,
-          validCount: result.counts.valid,
-          invalidCount: result.counts.invalid,
-          excludedCount: result.counts.excluded,
-          resultChecksum: result.checksum,
-          finishedAt: new Date().toISOString(),
-        },
-      });
+      await tx.$executeRaw`
+        UPDATE estadistica_forms.evaluations
+        SET
+          status = 'succeeded',
+          total_count = ${result.counts.total},
+          valid_count = ${result.counts.valid},
+          invalid_count = ${result.counts.invalid},
+          excluded_count = ${result.counts.excluded},
+          result_checksum = ${result.checksum},
+          finished_at = ${new Date().toISOString()},
+          lease_until = NULL,
+          execution_token = NULL
+        WHERE id = ${evaluation.id}`;
     });
   }
 
   /**
-   * Guarda el error público y borra las filas parciales, que ya no sirven. No
-   * toca una evaluación que ya terminó.
+   * Termina con el error público y borra las filas parciales, que ya no
+   * sirven. Devuelve `false` sin tocar nada si el reclamo ya no es el vigente.
    */
-  fail(evaluationId: string, error: PublicError) {
-    return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<StatusRow[]>`
-        SELECT status
-        FROM estadistica_forms.evaluations
-        WHERE id = ${evaluationId}
-        FOR UPDATE`;
-      if (!isActive(rows[0])) {
-        return;
-      }
-
-      await tx.evaluationRow.deleteMany({ where: { evaluationId } });
-      await tx.evaluation.update({
-        where: { id: evaluationId },
-        data: { status: 'failed', finishedAt: new Date().toISOString(), error },
-      });
-    });
+  fail(
+    evaluation: ClaimedEvaluation,
+    error: PublicError,
+    attempts = evaluation.attempts,
+  ) {
+    return this.whileClaimed(evaluation, (tx) =>
+      failLocked(tx, evaluation.id, attempts, error),
+    );
   }
 
-  /** Al arrancar o al apagar: las evaluaciones `running` no pueden continuar. */
-  interruptRunning() {
+  /** Fallo temporal: vuelve a la cola desde cero dentro de `delayMs`. */
+  retryLater(evaluation: ClaimedEvaluation, attempts: number, delayMs: number) {
+    return this.whileClaimed(evaluation, (tx) =>
+      requeueLocked(tx, evaluation.id, attempts, delayMs),
+    );
+  }
+
+  /** Al apagar: vuelve a la cola ya, sin gastar un intento (D6). */
+  release(evaluation: ClaimedEvaluation) {
+    return this.whileClaimed(evaluation, (tx) =>
+      requeueLocked(tx, evaluation.id, evaluation.attempts, 0),
+    );
+  }
+
+  /** Ejecuta `write` con el reclamo bloqueado; `false` si ya no es el vigente. */
+  private whileClaimed(
+    evaluation: ClaimedEvaluation,
+    write: (tx: Prisma.TransactionClient) => Promise<void>,
+  ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.evaluationRow.deleteMany({
-        where: { evaluation: { status: 'running' } },
-      });
-      const interrupted = await tx.evaluation.updateMany({
-        where: { status: 'running' },
-        data: {
-          status: 'failed',
-          finishedAt: new Date().toISOString(),
-          error: publicError(ErrorCodes.EVALUATION_INTERRUPTED),
-        },
-      });
-      return interrupted.count;
+      if (!(await holdsCurrentClaim(tx, evaluation))) {
+        return false;
+      }
+      await write(tx);
+      return true;
     });
   }
 
@@ -454,16 +518,66 @@ async function hasActiveEvaluation(
   return active !== null;
 }
 
-/** Bloquea la evaluación y falla si ya no está `running` (por ejemplo, interrumpida). */
-async function lockRunning(tx: Prisma.TransactionClient, id: string) {
-  const rows = await tx.$queryRaw<StatusRow[]>`
-    SELECT status
+/** Bloquea la evaluación si el reclamo sigue siendo el vigente. */
+async function holdsCurrentClaim(
+  tx: Prisma.TransactionClient,
+  claim: JobClaim,
+) {
+  const rows = await tx.$queryRaw<IdRow[]>`
+    SELECT id
     FROM estadistica_forms.evaluations
-    WHERE id = ${id}
+    WHERE ${claimIsCurrent(claim)}
     FOR UPDATE`;
-  if (rows[0]?.status !== 'running') {
-    throw new EvaluationFailure(ErrorCodes.EVALUATION_INTERRUPTED);
+  return rows.length === 1;
+}
+
+async function lockCurrentClaim(tx: Prisma.TransactionClient, claim: JobClaim) {
+  if (!(await holdsCurrentClaim(tx, claim))) {
+    throw new LostClaimError();
   }
+}
+
+/**
+ * Vuelve a empezar desde cero (D7): sin filas parciales y otra vez `queued`.
+ * Quien llama ya tiene la evaluación bloqueada.
+ */
+async function requeueLocked(
+  tx: Prisma.TransactionClient,
+  evaluationId: string,
+  attempts: number,
+  delayMs: number,
+) {
+  await tx.evaluationRow.deleteMany({ where: { evaluationId } });
+  await tx.$executeRaw`
+    UPDATE estadistica_forms.evaluations
+    SET
+      status = 'queued',
+      attempts = ${attempts},
+      run_after = ${nowPlus(delayMs)},
+      started_at = NULL,
+      lease_until = NULL,
+      execution_token = NULL
+    WHERE id = ${evaluationId}`;
+}
+
+/** Cierra la evaluación como fallida y borra sus filas parciales. Ya está bloqueada. */
+async function failLocked(
+  tx: Prisma.TransactionClient,
+  evaluationId: string,
+  attempts: number,
+  error: PublicError,
+) {
+  await tx.evaluationRow.deleteMany({ where: { evaluationId } });
+  await tx.$executeRaw`
+    UPDATE estadistica_forms.evaluations
+    SET
+      status = 'failed',
+      attempts = ${attempts},
+      finished_at = ${new Date().toISOString()},
+      error = ${JSON.stringify(error)}::jsonb,
+      lease_until = NULL,
+      execution_token = NULL
+    WHERE id = ${evaluationId}`;
 }
 
 async function countStoredOutcomes(
@@ -539,10 +653,6 @@ function asAlreadyActive(error: unknown) {
   return isUniqueViolation
     ? apiError(ErrorCodes.EVALUATION_ALREADY_ACTIVE)
     : error;
-}
-
-function isActive(row: StatusRow | undefined) {
-  return row !== undefined && ACTIVE_STATUSES.includes(row.status);
 }
 
 function isTextList(value: unknown): value is string[] {

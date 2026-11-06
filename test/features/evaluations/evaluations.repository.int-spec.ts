@@ -15,6 +15,7 @@ import { buildErrorsCsv } from '../../../src/evaluations/errors-csv.js';
 import { EvaluationsRepository } from '../../../src/evaluations/evaluations.repository.js';
 import type { EvaluationRequest } from '../../../src/evaluations/evaluations.types.js';
 import { EvaluationWorker } from '../../../src/evaluations/evaluations.worker.js';
+import { LostClaimError } from '../../../src/jobs/lease-sql.js';
 import type { Project } from '../../../src/projects/projects.types.js';
 import { ProjectsRepository } from '../../../src/projects/projects.repository.js';
 import { RulesetsRepository } from '../../../src/rulesets/rulesets.repository.js';
@@ -30,6 +31,11 @@ import {
   insertReadySnapshot,
   mixedCatalog,
 } from './support/snapshot-fixtures.js';
+
+/** Esperas de 1 ms: un reintento vuelve a estar listo casi al instante. */
+const FAST_RETRY = { baseDelayMs: 1, maxDelayMs: 1, maxAttempts: 3 };
+/** Esperas de un minuto: el reintento no está listo durante la prueba. */
+const SLOW_RETRY = { baseDelayMs: 60_000, maxDelayMs: 60_000, maxAttempts: 3 };
 
 const apiFailure = (code: string, status: number) =>
   expect.objectContaining({
@@ -68,6 +74,28 @@ describe('Evaluaciones con Prisma, worker y PostgreSQL temporal', () => {
       accepted.projectId,
       accepted.evaluationId,
     );
+  }
+
+  /** Simula que el proceso que la llevaba cayó: su lease ya venció. */
+  async function expireLease(evaluationId: string) {
+    await pool().query(
+      `UPDATE estadistica_forms.evaluations
+       SET lease_until = now() - interval '1 second'
+       WHERE id = $1`,
+      [evaluationId],
+    );
+  }
+
+  /** Deja lista ya una evaluación que espera su reintento. */
+  async function makeReady(evaluationId: string) {
+    await pool().query(
+      `UPDATE estadistica_forms.evaluations SET run_after = NULL WHERE id = $1`,
+      [evaluationId],
+    );
+  }
+
+  function readEvaluation(evaluationId: string) {
+    return prisma.evaluation.findUniqueOrThrow({ where: { id: evaluationId } });
   }
 
   async function countRows(evaluationId: string) {
@@ -355,10 +383,11 @@ describe('Evaluaciones con Prisma, worker y PostgreSQL temporal', () => {
       });
     });
 
-    it('interrumpe las evaluaciones running, borra sus filas y no deja seguir guardando', async () => {
+    it('recupera una evaluación con el lease vencido: borra sus filas y el token viejo ya no guarda', async () => {
       const accepted = request();
       await repository.accept(accepted);
       const claimed = await repository.claim();
+      if (!claimed) throw new Error('Falta la evaluación');
       const outcome = evaluateRow(
         {
           sourceRow: 1,
@@ -368,25 +397,179 @@ describe('Evaluaciones con Prisma, worker y PostgreSQL temporal', () => {
         CATALOG_RULESET,
         { currency: 'USD' },
       );
-      await repository.appendRows(claimed!.id, [outcome]);
+      await repository.appendRows(claimed, [outcome]);
+      await expireLease(accepted.evaluationId);
 
-      expect(await repository.interruptRunning()).toBe(1);
+      expect(await repository.recoverExpiredLeases(SLOW_RETRY)).toBe(1);
       expect(await countRows(accepted.evaluationId)).toBe(0);
-      expect(
-        await repository.findByOwner(
-          owner.id,
-          project.id,
-          accepted.evaluationId,
-        ),
-      ).toMatchObject({
-        status: 'failed',
-        error: expect.objectContaining({ code: 'EVALUATION_INTERRUPTED' }),
+      expect(await readEvaluation(accepted.evaluationId)).toMatchObject({
+        status: 'queued',
+        attempts: 1,
+        startedAt: null,
+        leaseUntil: null,
+        executionToken: null,
       });
       await expect(
-        repository.appendRows(claimed!.id, [outcome]),
-      ).rejects.toMatchObject({
-        detail: expect.objectContaining({ code: 'EVALUATION_INTERRUPTED' }),
+        repository.appendRows(claimed, [outcome]),
+      ).rejects.toBeInstanceOf(LostClaimError);
+      expect(await countRows(accepted.evaluationId)).toBe(0);
+    });
+  });
+
+  describe('lease y reintentos (jobs&files E3)', () => {
+    /** Un intento definitivo a la tercera, con esperas de 1 ms. */
+    const fastWorker = (source: EvaluationsRepository = repository) =>
+      new EvaluationWorker(source, {
+        autoStart: false,
+        pollMs: 1000,
+        shutdownMs: 1,
+        retry: FAST_RETRY,
       });
+
+    it('al agotar los intentos por leases vencidos falla con EVALUATION_INTERRUPTED', async () => {
+      const accepted = request();
+      await repository.accept(accepted);
+      for (let attempt = 1; attempt <= FAST_RETRY.maxAttempts; attempt += 1) {
+        await makeReady(accepted.evaluationId);
+        await repository.claim();
+        await expireLease(accepted.evaluationId);
+        await repository.recoverExpiredLeases(FAST_RETRY);
+      }
+
+      expect(await readEvaluation(accepted.evaluationId)).toMatchObject({
+        status: 'failed',
+        attempts: FAST_RETRY.maxAttempts,
+        error: expect.objectContaining({ code: 'EVALUATION_INTERRUPTED' }),
+      });
+    });
+
+    it('no reclama una evaluación cuyo reintento todavía no toca', async () => {
+      const accepted = request();
+      await repository.accept(accepted);
+      const claimed = await repository.claim();
+      if (!claimed) throw new Error('Falta la evaluación');
+      expect(await repository.retryLater(claimed, 1, 60_000)).toBe(true);
+
+      expect(await repository.claim()).toBeNull();
+      await makeReady(accepted.evaluationId);
+      expect(await repository.claim()).toMatchObject({
+        id: accepted.evaluationId,
+      });
+    });
+
+    it('reintenta desde cero un error temporal y termina bien', async () => {
+      const accepted = request();
+      await repository.accept(accepted);
+      let reads = 0;
+      const flaky = Object.create(repository) as EvaluationsRepository;
+      flaky.readCatalogRows = (...args) => {
+        reads += 1;
+        if (reads === 1) {
+          return Promise.reject(
+            Object.assign(new Error('connection reset'), {
+              code: 'ECONNRESET',
+            }),
+          );
+        }
+        return repository.readCatalogRows(...args);
+      };
+      const worker = fastWorker(flaky);
+
+      await worker.runUntilIdle();
+      await makeReady(accepted.evaluationId);
+      await worker.runUntilIdle();
+
+      expect(await readEvaluation(accepted.evaluationId)).toMatchObject({
+        status: 'succeeded',
+        attempts: 1,
+        totalCount: 9,
+        leaseUntil: null,
+        executionToken: null,
+      });
+      expect(await countRows(accepted.evaluationId)).toBe(9);
+    });
+
+    it('un error temporal que se repite falla al agotar los intentos', async () => {
+      const accepted = request();
+      await repository.accept(accepted);
+      const broken = Object.create(repository) as EvaluationsRepository;
+      broken.readCatalogRows = () =>
+        Promise.reject(
+          Object.assign(new Error('down'), { code: 'ECONNRESET' }),
+        );
+      const worker = fastWorker(broken);
+
+      for (let attempt = 1; attempt <= FAST_RETRY.maxAttempts; attempt += 1) {
+        await makeReady(accepted.evaluationId);
+        await worker.runUntilIdle();
+      }
+
+      expect(await readEvaluation(accepted.evaluationId)).toMatchObject({
+        status: 'failed',
+        attempts: FAST_RETRY.maxAttempts,
+        error: expect.objectContaining({
+          code: 'EVALUATION_PROCESSING_FAILED',
+        }),
+      });
+    });
+
+    it('al apagar suelta la evaluación: vuelve a la cola sin gastar intento ni dejar filas', async () => {
+      const accepted = request();
+      await repository.accept(accepted);
+      let entered!: () => void;
+      const reading = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const stalled = Object.create(repository) as EvaluationsRepository;
+      // Una lectura lenta: el apagado aborta mientras tanto y el worker lo ve
+      // al terminarla, antes de guardar nada.
+      stalled.readCatalogRows = () => {
+        entered();
+        return new Promise((resolve) => setTimeout(() => resolve([]), 50));
+      };
+      const worker = fastWorker(stalled);
+
+      const pass = worker.runUntilIdle();
+      await reading;
+      await worker.onModuleDestroy();
+      await pass;
+
+      expect(await readEvaluation(accepted.evaluationId)).toMatchObject({
+        status: 'queued',
+        attempts: 0,
+        leaseUntil: null,
+      });
+      expect(await countRows(accepted.evaluationId)).toBe(0);
+    });
+
+    it('la pasada recupera una evaluación con el lease vencido, gasta un intento y la termina', async () => {
+      const accepted = request();
+      await repository.accept(accepted);
+      await repository.claim();
+      await expireLease(accepted.evaluationId);
+      const worker = fastWorker();
+
+      // Con 1 ms de espera la misma pasada puede retomarla; si no, la siguiente.
+      await worker.runUntilIdle();
+      await makeReady(accepted.evaluationId);
+      await worker.runUntilIdle();
+
+      expect(await readEvaluation(accepted.evaluationId)).toMatchObject({
+        status: 'succeeded',
+        attempts: 1,
+      });
+    });
+
+    it('running exige lease y token en la base', async () => {
+      const accepted = request();
+      await repository.accept(accepted);
+      await repository.claim();
+      await expect(
+        pool().query(
+          `UPDATE estadistica_forms.evaluations SET execution_token = NULL WHERE id = $1`,
+          [accepted.evaluationId],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
     });
   });
 

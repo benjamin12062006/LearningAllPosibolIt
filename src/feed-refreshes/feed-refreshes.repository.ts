@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
 import type { ImportDelimiter } from '../catalog-import/import.types.js';
 import { ErrorCodes, type ErrorCode } from '../common/http/error-codes.js';
 import { publicError, type PublicError } from '../common/http/public-error.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import {
+  claimIsCurrent,
+  newExecutionToken,
+  nowPlus,
+} from '../jobs/lease-sql.js';
 import {
   decideRefreshRecovery,
   type RefreshRetryOptions,
@@ -77,31 +81,12 @@ const REFRESH_COLUMNS = Prisma.sql`
   r.finished_at AS "finishedAt"
 `;
 
-/**
- * Solo el reclamo vigente puede escribir: mismo token, todavía `running` y con
- * el lease sin vencer. Comprobar solo el token no basta: entre que vence el
- * lease y otro worker lo recupera, el token antiguo seguiría valiendo (D3).
- */
-function claimIsCurrent(claim: ClaimedRefresh) {
-  return Prisma.sql`
-    id = ${claim.id}
-    AND execution_token = ${claim.token}
-    AND status = 'running'
-    AND lease_until > now()
-  `;
-}
-
 /** Columna de cada id previsto; nombres fijos, nunca datos del cliente. */
 const PLANNED_ID_COLUMNS = [
   ['snapshotId', 'snapshot_id'],
   ['importJobId', 'import_job_id'],
   ['evaluationId', 'evaluation_id'],
 ] as const;
-
-/** `now() + ms`, con el reloj de la base (D2). */
-function nowPlus(ms: number) {
-  return Prisma.sql`now() + ${ms} * interval '1 millisecond'`;
-}
 
 @Injectable()
 export class FeedRefreshesRepository {
@@ -264,7 +249,7 @@ export class FeedRefreshesRepository {
         return null;
       }
 
-      const token = randomUUID();
+      const token = newExecutionToken();
       await tx.$executeRaw`
         UPDATE estadistica_forms.feed_refreshes
         SET

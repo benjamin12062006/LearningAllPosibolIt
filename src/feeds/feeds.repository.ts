@@ -3,6 +3,7 @@ import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { enqueueArtifactsDelete } from '../outbox/outbox-events.js';
 import type { ImportDelimiter } from '../catalog-import/import.types.js';
 import type { FeedSchedule } from './feed-schedule.js';
 import type { PublicError } from '../common/http/public-error.js';
@@ -311,7 +312,10 @@ export class FeedsRepository {
         FROM retired
         WHERE v.id = retired.id
         RETURNING retired.artifact_key AS "artifactKey"`;
-      return rows.map((row) => row.artifactKey);
+      const keys = rows.map((row) => row.artifactKey);
+      // Los archivos se borran después del commit, desde el outbox (jobs&files, D9).
+      await enqueueArtifactsDelete(tx, 'feeds', keys);
+      return keys;
     });
   }
 

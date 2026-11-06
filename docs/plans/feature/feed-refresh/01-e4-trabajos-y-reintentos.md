@@ -1,7 +1,8 @@
 # 01 — E4: trabajos de actualización y reintentos
 
 Fecha de creación: 2026-11-02  
-Estado: En curso; E4 no terminada.  
+Última actualización: 2026-11-05 (cierre)  
+Estado: **Cerrado, absorbido en E4 de feeds&publications.** Solo se llegó a hacer el incremento 1 (`src/jobs/refresh-retry.ts` y su prueba). E4 lo reutilizó y construyó el resto (persistencia, lease, pasos, worker y rutas): ver la [bitácora 04](../../../../bitacora-construccion/feature/feeds&publications/04-trabajo-de-actualizacion-con-lease.md). Se conserva como registro; no queda trabajo pendiente aquí.  
 Revisión de partida: f6b4bf9, con E1/E2 locales de Claude.  
 Relacionada con: [plan principal, D2–D4 y E4](../feeds&publications/01-plan-feeds-y-publicaciones.md), [fuentes](../../../fonts/feature/feed-refresh/01-reintentos-y-contratos.md), [bitácora](../../../../bitacora-construccion/feature/feed-refresh/01-politica-de-reintentos.md).
 

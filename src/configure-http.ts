@@ -4,11 +4,17 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import { ApiExceptionFilter } from './common/http/api-exception.filter.js';
+import {
+  assignRequestId,
+  REQUEST_ID_HEADER,
+} from './common/http/request-id.js';
 import { validationException } from './common/http/validation-errors.js';
 import { transportErrors } from './common/http/transport-errors.js';
 
 /** Misma configuración para el servidor y las pruebas HTTP de las features. */
 export function configureHttp(app: INestApplication) {
+  // El `requestId` va primero: también un cuerpo mal formado lo lleva (jobs&files, D12).
+  app.use(assignRequestId);
   // Mismos parsers del adaptador, antes del normalizador de errores de transporte.
   app.getHttpAdapter().registerParserMiddleware();
   app.use(transportErrors);
@@ -34,6 +40,12 @@ export function configureHttp(app: INestApplication) {
       'http://127.0.0.1:3000',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Accept', 'Authorization', 'Content-Type'],
+    allowedHeaders: [
+      'Accept',
+      'Authorization',
+      'Content-Type',
+      REQUEST_ID_HEADER,
+    ],
+    exposedHeaders: [REQUEST_ID_HEADER],
   });
 }

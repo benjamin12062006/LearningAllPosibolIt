@@ -128,6 +128,18 @@ describe('CatalogImport HTTP multipart con Nest y persistencia reales', () => {
     }
   });
 
+  it('el trabajo guarda el X-Request-Id de la petición que lo creó (jobs&files, D12)', async () => {
+    const response = await upload()
+      .set('X-Request-Id', 'upload-trace-0001')
+      .expect(202);
+
+    expect(response.headers['x-request-id']).toBe('upload-trace-0001');
+    const job = await prisma.catalogImportJob.findUniqueOrThrow({
+      where: { id: response.body.jobId },
+    });
+    expect(job.requestId).toBe('upload-trace-0001');
+  });
+
   it('acepta 202 y publica snapshot/muestra solo después del trabajo', async () => {
     const response = await upload().expect(202);
     const accepted: Accepted = response.body;

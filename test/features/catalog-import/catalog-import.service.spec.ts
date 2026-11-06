@@ -13,6 +13,7 @@ import { CatalogImportService } from '../../../src/catalog-import/catalog-import
 import { CatalogImportRepository } from '../../../src/catalog-import/catalog-import.repository.js';
 import { CatalogImportWorker } from '../../../src/catalog-import/catalog-import.worker.js';
 import { ArtifactStore } from '../../../src/artifacts/artifact.store.js';
+import { OutboxRelay } from '../../../src/outbox/outbox.relay.js';
 import { UsersService } from '../../../src/users/users.service.js';
 import {
   alice,
@@ -69,6 +70,7 @@ describe('Aceptación y compensación de importaciones', () => {
         { provide: ArtifactStore, useValue: store },
         { provide: CatalogImportWorker, useValue: worker },
         { provide: UsersService, useValue: {} },
+        { provide: OutboxRelay, useValue: {} },
       ],
     }).compile();
     service = module.get(CatalogImportService);
@@ -139,15 +141,13 @@ describe('Aceptación y compensación de importaciones', () => {
   });
 });
 
-describe('Borrado de importaciones y proyectos', () => {
+describe('Borrado de importaciones y proyectos (outbox, jobs&files D9)', () => {
   let module: TestingModule;
   let service: CatalogImportService;
   let repository: jest.Mocked<
     Pick<CatalogImportRepository, 'deleteSnapshot' | 'deleteProject'>
   >;
-  let store: jest.Mocked<
-    Pick<ArtifactStore, 'removeArtifact' | 'removeExport' | 'removeFeedVersion'>
-  >;
+  let outbox: jest.Mocked<Pick<OutboxRelay, 'deliverNow'>>;
   const steps: string[] = [];
 
   beforeEach(async () => {
@@ -163,50 +163,27 @@ describe('Borrado de importaciones y proyectos', () => {
         .fn<CatalogImportRepository['deleteProject']>()
         .mockImplementation(async () => {
           steps.push('commit');
-          return {
-            imports: [
-              {
-                snapshotId: 's1',
-                artifactKey: 'k1.csv',
-                exportArtifactKeys: [],
-              },
-              {
-                snapshotId: 's2',
-                artifactKey: 'k2.csv',
-                exportArtifactKeys: [],
-              },
-            ],
-            feedArtifactKeys: [],
-          };
+          return { imports: [], feedArtifactKeys: [] };
         }),
     };
-    store = {
-      removeArtifact: jest
-        .fn<ArtifactStore['removeArtifact']>()
-        .mockImplementation(async (key) => {
-          steps.push(`archivo ${key}`);
-        }),
-      removeExport: jest
-        .fn<ArtifactStore['removeExport']>()
-        .mockImplementation(async (key) => {
-          steps.push(`tsv ${key}`);
-        }),
-      removeFeedVersion: jest
-        .fn<ArtifactStore['removeFeedVersion']>()
-        .mockImplementation(async (key) => {
-          steps.push(`feed ${key}`);
+    outbox = {
+      deliverNow: jest
+        .fn<OutboxRelay['deliverNow']>()
+        .mockImplementation(async () => {
+          steps.push('entrega');
         }),
     };
     module = await Test.createTestingModule({
       providers: [
         CatalogImportService,
         { provide: CatalogImportRepository, useValue: repository },
-        { provide: ArtifactStore, useValue: store },
+        { provide: ArtifactStore, useValue: {} },
         { provide: CatalogImportWorker, useValue: {} },
         {
           provide: UsersService,
           useValue: { findCurrent: async () => userFixture() },
         },
+        { provide: OutboxRelay, useValue: outbox },
       ],
     }).compile();
     service = module.get(CatalogImportService);
@@ -215,25 +192,33 @@ describe('Borrado de importaciones y proyectos', () => {
     await module.close();
   });
 
-  it('retira los archivos solo después de que la base confirma el borrado', async () => {
+  it('entrega el outbox solo después de que la base confirma el borrado del proyecto', async () => {
     await service.deleteProject(alice, projectFixture().id);
-    expect(steps).toEqual(['commit', 'archivo k1.csv', 'archivo k2.csv']);
+
+    expect(steps).toEqual(['commit', 'entrega']);
     expect(repository.deleteProject).toHaveBeenCalledWith(
       userFixture().id,
       projectFixture().id,
     );
   });
 
-  it('si la base rechaza el borrado no toca ningún archivo', async () => {
+  it('entrega el outbox solo después de que la base confirma el borrado de una importación', async () => {
+    await service.deleteImport(alice, projectFixture().id, 's1');
+
+    expect(steps).toEqual(['commit', 'entrega']);
+  });
+
+  it('si la base rechaza el borrado no entrega nada', async () => {
     repository.deleteSnapshot.mockRejectedValue(apiError('IMPORT_IN_PROGRESS'));
+
     await expect(
       service.deleteImport(alice, projectFixture().id, 's1'),
     ).rejects.toMatchObject({ status: 409 });
-    expect(store.removeArtifact).not.toHaveBeenCalled();
+    expect(outbox.deliverNow).not.toHaveBeenCalled();
   });
 
-  it('un fallo al retirar el archivo no deshace el borrado ni falla la petición', async () => {
-    store.removeArtifact.mockRejectedValue(new Error('EIO'));
+  it('un fallo al entregar no deshace el borrado ni falla la petición', async () => {
+    outbox.deliverNow.mockRejectedValue(new Error('outbox down'));
     const logError = jest
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);
@@ -241,97 +226,6 @@ describe('Borrado de importaciones y proyectos', () => {
     await expect(
       service.deleteImport(alice, projectFixture().id, 's1'),
     ).resolves.toBeUndefined();
-    expect(logError).toHaveBeenCalledWith({
-      code: 'IMPORT_ORPHAN_RETAINED',
-      snapshotId: 's1',
-    });
-  });
-
-  it('retira también los TSV de las exportaciones borradas en cascada, después del commit', async () => {
-    repository.deleteProject.mockImplementationOnce(async () => {
-      steps.push('commit');
-      return {
-        imports: [
-          {
-            snapshotId: 's1',
-            artifactKey: 'k1.csv',
-            exportArtifactKeys: ['e1.tsv'],
-          },
-          { snapshotId: 's2', artifactKey: 'k2.csv', exportArtifactKeys: [] },
-        ],
-        feedArtifactKeys: [],
-      };
-    });
-
-    await service.deleteProject(alice, projectFixture().id);
-
-    expect(steps).toEqual([
-      'commit',
-      'archivo k1.csv',
-      'tsv e1.tsv',
-      'archivo k2.csv',
-    ]);
-  });
-
-  it('borrar el proyecto retira los archivos de su feed, después del commit', async () => {
-    repository.deleteProject.mockImplementationOnce(async () => {
-      steps.push('commit');
-      return {
-        imports: [
-          { snapshotId: 's1', artifactKey: 'k1.csv', exportArtifactKeys: [] },
-        ],
-        feedArtifactKeys: ['v1.tsv', 'v2.tsv'],
-      };
-    });
-
-    await service.deleteProject(alice, projectFixture().id);
-
-    expect(steps).toEqual([
-      'commit',
-      'archivo k1.csv',
-      'feed v1.tsv',
-      'feed v2.tsv',
-    ]);
-  });
-
-  it('un fallo al retirar un archivo del feed se registra y sigue con los demás', async () => {
-    repository.deleteProject.mockImplementationOnce(async () => ({
-      imports: [],
-      feedArtifactKeys: ['v1.tsv', 'v2.tsv'],
-    }));
-    store.removeFeedVersion.mockRejectedValueOnce(new Error('EIO'));
-    const logError = jest
-      .spyOn(Logger.prototype, 'error')
-      .mockImplementation(() => undefined);
-
-    await expect(
-      service.deleteProject(alice, projectFixture().id),
-    ).resolves.toBeUndefined();
-    expect(store.removeFeedVersion).toHaveBeenCalledWith('v2.tsv');
-    expect(logError).toHaveBeenCalledWith({
-      code: 'FEED_ORPHAN_RETAINED',
-      projectId: projectFixture().id,
-    });
-  });
-
-  it('un fallo al retirar un TSV se registra y no falla la petición', async () => {
-    repository.deleteSnapshot.mockImplementationOnce(async () => ({
-      snapshotId: 's1',
-      artifactKey: 'k1.csv',
-      exportArtifactKeys: ['e1.tsv', 'e2.tsv'],
-    }));
-    store.removeExport.mockRejectedValueOnce(new Error('EIO'));
-    const logError = jest
-      .spyOn(Logger.prototype, 'error')
-      .mockImplementation(() => undefined);
-
-    await expect(
-      service.deleteImport(alice, projectFixture().id, 's1'),
-    ).resolves.toBeUndefined();
-    expect(logError).toHaveBeenCalledWith({
-      code: 'EXPORT_ORPHAN_RETAINED',
-      snapshotId: 's1',
-    });
-    expect(store.removeExport).toHaveBeenCalledWith('e2.tsv');
+    expect(logError).toHaveBeenCalledWith({ code: 'OUTBOX_DELIVERY_DEFERRED' });
   });
 });

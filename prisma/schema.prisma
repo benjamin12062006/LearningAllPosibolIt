@@ -101,17 +101,23 @@ model CatalogRow {
 }
 
 model CatalogImportJob {
-  id            String          @id
-  projectId     String          @map("project_id")
-  snapshotId    String          @unique @map("snapshot_id")
-  requestId     String          @map("request_id")
-  status        String
-  processedRows Int             @default(0) @map("processed_rows")
-  createdAt     String          @map("created_at")
-  startedAt     String?         @map("started_at")
-  finishedAt    String?         @map("finished_at")
-  error         Json?
-  snapshot      CatalogSnapshot @relation(fields: [projectId, snapshotId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
+  id             String          @id
+  projectId      String          @map("project_id")
+  snapshotId     String          @unique @map("snapshot_id")
+  requestId      String          @map("request_id")
+  status         String
+  processedRows  Int             @default(0) @map("processed_rows")
+  createdAt      String          @map("created_at")
+  startedAt      String?         @map("started_at")
+  finishedAt     String?         @map("finished_at")
+  error          Json?
+  /// Lease y token del proceso que lo lleva (plan jobs&files, D4). `runAfter`
+  /// nulo es «listo ya»; solo un reintento lo rellena, con el reloj de la base.
+  attempts       Int             @default(0)
+  runAfter       DateTime?       @map("run_after") @db.Timestamptz(3)
+  leaseUntil     DateTime?       @map("lease_until") @db.Timestamptz(3)
+  executionToken String?         @map("execution_token")
+  snapshot       CatalogSnapshot @relation(fields: [projectId, snapshotId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([status, createdAt, id], map: "idx_catalog_jobs_queue")
   @@map("catalog_import_jobs")
@@ -139,6 +145,12 @@ model Evaluation {
   startedAt        String?         @map("started_at")
   finishedAt       String?         @map("finished_at")
   error            Json?
+  /// Lease y token del proceso que la lleva (plan jobs&files, D7). `runAfter`
+  /// nulo es «lista ya»; solo un reintento lo rellena, con el reloj de la base.
+  attempts         Int             @default(0)
+  runAfter         DateTime?       @map("run_after") @db.Timestamptz(3)
+  leaseUntil       DateTime?       @map("lease_until") @db.Timestamptz(3)
+  executionToken   String?         @map("execution_token")
   snapshot         CatalogSnapshot @relation(fields: [projectId, snapshotId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
   ruleset          RulesetVersion  @relation(fields: [projectId, rulesetVersionId], references: [projectId, id], onDelete: Restrict, onUpdate: NoAction)
   rows             EvaluationRow[]
@@ -277,5 +289,27 @@ model FeedRefresh {
   @@index([status, runAfter, id], map: "idx_feed_refreshes_queue")
   @@index([feedId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_feed_refreshes_feed_created")
   @@map("feed_refreshes")
+  @@schema("estadistica_forms")
+}
+
+/// Bandeja de salida (plan jobs&files, D8): efectos fuera de la base que se
+/// guardan en la transacción que los provoca y ejecuta después el relay, con
+/// lease y token. `done` es el recibo del manejador. Los `CHECK` de estado están
+/// en la migración.
+model OutboxEvent {
+  id             String    @id
+  type           String
+  payload        Json
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  runAfter       DateTime? @map("run_after") @db.Timestamptz(3)
+  leaseUntil     DateTime? @map("lease_until") @db.Timestamptz(3)
+  executionToken String?   @map("execution_token")
+  error          Json?
+  createdAt      String    @map("created_at")
+  processedAt    String?   @map("processed_at")
+
+  @@index([status, createdAt, id], map: "idx_outbox_events_ready")
+  @@map("outbox_events")
   @@schema("estadistica_forms")
 }

@@ -6,12 +6,16 @@ import {
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { ErrorCodes } from '../common/http/error-codes.js';
-import { publicError, type PublicError } from '../common/http/public-error.js';
+import { publicError } from '../common/http/public-error.js';
+import { LostClaimError } from '../jobs/lease-sql.js';
+import { retryDelay, type RetryOptions } from '../jobs/retry-delay.js';
+import { WorkerLoop } from '../jobs/worker-loop.js';
 import { evaluateRow, type EvaluationContext } from './engine/evaluate-row.js';
 import { EvaluationSummary } from './engine/evaluation-summary.js';
 import { isRuleset, type Ruleset } from './engine/ruleset.js';
 import { EvaluationsRepository } from './evaluations.repository.js';
 import {
+  EVALUATION_JOB_DEFAULTS,
   EVALUATION_LIMITS,
   EVALUATION_OPTIONS,
   EvaluationFailure,
@@ -28,107 +32,92 @@ const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 /**
  * Procesa la cola de evaluaciones de una en una: reclama una, recorre las filas
  * del snapshot por lotes con el motor y la cierra como completada o fallida.
- * Copia el ciclo de vida de `CatalogImportWorker` (plan D8): con dos
- * consumidores todavía no compensa extraer una cola común.
+ * El ciclo de vida es el común de los workers (`WorkerLoop`, plan jobs&files D2).
  */
 @Injectable()
 export class EvaluationWorker
   implements OnApplicationBootstrap, OnModuleDestroy
 {
   private readonly logger = new Logger(EvaluationWorker.name);
-  private timer?: ReturnType<typeof setInterval>;
-  private running?: Promise<void>;
-  private active?: AbortController;
-  private stopping = false;
+  private readonly loop: WorkerLoop;
+  private readonly leaseMs: number;
+  private readonly retry: RetryOptions;
 
   constructor(
     private readonly repository: EvaluationsRepository,
     @Inject(EVALUATION_OPTIONS)
-    private readonly options: EvaluationOptions,
-  ) {}
+    options: EvaluationOptions,
+  ) {
+    this.leaseMs = options.leaseMs ?? EVALUATION_JOB_DEFAULTS.leaseMs;
+    this.retry = options.retry ?? EVALUATION_JOB_DEFAULTS.retry;
+    this.loop = new WorkerLoop(
+      options,
+      () => this.consume(),
+      () => this.logger.error('EVALUATION_QUEUE_UNAVAILABLE'),
+    );
+  }
 
-  /** Las evaluaciones que quedaron `running` en un arranque anterior ya no pueden seguir. */
-  async onApplicationBootstrap() {
-    await this.repository.interruptRunning();
-    if (this.options.autoStart) {
-      this.timer = setInterval(() => this.wake(), this.options.pollMs);
-      this.timer.unref();
-      this.wake();
-    }
+  onApplicationBootstrap() {
+    this.loop.start();
   }
 
   /**
-   * Espera a la evaluación en curso hasta `shutdownMs`. Si no termina, la aborta
-   * y la marca como interrumpida para que no quede `running` para siempre.
+   * Espera a la evaluación en curso hasta `shutdownMs`. Si no termina, la aborta:
+   * la evaluación abortada vuelve a la cola sin gastar un intento (D6).
    */
   async onModuleDestroy() {
-    this.stopping = true;
-    clearInterval(this.timer);
-    if (!this.running) {
-      return;
-    }
-
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        this.running,
-        new Promise<void>((resolve) => {
-          timeout = setTimeout(() => {
-            this.active?.abort();
-            resolve();
-          }, this.options.shutdownMs);
-        }),
-      ]);
-      if (this.active?.signal.aborted) {
-        await this.repository.interruptRunning();
-      }
-    } finally {
-      clearTimeout(timeout);
-    }
+    await this.loop.stop();
   }
 
   wake() {
-    if (this.options.autoStart) {
-      void this.runUntilIdle().catch(() =>
-        this.logger.error('EVALUATION_QUEUE_UNAVAILABLE'),
-      );
-    }
+    this.loop.wake();
   }
 
   /** Vacía la cola. Si ya se está vaciando, devuelve esa misma ejecución. */
   runUntilIdle(): Promise<void> {
-    if (this.stopping) {
-      return Promise.resolve();
-    }
-    this.running ??= this.consume().finally(() => {
-      this.running = undefined;
-    });
-    return this.running;
+    return this.loop.runUntilIdle();
   }
 
+  /**
+   * Antes de cada reclamo recupera los leases vencidos (D6) y atiende cada
+   * evaluación como mucho una vez por pasada, como la importación.
+   */
   private async consume() {
-    while (!this.stopping) {
-      const evaluation = await this.repository.claim();
+    const handled: string[] = [];
+    while (!this.loop.isStopping()) {
+      await this.repository.recoverExpiredLeases(this.retry);
+      const evaluation = await this.repository.claim(this.leaseMs, handled);
       if (!evaluation) {
         return;
       }
-      await this.processClaimed(evaluation);
+      handled.push(evaluation.id);
+      this.logger.log({
+        code: 'EVALUATION_CLAIMED',
+        evaluationId: evaluation.id,
+        attempt: evaluation.attempts + 1,
+      });
+      await this.loop.runJob((signal) =>
+        this.processClaimed(evaluation, signal),
+      );
     }
   }
 
-  private async processClaimed(evaluation: ClaimedEvaluation) {
-    this.active = new AbortController();
-    if (this.stopping) {
-      this.active.abort();
-    }
-
+  private async processClaimed(
+    evaluation: ClaimedEvaluation,
+    signal: AbortSignal,
+  ) {
+    const startedAt = Date.now();
     try {
-      await this.process(evaluation, this.active.signal);
+      await this.process(evaluation, signal);
     } catch (error) {
-      await this.recordFailure(evaluation, error, this.active.signal.aborted);
-    } finally {
-      this.active = undefined;
+      await this.handleFailure(evaluation, error, signal);
+      return;
     }
+    this.logger.log({
+      code: 'EVALUATION_SUCCEEDED',
+      evaluationId: evaluation.id,
+      durationMs: Date.now() - startedAt,
+    });
   }
 
   /**
@@ -157,7 +146,7 @@ export class EvaluationWorker
       for (const outcome of outcomes) {
         summary.add(outcome);
       }
-      await this.repository.appendRows(evaluation.id, outcomes);
+      await this.repository.appendRows(evaluation, outcomes);
       lastSourceRow = rows[rows.length - 1].sourceRow;
     }
 
@@ -165,40 +154,110 @@ export class EvaluationWorker
     await this.repository.complete(evaluation, summary.finish());
   }
 
-  private async recordFailure(
+  /**
+   * Un reclamo perdido no escribe nada. Un aborto por apagado devuelve la
+   * evaluación a la cola sin gastar intento. Un fallo de la evaluación misma
+   * (integridad, reglas o moneda guardadas inválidas) termina. Cualquier otro
+   * error es temporal y se reintenta desde cero hasta agotar los intentos (D7).
+   */
+  private async handleFailure(
     evaluation: ClaimedEvaluation,
     error: unknown,
-    aborted: boolean,
+    signal: AbortSignal,
   ) {
-    if (!(error instanceof EvaluationFailure)) {
-      this.logUnexpectedError(evaluation, error);
+    if (error instanceof LostClaimError) {
+      this.logClaimLost(evaluation);
+      return;
     }
-    await this.saveFailure(evaluation, failureDetail(error, aborted));
+    if (signal.aborted) {
+      await this.saveOutcome(evaluation, () =>
+        this.repository.release(evaluation),
+      );
+      return;
+    }
+    if (isDefinitiveFailure(error)) {
+      this.logFailed(evaluation, error.detail.code, evaluation.attempts);
+      await this.saveOutcome(evaluation, () =>
+        this.repository.fail(evaluation, error.detail),
+      );
+      return;
+    }
+    this.logUnexpectedError(evaluation, error);
+    await this.retryOrFail(evaluation);
   }
 
-  private logUnexpectedError(evaluation: ClaimedEvaluation, error: unknown) {
-    this.logger.error({
-      code: ErrorCodes.EVALUATION_PROCESSING_FAILED,
+  private async retryOrFail(evaluation: ClaimedEvaluation) {
+    const attempts = evaluation.attempts + 1;
+    if (attempts >= this.retry.maxAttempts) {
+      const error = publicError(ErrorCodes.EVALUATION_PROCESSING_FAILED);
+      this.logFailed(evaluation, error.code, attempts);
+      await this.saveOutcome(evaluation, () =>
+        this.repository.fail(evaluation, error, attempts),
+      );
+      return;
+    }
+    const delayMs = retryDelay(attempts, this.retry);
+    this.logger.warn({
+      code: 'EVALUATION_RETRY_SCHEDULED',
       evaluationId: evaluation.id,
-      errorType:
-        error instanceof Error ? error.constructor.name : 'UnknownError',
-      ...diagnosticFields(error),
+      attempt: attempts,
+      delayMs,
     });
+    await this.saveOutcome(evaluation, () =>
+      this.repository.retryLater(evaluation, attempts, delayMs),
+    );
   }
 
-  /** Si no se puede guardar el fallo, `interruptRunning` la cerrará al reiniciar. */
-  private async saveFailure(
+  /**
+   * Si no se puede guardar cómo acabó, el lease vencerá y la recuperación la
+   * retomará como un fallo temporal más.
+   */
+  private async saveOutcome(
     evaluation: ClaimedEvaluation,
-    detail: PublicError,
+    save: () => Promise<boolean>,
   ) {
     try {
-      await this.repository.fail(evaluation.id, detail);
+      if (!(await save())) {
+        this.logClaimLost(evaluation);
+      }
     } catch {
       this.logger.error({
         code: 'EVALUATION_FAILURE_RECORD_PENDING',
         evaluationId: evaluation.id,
       });
     }
+  }
+
+  private logUnexpectedError(evaluation: ClaimedEvaluation, error: unknown) {
+    this.logger.error({
+      code: ErrorCodes.EVALUATION_PROCESSING_FAILED,
+      evaluationId: evaluation.id,
+      attempt: evaluation.attempts + 1,
+      errorType:
+        error instanceof Error ? error.constructor.name : 'UnknownError',
+      ...diagnosticFields(error),
+    });
+  }
+
+  /** Solo el código y los intentos: nunca filas del catálogo. */
+  private logFailed(
+    evaluation: ClaimedEvaluation,
+    errorCode: string,
+    attempts: number,
+  ) {
+    this.logger.warn({
+      code: 'EVALUATION_FAILED',
+      evaluationId: evaluation.id,
+      errorCode,
+      attempts,
+    });
+  }
+
+  private logClaimLost(evaluation: ClaimedEvaluation) {
+    this.logger.warn({
+      code: 'EVALUATION_CLAIM_LOST',
+      evaluationId: evaluation.id,
+    });
   }
 }
 
@@ -220,14 +279,15 @@ function readContext(evaluation: ClaimedEvaluation): EvaluationContext {
   return { currency };
 }
 
-function failureDetail(error: unknown, aborted: boolean): PublicError {
-  if (aborted) {
-    return publicError(ErrorCodes.EVALUATION_INTERRUPTED);
-  }
-  if (error instanceof EvaluationFailure) {
-    return error.detail;
-  }
-  return publicError(ErrorCodes.EVALUATION_PROCESSING_FAILED);
+/**
+ * Un fallo de la evaluación misma: repetir no lo arregla. `EVALUATION_INTERRUPTED`
+ * no lo es: solo dice que se cortó la lectura.
+ */
+function isDefinitiveFailure(error: unknown): error is EvaluationFailure {
+  return (
+    error instanceof EvaluationFailure &&
+    error.detail.code !== ErrorCodes.EVALUATION_INTERRUPTED
+  );
 }
 
 function diagnosticFields(error: unknown): { diagnosticCode?: string } {

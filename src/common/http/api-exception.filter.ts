@@ -7,7 +7,7 @@ import {
   type ExceptionFilter,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { toGraphQLError } from '../../graphql/common/graphql-error.js';
 import { API_MESSAGES } from './messages.js';
 import {
@@ -16,6 +16,7 @@ import {
   type PublicError,
   type ValidationIssue,
 } from './public-error.js';
+import type { RequestWithId } from './request-id.js';
 
 const MAX_ISSUE_FIELD_LENGTH = 128;
 
@@ -50,9 +51,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
     if (host.getType<string>() === 'graphql') return this.catchGraphQL(error);
 
     const http = host.switchToHttp();
-    const request = http.getRequest<Request & { importRequestId?: string }>();
+    const request = http.getRequest<
+      RequestWithId & { importRequestId?: string }
+    >();
     const response = http.getResponse<Response>();
-    const requestId = request.importRequestId ?? randomUUID();
+    const requestId =
+      request.importRequestId ?? request.requestId ?? randomUUID();
 
     const { status, body } = getExceptionDetails(error);
     const code = resolveErrorCode(body.code, status);

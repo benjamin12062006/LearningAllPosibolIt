@@ -28,7 +28,14 @@ import {
 type Folder = 'tmp' | 'artifacts' | 'exports' | 'feeds';
 
 /** Carpetas donde un archivo queda guardado (no temporal). */
-type FinalFolder = Exclude<Folder, 'tmp'>;
+export type FinalFolder = Exclude<Folder, 'tmp'>;
+
+/** Las carpetas finales, para comprobar lo que llega de un evento guardado. */
+export const FINAL_FOLDERS: readonly FinalFolder[] = [
+  'artifacts',
+  'exports',
+  'feeds',
+];
 
 export type StoredArtifact = { key: string; modifiedAt: number };
 
@@ -315,6 +322,15 @@ export class ArtifactStore implements OnModuleInit {
       throw new Error('Clave de artefacto inválida.');
     }
     return join(this.options.root, folder, key);
+  }
+
+  /**
+   * Borra un archivo guardado de una carpeta final. Lo usa el relay del outbox
+   * (plan jobs&files, D9): la carpeta y la clave vienen del evento que guardó
+   * la transacción del dueño del archivo. Si ya no existe, no es un error.
+   */
+  removeStored(folder: FinalFolder, key: string) {
+    return this.remove(folder, key);
   }
 
   /** Borrar un archivo que ya no existe no es un error. */

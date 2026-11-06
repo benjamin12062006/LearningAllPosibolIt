@@ -1,10 +1,13 @@
 import { ErrorCodes } from '../common/http/error-codes.js';
+import {
+  assertPositiveInteger,
+  assertRetryOptions,
+  retryDelay,
+  type RetryOptions,
+} from './retry-delay.js';
 
-export type RefreshRetryOptions = Readonly<{
-  baseDelayMs: number;
-  maxDelayMs: number;
-  maxAttempts: number;
-}>;
+/** Las opciones de la espera son las comunes de los trabajos (`retry-delay.ts`). */
+export type RefreshRetryOptions = RetryOptions;
 
 /** El adaptador conserva el status del origen sin guardar su URL ni su respuesta. */
 export type RefreshError = Readonly<{
@@ -57,19 +60,12 @@ const PERMANENT_CODES = new Set<string>([
   ErrorCodes.EXPORT_NO_VALID_PRODUCTS,
 ]);
 
-/** attempt es el número de fallos consumidos; 1 produce la espera base. */
+/** La espera común (`retryDelay`) con la política de feeds por defecto. */
 export function nextRetryDelay(
   attempt: number,
   options: RefreshRetryOptions = DEFAULT_REFRESH_RETRY,
 ): number {
-  assertRetryOptions(options);
-  assertPositiveInteger(attempt, 'attempt');
-  // Limitar el multiplicador evita Infinity incluso con un contador corrupto.
-  const multiplier = Math.min(
-    2 ** (attempt - 1),
-    options.maxDelayMs / options.baseDelayMs,
-  );
-  return Math.min(options.baseDelayMs * multiplier, options.maxDelayMs);
+  return retryDelay(attempt, options);
 }
 
 export function classifyRefreshError(error: RefreshError): RefreshErrorKind {
@@ -115,19 +111,4 @@ function classifySourceStatus(status: number | undefined): RefreshErrorKind {
     status < 500;
   if (isClientError && status !== 429) return 'permanent';
   return 'temporary';
-}
-
-function assertRetryOptions(options: RefreshRetryOptions) {
-  assertPositiveInteger(options.baseDelayMs, 'baseDelayMs');
-  assertPositiveInteger(options.maxDelayMs, 'maxDelayMs');
-  assertPositiveInteger(options.maxAttempts, 'maxAttempts');
-  if (options.baseDelayMs > options.maxDelayMs) {
-    throw new RangeError('baseDelayMs must not exceed maxDelayMs');
-  }
-}
-
-function assertPositiveInteger(value: number, name: string) {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new RangeError(`${name} must be a positive safe integer`);
-  }
 }

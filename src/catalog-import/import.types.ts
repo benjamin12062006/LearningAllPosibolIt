@@ -3,6 +3,7 @@ import {
   ApplicationFailure,
   type PublicError,
 } from '../common/http/public-error.js';
+import type { RetryOptions } from '../jobs/retry-delay.js';
 
 export const IMPORT_LIMITS = {
   fileBytes: 10_485_760,
@@ -29,6 +30,8 @@ export type StoredUpload = { filename: string; size: number; hash: string };
 
 /** Datos que el guard y el interceptor añaden a la request de subida. */
 export type ImportRequest = AuthenticatedRequest & {
+  /** Lo pone `assignRequestId` en cada petición (jobs&files, D12). */
+  requestId?: string;
   importOwnerId?: string;
   importRequestId?: string;
   file?: Express.Multer.File & StoredUpload;
@@ -79,6 +82,12 @@ export type ClaimedImport = {
   byteSize: number;
   idColumn: string;
   delimiter: ImportDelimiter;
+  /** Token del reclamo: solo con él se puede escribir (plan jobs&files, D4). */
+  token: string;
+  /** Fallos temporales ya consumidos. */
+  attempts: number;
+  /** Duración del lease; cada escritura del worker lo renueva (D5). */
+  leaseMs: number;
 };
 
 /** Fallo esperado de una importación; su `detail` se guarda tal cual. */
@@ -89,4 +98,21 @@ export type CatalogImportOptions = {
   autoStart: boolean;
   pollMs: number;
   shutdownMs: number;
+  /** Si faltan, `IMPORT_JOB_DEFAULTS`. */
+  leaseMs?: number;
+  retry?: RetryOptions;
 };
+
+/**
+ * Lease y reintentos de los trabajos de importación (plan jobs&files, D4 y D5).
+ * Un lote tarda segundos: dos minutos sin escribir solo pasan si el proceso
+ * cayó. Tres fallos temporales, con esperas cortas, antes de rendirse.
+ */
+export const IMPORT_JOB_DEFAULTS = Object.freeze({
+  leaseMs: 2 * 60_000,
+  retry: Object.freeze({
+    baseDelayMs: 5_000,
+    maxDelayMs: 60_000,
+    maxAttempts: 3,
+  }),
+});

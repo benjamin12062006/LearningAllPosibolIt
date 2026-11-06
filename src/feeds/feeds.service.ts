@@ -10,6 +10,7 @@ import {
   toPage,
   type PageRequest,
 } from '../common/http/pagination.js';
+import { OutboxRelay } from '../outbox/outbox.relay.js';
 import { ProjectsService } from '../projects/projects.service.js';
 import { UsersService } from '../users/users.service.js';
 import { ENGINE_VERSION } from '../evaluations/engine/evaluate-row.js';
@@ -42,6 +43,7 @@ export class FeedsService {
     private readonly projectsService: ProjectsService,
     private readonly repository: FeedsRepository,
     private readonly store: ArtifactStore,
+    private readonly outbox: OutboxRelay,
     @Inject(FEED_OPTIONS)
     private readonly options: FeedOptions,
   ) {}
@@ -403,20 +405,25 @@ export class FeedsService {
   /**
    * La publicación ya está confirmada: si la retención falla, los archivos
    * antiguos siguen en disco hasta la próxima publicación, sin afectar a nadie.
+   * Los retirados quedan en el outbox en la misma transacción y se entregan
+   * aquí (plan jobs&files, D9).
    */
   private async retireOldFiles(feedId: string) {
-    let retired: string[];
     try {
-      retired = await this.repository.retireOldFiles(
-        feedId,
-        this.options.retainedFiles,
-      );
+      await this.repository.retireOldFiles(feedId, this.options.retainedFiles);
     } catch {
       this.logger.error({ code: 'FEED_RETENTION_FAILED', feedId });
       return;
     }
-    for (const key of retired) {
-      await this.discardFile(key);
+    await this.deliverRetiredFiles();
+  }
+
+  /** Si falla, el evento sigue pendiente y el relay lo reintenta. */
+  private async deliverRetiredFiles() {
+    try {
+      await this.outbox.deliverNow();
+    } catch {
+      this.logger.error({ code: 'OUTBOX_DELIVERY_DEFERRED' });
     }
   }
 

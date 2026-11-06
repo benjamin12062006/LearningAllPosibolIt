@@ -43,7 +43,9 @@ export class ImportUploadInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler) {
     const request = context.switchToHttp().getRequest<ImportRequest>();
     const response = context.switchToHttp().getResponse<Response>();
-    request.importRequestId = randomUUID();
+    // El mismo id de la petición (cabecera `X-Request-Id`) queda en el trabajo:
+    // un fallo de la importación se puede seguir hasta la petición que la creó.
+    request.importRequestId = request.requestId ?? randomUUID();
 
     return defer(async () => {
       try {

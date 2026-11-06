@@ -7,7 +7,7 @@ import {
   it,
 } from '@jest/globals';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -24,6 +24,9 @@ import type {
 import { alice, bob, projectInput } from '../support/project-fixtures.js';
 import { createTestDatabase } from '../support/test-database.js';
 import { publicError } from '../../../src/common/http/public-error.js';
+import { OutboxRelay } from '../../../src/outbox/outbox.relay.js';
+import { OutboxRepository } from '../../../src/outbox/outbox.repository.js';
+import { OUTBOX_DEFAULTS } from '../../../src/outbox/outbox.types.js';
 
 describe('Importación con repositorio, worker, disco y PostgreSQL reales', () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -301,7 +304,15 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
       "CREATE FUNCTION estadistica_forms.reject_success() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='succeeded' THEN RAISE EXCEPTION 'fallo de test'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_success BEFORE UPDATE ON estadistica_forms.catalog_import_jobs FOR EACH ROW EXECUTE FUNCTION estadistica_forms.reject_success()",
     );
     try {
-      await worker.runUntilIdle();
+      // Un error inesperado es temporal (jobs&files, D4): se reintenta desde
+      // cero hasta agotar los intentos y solo entonces queda `failed`.
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        await database.connection.pool.query(
+          'UPDATE estadistica_forms.catalog_import_jobs SET run_after = NULL WHERE id = $1',
+          [input.jobId],
+        );
+        await worker.runUntilIdle();
+      }
       expect(
         await repository.findJob(ownerId, projectId, input.jobId),
       ).toMatchObject({ status: 'failed' });
@@ -318,30 +329,24 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
     }
   });
 
-  it('reconcilia running interrumpidos y retoma los queued persistidos al arrancar', async () => {
+  it('al arrancar no toca un running con lease vigente (otra instancia) y retoma los queued', async () => {
     const first = await accept();
     const second = await accept(undefined, {}, true);
-    const interrupted = await repository.claim();
-    if (!interrupted) throw new Error('Falta job');
-    const queued = interrupted.id === first.jobId ? second : first;
+    const elsewhere = await repository.claim();
+    if (!elsewhere) throw new Error('Falta job');
+    const queued = elsewhere.id === first.jobId ? second : first;
     const restarted = new CatalogImportWorker(repository, store, options);
-    await restarted.onApplicationBootstrap();
+    restarted.onApplicationBootstrap();
     expect(
-      await repository.findJob(ownerId, projectId, queued.jobId),
-    ).toMatchObject({ status: 'queued' });
-    expect(
-      await repository.findJob(ownerId, projectId, interrupted.id),
-    ).toMatchObject({
-      status: 'failed',
-      error: { code: 'IMPORT_INTERRUPTED' },
-    });
+      await repository.findJob(ownerId, projectId, elsewhere.id),
+    ).toMatchObject({ status: 'running' });
     await restarted.runUntilIdle();
-    const states = await prisma.catalogImportJob.findMany();
-    expect(states.filter((job) => job.status === 'succeeded')).toHaveLength(1);
-    expect(states.filter((job) => job.status === 'failed')).toHaveLength(1);
     expect(
       await repository.findJob(ownerId, projectId, queued.jobId),
     ).toMatchObject({ status: 'succeeded' });
+    expect(
+      await repository.findJob(ownerId, projectId, elsewhere.id),
+    ).toMatchObject({ status: 'running' });
     await restarted.onModuleDestroy();
   });
 
@@ -526,6 +531,45 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
         repository.deleteSnapshot(ownerId, otherProjectId, input.snapshotId),
       ).rejects.toMatchObject({ response: publicError('IMPORT_NOT_FOUND') });
       expect(await prisma.catalogSnapshot.count()).toBe(1);
+    });
+
+    it('si el proceso cae tras confirmar el borrado, el outbox borra los archivos después (T31)', async () => {
+      await database.connection.pool.query(
+        'TRUNCATE estadistica_forms.outbox_events',
+      );
+      const first = await accept();
+      await worker.runUntilIdle();
+      const second = await accept('id,title\n9,z\n');
+      await worker.runUntilIdle();
+
+      // Se confirma el borrado y nadie entrega el outbox: como si el proceso
+      // cayera justo después del commit.
+      await repository.deleteProject(ownerId, projectId);
+      const exists = (key: string) =>
+        access(join(root, 'artifacts', key)).then(
+          () => true,
+          () => false,
+        );
+      expect(await exists(first.artifactKey)).toBe(true);
+      const { rows } = await database.connection.pool.query<{
+        payload: { folder: string; keys: string[] };
+      }>(
+        `SELECT payload FROM estadistica_forms.outbox_events WHERE status = 'pending'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload.folder).toBe('artifacts');
+      expect(rows[0].payload.keys.sort()).toEqual(
+        [first.artifactKey, second.artifactKey].sort(),
+      );
+
+      const relay = new OutboxRelay(new OutboxRepository(prisma), store, {
+        ...OUTBOX_DEFAULTS,
+        autoStart: false,
+      });
+      await relay.runUntilIdle();
+
+      expect(await exists(first.artifactKey)).toBe(false);
+      expect(await exists(second.artifactKey)).toBe(false);
     });
 
     it('borra el proyecto con todas sus importaciones y devuelve sus archivos', async () => {

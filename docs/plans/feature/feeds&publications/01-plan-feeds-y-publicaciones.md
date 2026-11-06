@@ -238,7 +238,7 @@ E1–E2 no dependen del trabajo y permiten probar la URL en el piloto pronto. E3
 
 ## Contrato de la descarga para E4
 
-El 2026-11-02 el usuario planteó llevar E4 en otra sesión y, poco después, lo anuló: E3 y E4 siguen en esta sesión, en orden. El contrato de la descarga se conserva porque es lo que E4 conectará al worker; si E3 tuviera que cambiarlo, se actualiza esta sección antes que el código. La otra sesión dejó sus notas en `docs/plans/feature/feed-refresh/`, `docs/fonts/feature/feed-refresh/` y `bitacora-construccion/feature/feed-refresh/`; no se han tocado y el usuario decide qué hacer con ellas.
+El 2026-11-02 el usuario planteó llevar E4 en otra sesión y, poco después, lo anuló: E3 y E4 siguen en esta sesión, en orden. El contrato de la descarga se conserva porque es lo que E4 conectará al worker; si E3 tuviera que cambiarlo, se actualiza esta sección antes que el código. La otra sesión dejó sus notas en `docs/plans/feature/feed-refresh/`, `docs/fonts/feature/feed-refresh/` y `bitacora-construccion/feature/feed-refresh/`; E4 reutilizó `refresh-retry.ts` y el 2026-11-05 esas notas se marcaron como cerradas y absorbidas en E4, sin borrarlas.
 
 **Servicio de descarga (E3):**
 

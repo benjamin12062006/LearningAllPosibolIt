@@ -65,12 +65,7 @@ export type ClaimedRefresh = Readonly<{
 }>;
 
 /** El reclamo dejó de ser el vigente: el worker abandona sin más efectos (D3). */
-export class LostClaimError extends Error {
-  constructor() {
-    super('El reclamo de la actualización ya no es el vigente.');
-    this.name = 'LostClaimError';
-  }
-}
+export { LostClaimError } from '../jobs/lease-sql.js';
 
 /** Ids previstos que un paso guarda antes de crear lo que identifican (D9). */
 export type PlannedIds = Partial<

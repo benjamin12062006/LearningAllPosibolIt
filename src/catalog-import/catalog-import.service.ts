@@ -9,8 +9,9 @@ import {
   toPage,
   type PageRequest,
 } from '../common/http/pagination.js';
-import { UsersService } from '../users/users.service.js';
 import { ArtifactStore } from '../artifacts/artifact.store.js';
+import { OutboxRelay } from '../outbox/outbox.relay.js';
+import { UsersService } from '../users/users.service.js';
 import { CatalogImportRepository } from './catalog-import.repository.js';
 import { CatalogImportWorker } from './catalog-import.worker.js';
 import type {
@@ -41,6 +42,7 @@ export class CatalogImportService {
     private readonly store: ArtifactStore,
     private readonly worker: CatalogImportWorker,
     private readonly users: UsersService,
+    private readonly outbox: OutboxRelay,
   ) {}
 
   /**
@@ -111,30 +113,28 @@ export class CatalogImportService {
     return this.repository.findSnapshot(owner.id, projectId, id);
   }
 
-  /** Borra una importación terminada y después su archivo. */
+  /**
+   * Borra una importación terminada. La misma transacción deja sus archivos en
+   * el outbox; después se entregan (plan jobs&files, D9).
+   */
   async deleteImport(
     identity: AuthenticatedIdentity,
     projectId: string,
     snapshotId: string,
   ) {
     const owner = await this.users.findCurrent(identity);
-    const deleted = await this.repository.deleteSnapshot(
-      owner.id,
-      projectId,
-      snapshotId,
-    );
-    await this.removeDeletedArtifacts([deleted]);
+    await this.repository.deleteSnapshot(owner.id, projectId, snapshotId);
+    await this.deliverDeletedFiles();
   }
 
   /**
-   * Borra el proyecto con todas sus importaciones y su feed, y después sus
-   * archivos.
+   * Borra el proyecto con todas sus importaciones y su feed. La misma
+   * transacción deja sus archivos en el outbox; después se entregan.
    */
   async deleteProject(identity: AuthenticatedIdentity, projectId: string) {
     const owner = await this.users.findCurrent(identity);
-    const deleted = await this.repository.deleteProject(owner.id, projectId);
-    await this.removeDeletedArtifacts(deleted.imports);
-    await this.removeFeedFiles(projectId, deleted.feedArtifactKeys);
+    await this.repository.deleteProject(owner.id, projectId);
+    await this.deliverDeletedFiles();
   }
 
   private async moveToArtifacts(upload: StoredUpload, acceptance: Acceptance) {
@@ -188,16 +188,15 @@ export class CatalogImportService {
   }
 
   /**
-   * La base ya confirmó el borrado. Si un archivo no se puede retirar, el
-   * borrado no se deshace: el archivo queda sin referencia y lo retira
-   * `ArtifactCleanupService` en el siguiente arranque.
+   * El borrado ya está confirmado y sus archivos, en el outbox. Normalmente se
+   * borran aquí, antes de responder; si falla, el borrado no se deshace: el
+   * evento sigue pendiente y el relay lo reintenta en sus pasadas.
    */
-  private async removeDeletedArtifacts(deleted: DeletedImport[]) {
-    for (const item of deleted) {
-      await this.removeArtifactOrLog(item);
-      for (const exportKey of item.exportArtifactKeys) {
-        await this.removeExportOrLog(item, exportKey);
-      }
+  private async deliverDeletedFiles() {
+    try {
+      await this.outbox.deliverNow();
+    } catch {
+      this.logger.error({ code: 'OUTBOX_DELIVERY_DEFERRED' });
     }
   }
 
@@ -212,33 +211,6 @@ export class CatalogImportService {
         code: 'IMPORT_ORPHAN_RETAINED',
         snapshotId: item.snapshotId,
       });
-    }
-  }
-
-  /**
-   * Los TSV son del módulo `exports`, pero se retiran aquí porque el borrado es
-   * de este módulo (plan reviews&exports, D11). Igual que con el CSV, un fallo
-   * no deshace el borrado: lo retira la limpieza de `exports/` al arrancar.
-   */
-  private async removeExportOrLog(item: DeletedImport, exportKey: string) {
-    try {
-      await this.store.removeExport(exportKey);
-    } catch {
-      this.logger.error({
-        code: 'EXPORT_ORPHAN_RETAINED',
-        snapshotId: item.snapshotId,
-      });
-    }
-  }
-
-  /** Igual que los demás archivos: un fallo se registra y lo retira la limpieza. */
-  private async removeFeedFiles(projectId: string, keys: string[]) {
-    for (const key of keys) {
-      try {
-        await this.store.removeFeedVersion(key);
-      } catch {
-        this.logger.error({ code: 'FEED_ORPHAN_RETAINED', projectId });
-      }
     }
   }
 }

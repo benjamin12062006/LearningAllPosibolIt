@@ -21,6 +21,7 @@ import { CatalogImportRepository } from '../../../src/catalog-import/catalog-imp
 import { CatalogImportWorker } from '../../../src/catalog-import/catalog-import.worker.js';
 import { CATALOG_IMPORT_OPTIONS } from '../../../src/catalog-import/import.types.js';
 import { POSTGRESQL_CONNECTION } from '../../../src/database/postgresql.connection.js';
+import { publicError } from '../../../src/common/http/public-error.js';
 import { PrismaService } from '../../../src/database/prisma.service.js';
 import { EvaluationsRepository } from '../../../src/evaluations/evaluations.repository.js';
 import { EVALUATION_OPTIONS } from '../../../src/evaluations/evaluations.types.js';
@@ -528,9 +529,12 @@ describe('Actualizaciones de feeds con worker, PGlite y un origen HTTP local', (
       await worker.runUntilIdle();
       const first = await readRefresh(id);
       expect(first.stage).toBe('import');
+      // La importación agotó sus intentos y terminó interrumpida (jobs&files, D4).
       const imports = new CatalogImportRepository(module.get(PrismaService));
-      await imports.claim();
-      await imports.interruptRunning();
+      const importJob = await imports.claim();
+      if (!importJob)
+        throw new Error('Falta la importación de la actualización');
+      await imports.fail(importJob, publicError('IMPORT_INTERRUPTED'));
       await makeReady(id);
 
       const refresh = await drive(id);

@@ -2,6 +2,7 @@ import {
   ApplicationFailure,
   type PublicError,
 } from '../common/http/public-error.js';
+import type { RetryOptions } from '../jobs/retry-delay.js';
 import type { ProductValues } from './engine/google-merchant.profile.js';
 import type { ProblemView } from './problem-messages.js';
 
@@ -48,6 +49,12 @@ export type ClaimedEvaluation = Readonly<{
   currency: unknown;
   mapping: unknown;
   rules: unknown;
+  /** Token del reclamo: solo con él se puede escribir (plan jobs&files, D7). */
+  token: string;
+  /** Fallos temporales ya consumidos. */
+  attempts: number;
+  /** Duración del lease; cada lote guardado lo renueva (D5). */
+  leaseMs: number;
 }>;
 
 export type EvaluationCountsView = Readonly<{
@@ -81,4 +88,20 @@ export type EvaluationOptions = {
   autoStart: boolean;
   pollMs: number;
   shutdownMs: number;
+  /** Si faltan, `EVALUATION_JOB_DEFAULTS`. */
+  leaseMs?: number;
+  retry?: RetryOptions;
 };
+
+/**
+ * Lease y reintentos de las evaluaciones (plan jobs&files, D5 y D7): los mismos
+ * valores que la importación, porque un lote también tarda segundos.
+ */
+export const EVALUATION_JOB_DEFAULTS = Object.freeze({
+  leaseMs: 2 * 60_000,
+  retry: Object.freeze({
+    baseDelayMs: 5_000,
+    maxDelayMs: 60_000,
+    maxAttempts: 3,
+  }),
+});

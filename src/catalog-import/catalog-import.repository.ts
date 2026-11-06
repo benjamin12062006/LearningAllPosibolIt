@@ -9,10 +9,20 @@ import {
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
+  claimIsCurrent,
+  LostClaimError,
+  newExecutionToken,
+  nowPlus,
+  type JobClaim,
+} from '../jobs/lease-sql.js';
+import { retryDelay, type RetryOptions } from '../jobs/retry-delay.js';
+import { enqueueArtifactsDelete } from '../outbox/outbox-events.js';
+import {
   hasCompleteConfiguration,
   type ChannelProfile,
 } from '../projects/projects.types.js';
 import {
+  IMPORT_JOB_DEFAULTS,
   IMPORT_LIMITS,
   ImportFailure,
   type Acceptance,
@@ -28,8 +38,6 @@ type ProjectConfigurationRow = {
   currency: string | null;
   channelProfile: ChannelProfile | null;
 };
-
-type JobStatusRow = { status: string };
 
 type IdRow = { id: string };
 
@@ -78,7 +86,16 @@ type SnapshotRow = {
   error: unknown;
 };
 
-type RunningJobRow = { id: string; snapshotId: string; requestId: string };
+/** Un trabajo `running` con el lease vencido, a punto de recuperarse. */
+type ExpiredJobRow = {
+  id: string;
+  snapshotId: string;
+  requestId: string;
+  attempts: number;
+};
+
+/** Un trabajo listo para reclamar, con lo que el worker necesita de su snapshot. */
+type ReadyJobRow = Omit<ClaimedImport, 'token' | 'leaseMs'>;
 
 type DeletedSnapshotRow = { snapshotId: string; artifactKey: string };
 
@@ -285,7 +302,8 @@ export class CatalogImportRepository {
 
   /**
    * Borra una importación terminada; sus filas y su trabajo se borran en
-   * cascada. Devuelve el archivo que hay que retirar después del commit.
+   * cascada. Sus archivos (CSV y TSV de sus exportaciones) quedan en el outbox
+   * en esta misma transacción (plan jobs&files, D9).
    */
   deleteSnapshot(
     ownerId: string,
@@ -321,17 +339,19 @@ export class CatalogImportRepository {
       await tx.$executeRaw`
         DELETE FROM estadistica_forms.catalog_snapshots
         WHERE id = ${snapshotId}`;
-      return {
+      const deleted: DeletedImport = {
         snapshotId: snapshot.snapshotId,
         artifactKey: snapshot.artifactKey,
         exportArtifactKeys: exportKeys.get(snapshotId) ?? [],
       };
+      await enqueueImportFiles(tx, [deleted]);
+      return deleted;
     });
   }
 
   /**
-   * Borra el proyecto y todas sus importaciones. Devuelve los archivos que hay
-   * que retirar después del commit.
+   * Borra el proyecto y todas sus importaciones. Sus archivos (CSV, TSV y
+   * versiones del feed) quedan en el outbox en esta misma transacción (D9).
    */
   deleteProject(ownerId: string, projectId: string): Promise<DeletedProject> {
     return this.prisma.$transaction(async (tx) => {
@@ -373,11 +393,14 @@ export class CatalogImportRepository {
       await tx.$executeRaw`
         DELETE FROM estadistica_forms.projects
         WHERE id = ${projectId} AND owner_id = ${ownerId}`;
+      const imports = deleted.map((snapshot) => ({
+        ...snapshot,
+        exportArtifactKeys: exportKeys.get(snapshot.snapshotId) ?? [],
+      }));
+      await enqueueImportFiles(tx, imports);
+      await enqueueArtifactsDelete(tx, 'feeds', feedArtifactKeys);
       return {
-        imports: deleted.map((snapshot) => ({
-          ...snapshot,
-          exportArtifactKeys: exportKeys.get(snapshot.snapshotId) ?? [],
-        })),
+        imports,
         feedArtifactKeys,
       };
     });
@@ -404,17 +427,57 @@ export class CatalogImportRepository {
   // ---------------------------------------------------------------------------
 
   /**
-   * Toma el trabajo en cola más antiguo y lo marca como `running`.
-   * SKIP LOCKED evita que dos workers reclamen el mismo trabajo.
+   * Los trabajos `running` con el lease vencido no pueden seguir: su proceso
+   * cayó o se quedó colgado. Cuenta como un fallo temporal (plan jobs&files,
+   * D4 y D6): vuelven a la cola desde cero o, sin intentos, fallan con
+   * `IMPORT_INTERRUPTED`. Su token deja de valer.
    */
-  claim(): Promise<ClaimedImport | null> {
+  recoverExpiredLeases(retry: RetryOptions): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<ClaimedImport[]>`
+      const expired = await tx.$queryRaw<ExpiredJobRow[]>`
+        SELECT
+          id,
+          snapshot_id AS "snapshotId",
+          request_id AS "requestId",
+          attempts
+        FROM estadistica_forms.catalog_import_jobs
+        WHERE status = 'running'
+          AND lease_until <= now()
+        FOR UPDATE SKIP LOCKED`;
+      for (const job of expired) {
+        const attempts = job.attempts + 1;
+        if (attempts >= retry.maxAttempts) {
+          await failLocked(
+            tx,
+            job,
+            attempts,
+            publicError(ErrorCodes.IMPORT_INTERRUPTED),
+          );
+        } else {
+          await requeueLocked(tx, job, attempts, retryDelay(attempts, retry));
+        }
+      }
+      return expired.length;
+    });
+  }
+
+  /**
+   * Toma el trabajo listo más antiguo y lo marca `running` con un token nuevo y
+   * su lease. SKIP LOCKED evita que dos workers reclamen el mismo trabajo.
+   * `skip`: los que este worker ya atendió en la pasada actual.
+   */
+  claim(
+    leaseMs: number = IMPORT_JOB_DEFAULTS.leaseMs,
+    skip: readonly string[] = [],
+  ): Promise<ClaimedImport | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<ReadyJobRow[]>`
         SELECT
           j.id,
           j.snapshot_id AS "snapshotId",
           j.project_id AS "projectId",
           j.request_id AS "requestId",
+          j.attempts,
           s.artifact_key AS "artifactKey",
           s.source_hash AS "sourceHash",
           s.byte_size AS "byteSize",
@@ -422,7 +485,10 @@ export class CatalogImportRepository {
           s.delimiter
         FROM estadistica_forms.catalog_import_jobs j
         JOIN estadistica_forms.catalog_snapshots s ON s.id = j.snapshot_id
-        WHERE j.status = 'queued' AND s.status = 'pending'
+        WHERE j.status = 'queued'
+          AND (j.run_after IS NULL OR j.run_after <= now())
+          AND s.status = 'pending'
+          AND j.id <> ALL(${[...skip]}::text[])
         ORDER BY j.created_at, j.id
         LIMIT 1
         FOR UPDATE OF j SKIP LOCKED`;
@@ -431,27 +497,38 @@ export class CatalogImportRepository {
         return null;
       }
 
-      await tx.catalogImportJob.update({
-        where: { id: job.id },
-        data: { status: 'running', startedAt: new Date().toISOString() },
-      });
+      const token = newExecutionToken();
+      await tx.$executeRaw`
+        UPDATE estadistica_forms.catalog_import_jobs
+        SET
+          status = 'running',
+          started_at = ${new Date().toISOString()},
+          lease_until = ${nowPlus(leaseMs)},
+          execution_token = ${token}
+        WHERE id = ${job.id}`;
       await tx.catalogSnapshot.update({
         where: { id: job.snapshotId },
         data: { status: 'importing' },
       });
-      return job;
+      return { ...job, token, leaseMs };
     });
   }
 
+  /** Guarda un lote y renueva el lease; sin el reclamo vigente, no guarda nada. */
   appendBatch(job: ClaimedImport, rows: ImportRow[]) {
     return this.prisma.$transaction(async (tx) => {
-      await this.lockRunning(tx, job.id);
+      const renewed = await tx.$queryRaw<IdRow[]>`
+        UPDATE estadistica_forms.catalog_import_jobs
+        SET
+          processed_rows = processed_rows + ${rows.length},
+          lease_until = ${nowPlus(job.leaseMs)}
+        WHERE ${claimIsCurrent(job)}
+        RETURNING id`;
+      if (renewed.length !== 1) {
+        throw new LostClaimError();
+      }
       await tx.catalogRow.createMany({
         data: rows.map((row) => ({ snapshotId: job.snapshotId, ...row })),
-      });
-      await tx.catalogImportJob.update({
-        where: { id: job.id },
-        data: { processedRows: { increment: rows.length } },
       });
     });
   }
@@ -459,7 +536,7 @@ export class CatalogImportRepository {
   /** Marca el snapshot como listo si lo guardado coincide con el archivo leído. */
   complete(job: ClaimedImport, parsed: ParsedFile) {
     return this.prisma.$transaction(async (tx) => {
-      await this.lockRunning(tx, job.id);
+      await lockCurrentClaim(tx, job);
       const storedRows = await tx.catalogRow.count({
         where: { snapshotId: job.snapshotId },
       });
@@ -477,66 +554,38 @@ export class CatalogImportRepository {
           finishedAt,
         },
       });
-      await tx.catalogImportJob.update({
-        where: { id: job.id },
-        data: { status: 'succeeded', processedRows: storedRows, finishedAt },
-      });
+      await tx.$executeRaw`
+        UPDATE estadistica_forms.catalog_import_jobs
+        SET
+          status = 'succeeded',
+          processed_rows = ${storedRows},
+          finished_at = ${finishedAt},
+          lease_until = NULL,
+          execution_token = NULL
+        WHERE id = ${job.id}`;
     });
   }
 
-  /** Guarda el error público; no toca un trabajo que ya terminó. */
-  fail(
-    job: Pick<ClaimedImport, 'id' | 'snapshotId' | 'requestId'>,
-    error: ImportError,
-  ) {
-    return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<JobStatusRow[]>`
-        SELECT status
-        FROM estadistica_forms.catalog_import_jobs
-        WHERE id = ${job.id}
-        FOR UPDATE`;
-      if (!isActiveJob(rows[0])) {
-        return;
-      }
-
-      const finishedAt = new Date().toISOString();
-      const detail = { ...error, requestId: job.requestId };
-      await tx.catalogSnapshot.update({
-        where: { id: job.snapshotId },
-        data: { status: 'failed', rowCount: null, finishedAt, error: detail },
-      });
-      await tx.catalogImportJob.update({
-        where: { id: job.id },
-        data: { status: 'failed', finishedAt, error: detail },
-      });
-    });
+  /**
+   * Termina con el error público. Devuelve `false` sin tocar nada si el
+   * reclamo ya no es el vigente (otro proceso lo lleva o ya terminó).
+   */
+  fail(job: ClaimedImport, error: ImportError, attempts = job.attempts) {
+    return this.whileClaimed(job, (tx) => failLocked(tx, job, attempts, error));
   }
 
-  /** Al arrancar o al apagar: los trabajos `running` no pueden continuar. */
-  interruptRunning() {
-    return this.prisma.$transaction(async (tx) => {
-      const jobs = await tx.$queryRaw<RunningJobRow[]>`
-        SELECT id, snapshot_id AS "snapshotId", request_id AS "requestId"
-        FROM estadistica_forms.catalog_import_jobs
-        WHERE status = 'running'
-        FOR UPDATE`;
+  /** Fallo temporal: vuelve a la cola desde cero dentro de `delayMs`. */
+  retryLater(job: ClaimedImport, attempts: number, delayMs: number) {
+    return this.whileClaimed(job, (tx) =>
+      requeueLocked(tx, job, attempts, delayMs),
+    );
+  }
 
-      const finishedAt = new Date().toISOString();
-      for (const job of jobs) {
-        const error = publicError(ErrorCodes.IMPORT_INTERRUPTED, {
-          requestId: job.requestId,
-        });
-        await tx.catalogSnapshot.update({
-          where: { id: job.snapshotId },
-          data: { status: 'failed', rowCount: null, finishedAt, error },
-        });
-        await tx.catalogImportJob.update({
-          where: { id: job.id },
-          data: { status: 'failed', finishedAt, error },
-        });
-      }
-      return jobs.length;
-    });
+  /** Al apagar: vuelve a la cola ya, sin gastar un intento (D6). */
+  release(job: ClaimedImport) {
+    return this.whileClaimed(job, (tx) =>
+      requeueLocked(tx, job, job.attempts, 0),
+    );
   }
 
   private readSample(snapshotId: string) {
@@ -565,16 +614,18 @@ export class CatalogImportRepository {
     return activeJobs.length > 0;
   }
 
-  /** Bloquea el trabajo y falla si ya no está `running` (por ejemplo, interrumpido). */
-  private async lockRunning(tx: Prisma.TransactionClient, id: string) {
-    const rows = await tx.$queryRaw<JobStatusRow[]>`
-      SELECT status
-      FROM estadistica_forms.catalog_import_jobs
-      WHERE id = ${id}
-      FOR UPDATE`;
-    if (rows[0]?.status !== 'running') {
-      throw new ImportFailure(ErrorCodes.IMPORT_INTERRUPTED);
-    }
+  /** Ejecuta `write` con el reclamo bloqueado; `false` si ya no es el vigente. */
+  private whileClaimed(
+    job: ClaimedImport,
+    write: (tx: Prisma.TransactionClient) => Promise<void>,
+  ): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      if (!(await holdsCurrentClaim(tx, job))) {
+        return false;
+      }
+      await write(tx);
+      return true;
+    });
   }
 }
 
@@ -584,10 +635,6 @@ function toListedImport(row: ListedImportRow) {
     ? { id: jobId, status: jobStatus, processedRows: processedRows ?? 0 }
     : null;
   return { ...snapshot, error: localizeStoredError(error), job };
-}
-
-function isActiveJob(row: JobStatusRow | undefined) {
-  return row !== undefined && isActiveStatus(row.status);
 }
 
 function isActiveStatus(status: string | null) {
@@ -676,5 +723,95 @@ function matchesParsedFile(
     storedRows === parsed.count &&
     parsed.hash === job.sourceHash &&
     parsed.bytes === job.byteSize
+  );
+}
+
+/** Bloquea el trabajo si el reclamo sigue siendo el vigente. */
+async function holdsCurrentClaim(
+  tx: Prisma.TransactionClient,
+  claim: JobClaim,
+) {
+  const rows = await tx.$queryRaw<IdRow[]>`
+    SELECT id
+    FROM estadistica_forms.catalog_import_jobs
+    WHERE ${claimIsCurrent(claim)}
+    FOR UPDATE`;
+  return rows.length === 1;
+}
+
+async function lockCurrentClaim(tx: Prisma.TransactionClient, claim: JobClaim) {
+  if (!(await holdsCurrentClaim(tx, claim))) {
+    throw new LostClaimError();
+  }
+}
+
+/**
+ * Vuelve a empezar desde cero (D4): sin filas parciales, sin progreso y con el
+ * snapshot otra vez `pending`, para que el siguiente intento lea el archivo
+ * completo. Quien llama ya tiene el trabajo bloqueado.
+ */
+async function requeueLocked(
+  tx: Prisma.TransactionClient,
+  job: Pick<ClaimedImport, 'id' | 'snapshotId'>,
+  attempts: number,
+  delayMs: number,
+) {
+  await tx.catalogRow.deleteMany({ where: { snapshotId: job.snapshotId } });
+  await tx.$executeRaw`
+    UPDATE estadistica_forms.catalog_import_jobs
+    SET
+      status = 'queued',
+      attempts = ${attempts},
+      run_after = ${nowPlus(delayMs)},
+      processed_rows = 0,
+      started_at = NULL,
+      lease_until = NULL,
+      execution_token = NULL
+    WHERE id = ${job.id}`;
+  await tx.catalogSnapshot.update({
+    where: { id: job.snapshotId },
+    data: { status: 'pending' },
+  });
+}
+
+/** Cierra el trabajo y su snapshot como fallidos. Quien llama ya lo tiene bloqueado. */
+async function failLocked(
+  tx: Prisma.TransactionClient,
+  job: Pick<ClaimedImport, 'id' | 'snapshotId' | 'requestId'>,
+  attempts: number,
+  error: ImportError,
+) {
+  const finishedAt = new Date().toISOString();
+  const detail = { ...error, requestId: job.requestId };
+  await tx.catalogSnapshot.update({
+    where: { id: job.snapshotId },
+    data: { status: 'failed', rowCount: null, finishedAt, error: detail },
+  });
+  await tx.$executeRaw`
+    UPDATE estadistica_forms.catalog_import_jobs
+    SET
+      status = 'failed',
+      attempts = ${attempts},
+      finished_at = ${finishedAt},
+      error = ${JSON.stringify(detail)}::jsonb,
+      lease_until = NULL,
+      execution_token = NULL
+    WHERE id = ${job.id}`;
+}
+
+/** El CSV de cada importación borrada y los TSV de sus exportaciones. */
+async function enqueueImportFiles(
+  tx: Prisma.TransactionClient,
+  imports: readonly DeletedImport[],
+) {
+  await enqueueArtifactsDelete(
+    tx,
+    'artifacts',
+    imports.map((item) => item.artifactKey),
+  );
+  await enqueueArtifactsDelete(
+    tx,
+    'exports',
+    imports.flatMap((item) => item.exportArtifactKeys),
   );
 }

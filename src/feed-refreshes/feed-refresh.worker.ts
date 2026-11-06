@@ -20,6 +20,7 @@ import {
   decideRefreshRecovery,
   type RefreshError,
 } from '../jobs/refresh-retry.js';
+import { WorkerLoop } from '../jobs/worker-loop.js';
 import { RemoteSourceFailure } from '../remote-source/remote-source.types.js';
 import {
   FeedRefreshSteps,
@@ -52,10 +53,7 @@ export class FeedRefreshWorker
   implements OnApplicationBootstrap, OnModuleDestroy
 {
   private readonly logger = new Logger(FeedRefreshWorker.name);
-  private timer?: ReturnType<typeof setInterval>;
-  private running?: Promise<void>;
-  private active?: AbortController;
-  private stopping = false;
+  private readonly loop: WorkerLoop;
 
   constructor(
     private readonly repository: FeedRefreshesRepository,
@@ -63,14 +61,16 @@ export class FeedRefreshWorker
     private readonly steps: FeedRefreshSteps,
     @Inject(FEED_REFRESH_OPTIONS)
     private readonly options: FeedRefreshOptions,
-  ) {}
+  ) {
+    this.loop = new WorkerLoop(
+      options,
+      () => this.consume(),
+      () => this.logger.error({ code: 'FEED_REFRESH_QUEUE_UNAVAILABLE' }),
+    );
+  }
 
   onApplicationBootstrap() {
-    if (this.options.autoStart) {
-      this.timer = setInterval(() => this.wake(), this.options.pollMs);
-      this.timer.unref();
-      this.wake();
-    }
+    this.loop.start();
   }
 
   /**
@@ -78,46 +78,16 @@ export class FeedRefreshWorker
    * paso abortado devuelve el trabajo a la cola sin gastar un intento.
    */
   async onModuleDestroy() {
-    this.stopping = true;
-    clearInterval(this.timer);
-    if (!this.running) {
-      return;
-    }
-
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        this.running,
-        new Promise<void>((resolve) => {
-          timeout = setTimeout(() => {
-            this.active?.abort();
-            resolve();
-          }, this.options.shutdownMs);
-        }),
-      ]);
-      await this.running;
-    } finally {
-      clearTimeout(timeout);
-    }
+    await this.loop.stop();
   }
 
   wake() {
-    if (this.options.autoStart) {
-      void this.runUntilIdle().catch(() =>
-        this.logger.error({ code: 'FEED_REFRESH_QUEUE_UNAVAILABLE' }),
-      );
-    }
+    this.loop.wake();
   }
 
   /** Vacía la cola. Si ya se está vaciando, devuelve esa misma ejecución. */
   runUntilIdle(): Promise<void> {
-    if (this.stopping) {
-      return Promise.resolve();
-    }
-    this.running ??= this.consume().finally(() => {
-      this.running = undefined;
-    });
-    return this.running;
+    return this.loop.runUntilIdle();
   }
 
   /**
@@ -129,7 +99,7 @@ export class FeedRefreshWorker
   private async consume() {
     await this.scheduler.enqueueDue(this.options.clock());
     const handled: string[] = [];
-    while (!this.stopping) {
+    while (!this.loop.isStopping()) {
       await this.repository.recoverExpiredLeases(this.options.retry);
       const claim = await this.repository.claim(this.options.leaseMs, handled);
       if (!claim) {
@@ -140,12 +110,15 @@ export class FeedRefreshWorker
     }
   }
 
-  private async processClaimed(claim: ClaimedRefresh) {
-    this.active = new AbortController();
+  private processClaimed(claim: ClaimedRefresh) {
+    return this.loop.runJob((signal) => this.runSteps(claim, signal));
+  }
+
+  private async runSteps(claim: ClaimedRefresh, signal: AbortSignal) {
     let current = claim;
     try {
       for (;;) {
-        const result = await this.steps.run(current, this.active.signal);
+        const result = await this.steps.run(current, signal);
         if (result.kind !== 'advance') {
           await this.finishStep(current, result);
           return;
@@ -153,9 +126,7 @@ export class FeedRefreshWorker
         current = await this.advance(result);
       }
     } catch (error) {
-      await this.handleFailure(current, error);
-    } finally {
-      this.active = undefined;
+      await this.handleFailure(current, error, signal);
     }
   }
 
@@ -194,12 +165,16 @@ export class FeedRefreshWorker
    * más tarde si es temporal, o terminar. Un reclamo perdido no escribe nada, y
    * un aborto por apagado devuelve el trabajo a la cola sin gastar un intento.
    */
-  private async handleFailure(claim: ClaimedRefresh, error: unknown) {
+  private async handleFailure(
+    claim: ClaimedRefresh,
+    error: unknown,
+    signal: AbortSignal,
+  ) {
     if (error instanceof LostClaimError) {
       this.logClaimLost(claim);
       return;
     }
-    if (this.stopping && this.active?.signal.aborted) {
+    if (this.loop.isStopping() && signal.aborted) {
       await this.repository.requeue(claim, 0);
       return;
     }

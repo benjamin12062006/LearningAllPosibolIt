@@ -8,7 +8,7 @@ import type { ClaimedImport } from '../../../src/catalog-import/import.types.js'
 import { CATALOG_IMPORT_OPTIONS } from '../../../src/catalog-import/import.types.js';
 
 describe('Cierre del worker', () => {
-  it('aborta un stream activo al vencer el plazo y registra interrupción sin reclamar otro trabajo', async () => {
+  it('aborta un stream activo al vencer el plazo y lo devuelve a la cola sin reclamar otro trabajo', async () => {
     let markEntered: () => void = () => undefined;
     const entered = new Promise<void>((resolve) => {
       markEntered = resolve;
@@ -23,17 +23,24 @@ describe('Cierre del worker', () => {
       byteSize: 0,
       idColumn: 'id',
       delimiter: 'comma',
+      token: 'token',
+      attempts: 0,
+      leaseMs: 60_000,
     };
     const repository: jest.Mocked<
-      Pick<CatalogImportRepository, 'claim' | 'fail' | 'interruptRunning'>
+      Pick<
+        CatalogImportRepository,
+        'recoverExpiredLeases' | 'claim' | 'release' | 'fail'
+      >
     > = {
+      recoverExpiredLeases: jest
+        .fn<CatalogImportRepository['recoverExpiredLeases']>()
+        .mockResolvedValue(0),
       claim: jest.fn<CatalogImportRepository['claim']>().mockResolvedValue(job),
-      fail: jest
-        .fn<CatalogImportRepository['fail']>()
-        .mockResolvedValue(undefined),
-      interruptRunning: jest
-        .fn<CatalogImportRepository['interruptRunning']>()
-        .mockResolvedValue(1),
+      release: jest
+        .fn<CatalogImportRepository['release']>()
+        .mockResolvedValue(true),
+      fail: jest.fn<CatalogImportRepository['fail']>().mockResolvedValue(true),
     };
     const store: Pick<ArtifactStore, 'openRead'> = {
       openRead(_key, signal) {
@@ -41,7 +48,7 @@ describe('Cierre del worker', () => {
         return new Readable({ read() {}, signal });
       },
     };
-    // Los métodos no usados no se simulan: el cierre solo reclama, lee y falla.
+    // Los métodos no usados no se simulan: el cierre solo reclama, lee y suelta.
     const module = await Test.createTestingModule({
       providers: [
         CatalogImportWorker,
@@ -62,10 +69,8 @@ describe('Cierre del worker', () => {
     await entered;
     await worker.onModuleDestroy();
     await processing;
-    expect(repository.fail).toHaveBeenCalledWith(
-      job,
-      expect.objectContaining({ code: 'IMPORT_INTERRUPTED' }),
-    );
+    expect(repository.release).toHaveBeenCalledWith(job);
+    expect(repository.fail).not.toHaveBeenCalled();
     expect(repository.claim).toHaveBeenCalledTimes(1);
     await module.close();
   });

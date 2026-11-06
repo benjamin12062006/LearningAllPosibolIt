@@ -10,6 +10,7 @@ import { EvaluationsModule } from './evaluations/evaluations.module.js';
 import { ExportsModule } from './exports/exports.module.js';
 import { FeedRefreshesModule } from './feed-refreshes/feed-refreshes.module.js';
 import { FeedsModule } from './feeds/feeds.module.js';
+import { HealthModule } from './health/health.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { FeedsModule } from './feeds/feeds.module.js';
     ExportsModule,
     FeedsModule,
     FeedRefreshesModule,
+    HealthModule,
     GraphqlApiModule,
   ],
 })

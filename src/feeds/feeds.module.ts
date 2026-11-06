@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ArtifactsModule } from '../artifacts/artifacts.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { PrismaModule } from '../database/prisma.module.js';
+import { OutboxModule } from '../outbox/outbox.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { FeedCleanupService } from './feed-cleanup.service.js';
@@ -21,6 +22,7 @@ import { FEED_OPTIONS, type FeedOptions } from './feeds.types.js';
   imports: [
     ArtifactsModule,
     AuthModule,
+    OutboxModule,
     PrismaModule,
     ProjectsModule,
     UsersModule,

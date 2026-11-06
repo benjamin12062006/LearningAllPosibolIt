@@ -8,15 +8,18 @@ import {
 import { ErrorCodes } from '../common/http/error-codes.js';
 import { publicError } from '../common/http/public-error.js';
 import { ArtifactStore } from '../artifacts/artifact.store.js';
+import { LostClaimError } from '../jobs/lease-sql.js';
+import { retryDelay, type RetryOptions } from '../jobs/retry-delay.js';
+import { WorkerLoop } from '../jobs/worker-loop.js';
 import { CatalogImportRepository } from './catalog-import.repository.js';
 import { parseCatalogCsv } from './csv-parser.js';
 import {
   CATALOG_IMPORT_OPTIONS,
+  IMPORT_JOB_DEFAULTS,
   IMPORT_LIMITS,
   ImportFailure,
   type CatalogImportOptions,
   type ClaimedImport,
-  type ImportError,
   type ImportRow,
 } from './import.types.js';
 
@@ -24,108 +27,94 @@ import {
 const DIAGNOSTIC_CODE_PATTERN = /^[A-Z0-9_]{1,40}$/;
 
 /**
- * Procesa la cola de importaciones de uno en uno: reclama un trabajo, lee su
- * CSV, guarda las filas por lotes y lo cierra como completado o fallido.
+ * Procesa la cola de importaciones de uno en uno: reclama un trabajo con lease
+ * y token, lee su CSV, guarda las filas por lotes y lo cierra como completado,
+ * fallido o pendiente de reintento (plan jobs&files, D4–D6). Al arrancar no
+ * marca nada como interrumpido: lo que tenga el lease vencido se recupera,
+ * aunque haya otra instancia trabajando.
  */
 @Injectable()
 export class CatalogImportWorker
   implements OnApplicationBootstrap, OnModuleDestroy
 {
   private readonly logger = new Logger(CatalogImportWorker.name);
-  private timer?: ReturnType<typeof setInterval>;
-  private running?: Promise<void>;
-  private active?: AbortController;
-  private stopping = false;
+  private readonly loop: WorkerLoop;
+  private readonly leaseMs: number;
+  private readonly retry: RetryOptions;
 
   constructor(
     private readonly repository: CatalogImportRepository,
     private readonly store: ArtifactStore,
     @Inject(CATALOG_IMPORT_OPTIONS)
-    private readonly options: CatalogImportOptions,
-  ) {}
+    options: CatalogImportOptions,
+  ) {
+    this.leaseMs = options.leaseMs ?? IMPORT_JOB_DEFAULTS.leaseMs;
+    this.retry = options.retry ?? IMPORT_JOB_DEFAULTS.retry;
+    this.loop = new WorkerLoop(
+      options,
+      () => this.consume(),
+      () => this.logger.error('IMPORT_QUEUE_UNAVAILABLE'),
+    );
+  }
 
-  /** Los trabajos que quedaron `running` en un arranque anterior ya no pueden seguir. */
-  async onApplicationBootstrap() {
-    await this.repository.interruptRunning();
-    if (this.options.autoStart) {
-      this.timer = setInterval(() => this.wake(), this.options.pollMs);
-      this.timer.unref();
-      this.wake();
-    }
+  onApplicationBootstrap() {
+    this.loop.start();
   }
 
   /**
-   * Espera al trabajo en curso hasta `shutdownMs`. Si no termina, lo aborta y
-   * lo marca como interrumpido para que no quede `running` para siempre.
+   * Espera al trabajo en curso hasta `shutdownMs`. Si no termina, lo aborta: el
+   * trabajo abortado vuelve a la cola sin gastar un intento (D6).
    */
   async onModuleDestroy() {
-    this.stopping = true;
-    clearInterval(this.timer);
-    if (!this.running) {
-      return;
-    }
-
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        this.running,
-        new Promise<void>((resolve) => {
-          timeout = setTimeout(() => {
-            this.active?.abort();
-            resolve();
-          }, this.options.shutdownMs);
-        }),
-      ]);
-      if (this.active?.signal.aborted) {
-        await this.repository.interruptRunning();
-      }
-    } finally {
-      clearTimeout(timeout);
-    }
+    await this.loop.stop();
   }
 
   wake() {
-    if (this.options.autoStart) {
-      void this.runUntilIdle().catch(() =>
-        this.logger.error('IMPORT_QUEUE_UNAVAILABLE'),
-      );
-    }
+    this.loop.wake();
   }
 
   /** Vacía la cola. Si ya se está vaciando, devuelve esa misma ejecución. */
   runUntilIdle(): Promise<void> {
-    if (this.stopping) {
-      return Promise.resolve();
-    }
-    this.running ??= this.consume().finally(() => {
-      this.running = undefined;
-    });
-    return this.running;
+    return this.loop.runUntilIdle();
   }
 
+  /**
+   * Antes de cada reclamo recupera los leases vencidos (D6). Atiende cada
+   * trabajo como mucho una vez por pasada: un reintento con una espera muy
+   * corta volvería a estar listo enseguida y la pasada no terminaría. Lo recoge
+   * la pasada siguiente.
+   */
   private async consume() {
-    while (!this.stopping) {
-      const job = await this.repository.claim();
+    const handled: string[] = [];
+    while (!this.loop.isStopping()) {
+      await this.repository.recoverExpiredLeases(this.retry);
+      const job = await this.repository.claim(this.leaseMs, handled);
       if (!job) {
         return;
       }
-      await this.processClaimedJob(job);
+      handled.push(job.id);
+      this.logger.log({
+        code: 'IMPORT_CLAIMED',
+        jobId: job.id,
+        attempt: job.attempts + 1,
+      });
+      await this.loop.runJob((signal) => this.processClaimedJob(job, signal));
     }
   }
 
-  private async processClaimedJob(job: ClaimedImport) {
-    this.active = new AbortController();
-    if (this.stopping) {
-      this.active.abort();
-    }
-
+  private async processClaimedJob(job: ClaimedImport, signal: AbortSignal) {
+    const startedAt = Date.now();
     try {
-      await this.process(job, this.active.signal);
+      await this.process(job, signal);
     } catch (error) {
-      await this.recordFailure(job, error, this.active.signal.aborted);
-    } finally {
-      this.active = undefined;
+      await this.handleFailure(job, error, signal);
+      return;
     }
+    this.logger.log({
+      code: 'IMPORT_SUCCEEDED',
+      jobId: job.id,
+      durationMs: Date.now() - startedAt,
+    });
   }
 
   private async process(job: ClaimedImport, signal: AbortSignal) {
@@ -171,37 +160,98 @@ export class CatalogImportWorker
     }
   }
 
-  private async recordFailure(
+  /**
+   * Un reclamo perdido no escribe nada. Un aborto por apagado devuelve el
+   * trabajo a la cola sin gastar intento. Un error de los datos termina: repetir
+   * no lo arregla. Cualquier otro error es temporal y se reintenta desde cero,
+   * con espera creciente, hasta agotar los intentos (D4).
+   */
+  private async handleFailure(
     job: ClaimedImport,
     error: unknown,
-    aborted: boolean,
+    signal: AbortSignal,
   ) {
-    if (!(error instanceof ImportFailure)) {
-      this.logUnexpectedError(job, error);
+    if (error instanceof LostClaimError) {
+      this.logClaimLost(job);
+      return;
     }
-    await this.saveFailure(job, failureDetail(error, aborted));
+    if (signal.aborted) {
+      await this.saveOutcome(job, () => this.repository.release(job));
+      return;
+    }
+    if (isDataFailure(error)) {
+      this.logFailed(job, error.detail.code, job.attempts);
+      await this.saveOutcome(job, () =>
+        this.repository.fail(job, error.detail),
+      );
+      return;
+    }
+    this.logUnexpectedError(job, error);
+    await this.retryOrFail(job);
   }
 
-  private logUnexpectedError(job: ClaimedImport, error: unknown) {
-    this.logger.error({
-      code: ErrorCodes.IMPORT_PROCESSING_FAILED,
+  private async retryOrFail(job: ClaimedImport) {
+    const attempts = job.attempts + 1;
+    if (attempts >= this.retry.maxAttempts) {
+      const error = publicError(ErrorCodes.IMPORT_PROCESSING_FAILED);
+      this.logFailed(job, error.code, attempts);
+      await this.saveOutcome(job, () =>
+        this.repository.fail(job, error, attempts),
+      );
+      return;
+    }
+    const delayMs = retryDelay(attempts, this.retry);
+    this.logger.warn({
+      code: 'IMPORT_RETRY_SCHEDULED',
       jobId: job.id,
-      errorType:
-        error instanceof Error ? error.constructor.name : 'UnknownError',
-      ...diagnosticFields(error),
+      attempt: attempts,
+      delayMs,
     });
+    await this.saveOutcome(job, () =>
+      this.repository.retryLater(job, attempts, delayMs),
+    );
   }
 
-  /** Si no se puede guardar el fallo, `interruptRunning` lo cerrará al reiniciar. */
-  private async saveFailure(job: ClaimedImport, detail: ImportError) {
+  /**
+   * Si no se puede guardar cómo acabó, el lease vencerá y la recuperación lo
+   * retomará como un fallo temporal más.
+   */
+  private async saveOutcome(job: ClaimedImport, save: () => Promise<boolean>) {
     try {
-      await this.repository.fail(job, detail);
+      if (!(await save())) {
+        this.logClaimLost(job);
+      }
     } catch {
       this.logger.error({
         code: 'IMPORT_FAILURE_RECORD_PENDING',
         jobId: job.id,
       });
     }
+  }
+
+  private logUnexpectedError(job: ClaimedImport, error: unknown) {
+    this.logger.error({
+      code: ErrorCodes.IMPORT_PROCESSING_FAILED,
+      jobId: job.id,
+      attempt: job.attempts + 1,
+      errorType:
+        error instanceof Error ? error.constructor.name : 'UnknownError',
+      ...diagnosticFields(error),
+    });
+  }
+
+  /** Solo el código y los intentos: nunca filas ni nombres de archivo. */
+  private logFailed(job: ClaimedImport, errorCode: string, attempts: number) {
+    this.logger.warn({
+      code: 'IMPORT_FAILED',
+      jobId: job.id,
+      errorCode,
+      attempts,
+    });
+  }
+
+  private logClaimLost(job: ClaimedImport) {
+    this.logger.warn({ code: 'IMPORT_CLAIM_LOST', jobId: job.id });
   }
 }
 
@@ -250,14 +300,15 @@ function byteSizeOf(row: ImportRow) {
   return Buffer.byteLength(JSON.stringify(row.originalValues));
 }
 
-function failureDetail(error: unknown, aborted: boolean): ImportError {
-  if (aborted) {
-    return publicError(ErrorCodes.IMPORT_INTERRUPTED);
-  }
-  if (error instanceof ImportFailure) {
-    return error.detail;
-  }
-  return publicError(ErrorCodes.IMPORT_PROCESSING_FAILED);
+/**
+ * Un error de los datos (CSV inválido, límites, integridad): repetir no lo
+ * arregla. `IMPORT_INTERRUPTED` no lo es: solo dice que se cortó la lectura.
+ */
+function isDataFailure(error: unknown): error is ImportFailure {
+  return (
+    error instanceof ImportFailure &&
+    error.detail.code !== ErrorCodes.IMPORT_INTERRUPTED
+  );
 }
 
 function diagnosticFields(error: unknown): { diagnosticCode?: string } {
