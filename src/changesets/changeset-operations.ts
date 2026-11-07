@@ -4,6 +4,11 @@ import {
   type CellLiteral,
 } from '../worksheets/cell-values.js';
 import type { WorksheetColumn } from '../worksheets/worksheets.types.js';
+import {
+  isSchemaRequest,
+  planSchema,
+  type SchemaOperation,
+} from './changeset-schema.js';
 
 /** Como mucho 1.000 operaciones por borrador ([12], «patch hasta 1.000 operaciones»). */
 export const MAX_OPERATIONS = 1000;
@@ -31,8 +36,20 @@ export type InsertRow = Readonly<{
 
 export type DeleteRow = Readonly<{ type: 'delete_row'; rowId: string }>;
 
-/** Operación ya normalizada: la que se guarda, se compara y se aplica (D2). */
-export type Operation = SetCell | InsertRow | DeleteRow;
+/** Operación sobre una fila: siempre lleva `rowId`. */
+export type RowOperation = SetCell | InsertRow | DeleteRow;
+
+/**
+ * Operación ya normalizada: la que se guarda, se compara y se aplica (D2).
+ * Los cambios de esquema (E4.7) van siempre delante de los de filas.
+ */
+export type Operation = SchemaOperation | RowOperation;
+
+export function isRowOperation(
+  operation: Operation,
+): operation is RowOperation {
+  return 'rowId' in operation;
+}
 
 /** Valores de las filas vivas que tocan las operaciones, por `rowId`. */
 export type RowValues = ReadonlyMap<string, Readonly<Record<string, unknown>>>;
@@ -40,10 +57,16 @@ export type RowValues = ReadonlyMap<string, Readonly<Record<string, unknown>>>;
 export type OperationIssue = Readonly<{ field: string; code: ErrorCode }>;
 
 export type NormalizedOperations =
-  | Readonly<{ ok: true; operations: readonly Operation[] }>
+  | Readonly<{
+      ok: true;
+      operations: readonly Operation[];
+      /** El esquema después de los cambios de columnas. */
+      columns: readonly WorksheetColumn[];
+    }>
   | Readonly<{ ok: false; issues: readonly OperationIssue[] }>;
 
 export type NormalizeContext = Readonly<{
+  /** Columnas de la revisión base. */
   columns: readonly WorksheetColumn[];
   /** Filas vivas en la revisión base, solo las que mencionan las operaciones. */
   baseRows: RowValues;
@@ -68,19 +91,40 @@ export function mentionedRowIds(input: readonly unknown[]): string[] {
 /**
  * Valida y normaliza las operaciones (D2): una escritura por celda, las de una
  * fila insertada se funden en su inserción y borrar una fila insertada anula
- * la inserción. Nunca lanza: devuelve las operaciones o los problemas con su
- * campo (`operations.3.value`).
+ * la inserción. Primero se resuelven los cambios de columnas (E4.7) y las
+ * operaciones de filas se validan contra el esquema que resulta, así una celda
+ * puede usar una columna añadida en el mismo borrador. Nunca lanza: devuelve
+ * las operaciones o los problemas con su campo (`operations.3.value`).
  */
 export function normalizeOperations(
   input: readonly unknown[],
   context: NormalizeContext,
 ): NormalizedOperations {
-  const normalizer = new OperationNormalizer(context);
-  input.forEach((item, index) => normalizer.add(item, index));
-  if (normalizer.issues.length > 0) {
-    return { ok: false, issues: normalizer.issues };
+  const indexed = input.map((item, index) => ({ item, index }));
+  const schema = planSchema(
+    indexed.filter(({ item }) => isSchemaRequest(item)),
+    context.columns,
+  );
+
+  const normalizer = new OperationNormalizer({
+    ...context,
+    columns: schema.columns,
+  });
+  for (const { item, index } of indexed) {
+    if (!isSchemaRequest(item)) {
+      normalizer.add(item, index);
+    }
   }
-  return { ok: true, operations: normalizer.result() };
+
+  const issues = [...schema.issues, ...normalizer.issues];
+  if (issues.length > 0) {
+    return { ok: false, issues };
+  }
+  return {
+    ok: true,
+    operations: [...schema.operations, ...normalizer.result()],
+    columns: schema.columns,
+  };
 }
 
 type RowPlan =
@@ -122,8 +166,8 @@ class OperationNormalizer {
   }
 
   /** Filas en orden de aparición; dentro, las celdas en el orden de las columnas. */
-  result(): Operation[] {
-    const operations: Operation[] = [];
+  result(): RowOperation[] {
+    const operations: RowOperation[] = [];
     for (const [rowId, plan] of this.rows) {
       if (plan.kind === 'insert') {
         operations.push({

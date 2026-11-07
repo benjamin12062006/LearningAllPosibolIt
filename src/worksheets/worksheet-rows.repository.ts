@@ -26,6 +26,10 @@ export type RowsAtRevision = Readonly<{
   page: PageRequest;
 }>;
 
+/** Todas las filas de una revisión que cumplen la consulta, leídas por páginas. */
+export type AllRowsAtRevision = Omit<RowsAtRevision, 'page'> &
+  Readonly<{ pageSize: number }>;
+
 /**
  * Lecturas de filas por revisión (E3.2). Como en el resto del módulo, cada
  * consulta filtra por organización, proyecto y membresía de quien pregunta.
@@ -80,6 +84,27 @@ export class WorksheetRowsRepository {
    * Filas vivas en la revisión: versiones con `from <= N < to` que no son
    * tombstones (H8, H9).
    */
+  /**
+   * Las filas por páginas, para quien las recorre todas (exportar, llevar al
+   * catálogo) sin tenerlas en memoria a la vez. `order` debe ser total (el de
+   * `orderSql`): las versiones de fila de una revisión no cambian, así que
+   * paginar por desplazamiento no salta ni repite filas.
+   */
+  async *pagesAt(
+    request: AllRowsAtRevision,
+  ): AsyncGenerator<readonly StoredRow[]> {
+    const { pageSize: limit, ...rows } = request;
+    for (let offset = 0; ; offset += limit) {
+      const page = await this.findRows({ ...rows, page: { limit, offset } });
+      if (page.length > 0) {
+        yield page;
+      }
+      if (page.length < limit) {
+        return;
+      }
+    }
+  }
+
   async findRows(request: RowsAtRevision): Promise<StoredRow[]> {
     return this.prisma.$queryRaw<StoredRow[]>(Prisma.sql`
       SELECT

@@ -14,6 +14,10 @@ import {
   type OrganizationRole,
 } from '../organizations/organization-roles.js';
 import {
+  exceedsRowLimit,
+  normalizeName,
+} from '../worksheets/worksheet-columns.js';
+import {
   findColumnsIn,
   lockProjectFor,
 } from '../worksheets/worksheets.repository.js';
@@ -21,7 +25,12 @@ import type {
   ProjectScope,
   WorksheetColumn,
 } from '../worksheets/worksheets.types.js';
-import type { Operation, RowValues } from './changeset-operations.js';
+import {
+  isRowOperation,
+  type Operation,
+  type RowValues,
+} from './changeset-operations.js';
+import { isSchemaOperation, resultingColumns } from './changeset-schema.js';
 import type { RowChange } from './changeset-revert.js';
 import {
   isApplyResult,
@@ -31,6 +40,13 @@ import {
   type Decision,
   type RevisionPointer,
 } from './changesets.types.js';
+
+/**
+ * Filas por consulta al aplicar (imports&exports, D8): 5.000 filas son 20
+ * lotes y no 10.000 viajes a la base. Con 7 parámetros por fila, 250 filas
+ * quedan muy lejos del límite de parámetros de PostgreSQL.
+ */
+const ROW_WRITE_BATCH = 250;
 
 /** Recurso de los recibos de aplicar: uno por borrador (F47, G7). */
 const APPLY_OPERATION = 'worksheet.changeset.apply';
@@ -55,6 +71,49 @@ const CHANGESET_COLUMNS = Prisma.sql`
 
 /** El head ya no es la base aprobada: lo traduce el servicio tras el rollback. */
 export class HeadChangedError extends Error {}
+
+export type NewDraft = Readonly<{
+  worksheetId: string;
+  title: string;
+  source: Changeset['source'];
+  base: RevisionPointer;
+  operations: readonly Operation[];
+}>;
+
+/**
+ * Inserta un borrador sobre `base`, que tiene que seguir siendo el head, con
+ * su evento de auditoría. Usa la transacción de quien llama, que ya bloqueó
+ * el proyecto con `worksheet.write`: así una importación crea su registro y su
+ * borrador juntos (imports&exports, D7). Devuelve el ID del borrador.
+ */
+export async function insertDraft(
+  tx: Prisma.TransactionClient,
+  actorId: string,
+  scope: ProjectScope,
+  draft: NewDraft,
+): Promise<string> {
+  const now = new Date().toISOString();
+  const changesetId = randomUUID();
+  await assertHead(tx, scope, draft.worksheetId, draft.base.id);
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO estadistica_forms.worksheet_changesets
+      (id, organization_id, project_id, worksheet_id, author_id, source,
+       title, status, draft_version, base_revision_id, base_sequence,
+       base_schema_version, operations, content_hash, applied_revision_id,
+       created_at, updated_at)
+    VALUES (
+      ${changesetId}, ${scope.organizationId}, ${scope.projectId},
+      ${draft.worksheetId}, ${actorId}, ${draft.source}, ${draft.title},
+      'draft', 1, ${draft.base.id}, ${draft.base.sequence},
+      ${draft.base.schemaVersion}, ${JSON.stringify(draft.operations)}::jsonb,
+      NULL, NULL, ${now}, ${now}
+    )
+  `);
+  await audit(tx, scope, actorId, changesetId, 'changeset.created', now, {
+    source: draft.source,
+  });
+  return changesetId;
+}
 
 /**
  * Borradores de una hoja (E4). Todas las escrituras empiezan por
@@ -86,7 +145,8 @@ export class ChangesetsRepository {
       SELECT
         r.id,
         r.sequence,
-        r.schema_version AS "schemaVersion"
+        r.schema_version AS "schemaVersion",
+        r.row_count AS "rowCount"
       FROM estadistica_forms.worksheets w
       JOIN estadistica_forms.worksheet_revisions r
         ON r.worksheet_id = w.id AND r.id = w.head_revision_id
@@ -189,39 +249,12 @@ export class ChangesetsRepository {
   async create(
     actorId: string,
     scope: ProjectScope,
-    draft: Readonly<{
-      worksheetId: string;
-      title: string;
-      source: 'manual' | 'revert';
-      base: RevisionPointer;
-      operations: readonly Operation[];
-    }>,
+    draft: NewDraft,
   ): Promise<Changeset> {
-    const now = new Date().toISOString();
-    const changesetId = randomUUID();
-
     return this.prisma.$transaction(async (tx) => {
       await lockProjectFor(tx, actorId, scope, 'worksheet.write');
-      await assertHead(tx, scope, draft.worksheetId, draft.base.id);
-
-      await tx.$executeRaw(Prisma.sql`
-        INSERT INTO estadistica_forms.worksheet_changesets
-          (id, organization_id, project_id, worksheet_id, author_id, source,
-           title, status, draft_version, base_revision_id, base_sequence,
-           base_schema_version, operations, content_hash, applied_revision_id,
-           created_at, updated_at)
-        VALUES (
-          ${changesetId}, ${scope.organizationId}, ${scope.projectId},
-          ${draft.worksheetId}, ${actorId}, ${draft.source}, ${draft.title},
-          'draft', 1, ${draft.base.id}, ${draft.base.sequence},
-          ${draft.base.schemaVersion}, ${JSON.stringify(draft.operations)}::jsonb,
-          NULL, NULL, ${now}, ${now}
-        )
-      `);
-      await audit(tx, scope, actorId, changesetId, 'changeset.created', now, {
-        source: draft.source,
-      });
-      return requireChangeset(tx, actorId, scope, changesetId);
+      const changesetId = await insertDraft(tx, actorId, scope, draft);
+      return readChangeset(tx, actorId, scope, changesetId);
     });
   }
 
@@ -251,7 +284,7 @@ export class ChangesetsRepository {
           updated_at = ${new Date().toISOString()}
         WHERE id = ${changesetId}
       `);
-      return requireChangeset(tx, actorId, scope, changesetId);
+      return readChangeset(tx, actorId, scope, changesetId);
     });
   }
 
@@ -290,7 +323,7 @@ export class ChangesetsRepository {
       await audit(tx, scope, actorId, changesetId, 'changeset.submitted', now, {
         contentHash: hash,
       });
-      return requireChangeset(tx, actorId, scope, changesetId);
+      return readChangeset(tx, actorId, scope, changesetId);
     });
   }
 
@@ -325,7 +358,7 @@ export class ChangesetsRepository {
         now,
         {},
       );
-      return requireChangeset(tx, actorId, scope, changesetId);
+      return readChangeset(tx, actorId, scope, changesetId);
     });
   }
 
@@ -363,7 +396,7 @@ export class ChangesetsRepository {
         now,
         {},
       );
-      return requireChangeset(tx, actorId, scope, changesetId);
+      return readChangeset(tx, actorId, scope, changesetId);
     });
   }
 
@@ -406,7 +439,7 @@ export class ChangesetsRepository {
       await audit(tx, scope, actorId, changesetId, 'changeset.rebased', now, {
         baseRevisionId: rebase.head.id,
       });
-      return requireChangeset(tx, actorId, scope, changesetId);
+      return readChangeset(tx, actorId, scope, changesetId);
     });
   }
 
@@ -468,7 +501,7 @@ export class ChangesetsRepository {
       });
       return {
         decision,
-        changeset: await requireChangeset(tx, actorId, scope, changesetId),
+        changeset: await readChangeset(tx, actorId, scope, changesetId),
       };
     });
   }
@@ -517,7 +550,13 @@ export class ChangesetsRepository {
         scope,
         changeset.worksheetId,
         changeset.baseSequence,
-        [...new Set(changeset.operations.map(({ rowId }) => rowId))],
+        [
+          ...new Set(
+            changeset.operations
+              .filter(isRowOperation)
+              .map(({ rowId }) => rowId),
+          ),
+        ],
       );
       const revision = await writeRevision(
         tx,
@@ -638,7 +677,8 @@ async function lockChangeset(
   return changeset;
 }
 
-async function requireChangeset(
+/** Un borrador que esta misma transacción acaba de escribir. */
+export async function readChangeset(
   tx: Prisma.TransactionClient,
   actorId: string,
   scope: ProjectScope,
@@ -670,12 +710,20 @@ function assertAuthorOrReviewer(
   }
 }
 
-/** Un recibo guardado por esta misma operación; si no lo es, el dato está dañado. */
+/**
+ * Un recibo guardado por esta misma operación; si no lo es, el dato está
+ * dañado. JSONB reordena las claves: se rehace el objeto para que un reintento
+ * reciba exactamente el mismo cuerpo que la primera respuesta.
+ */
 function storedResult(value: unknown): ApplyResult {
   if (!isApplyResult(value)) {
     throw apiError(ErrorCodes.INTERNAL_ERROR);
   }
-  return value;
+  return {
+    changesetId: value.changesetId,
+    revisionId: value.revisionId,
+    sequence: value.sequence,
+  };
 }
 
 function assertStatus(
@@ -797,7 +845,8 @@ async function lockHeadOrThrow(
 /**
  * La revisión se inserta antes que las filas (las FK de las versiones de fila
  * apuntan a ella) y su conteo se fija al final. Cada fila tocada cierra su
- * versión vigente en la nueva secuencia y abre otra (o un tombstone).
+ * versión vigente en la nueva secuencia y abre otra (o un tombstone). Si hay
+ * cambios de columnas, antes se publica la versión de esquema siguiente.
  */
 async function writeRevision(
   tx: Prisma.TransactionClient,
@@ -808,37 +857,44 @@ async function writeRevision(
   now: string,
 ): Promise<{ id: string; sequence: number }> {
   const revision = { id: randomUUID(), sequence: changeset.baseSequence + 1 };
+  const schemaVersion = await writeSchemaVersion(tx, scope, changeset);
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO estadistica_forms.worksheet_revisions
       (id, organization_id, worksheet_id, sequence, schema_version, source,
        row_count, created_by, created_at, changeset_id)
     VALUES (
       ${revision.id}, ${scope.organizationId}, ${changeset.worksheetId},
-      ${revision.sequence}, ${changeset.baseSchemaVersion}, 'changeset',
+      ${revision.sequence}, ${schemaVersion}, 'changeset',
       0, ${actorId}, ${now}, ${changeset.id}
     )
   `);
 
-  for (const write of rowWrites(changeset.operations, headRows)) {
-    const sortKey = await closeOpenVersion(
+  const writes = rowWrites(changeset.operations, headRows);
+  for (let start = 0; start < writes.length; start += ROW_WRITE_BATCH) {
+    const batch = writes.slice(start, start + ROW_WRITE_BATCH);
+    const sortKeys = await closeOpenVersions(
       tx,
       changeset,
-      write.rowId,
+      batch.map(({ rowId }) => rowId),
       revision.sequence,
+    );
+    const values = batch.map(
+      (write) => Prisma.sql`(
+        ${scope.organizationId}, ${changeset.worksheetId}, ${write.rowId},
+        ${revision.sequence},
+        ${write.sortKey ?? sortKeys.get(write.rowId) ?? write.rowId},
+        ${JSON.stringify(write.values)}::jsonb, ${write.isDeleted}
+      )`,
     );
     await tx.$executeRaw(Prisma.sql`
       INSERT INTO estadistica_forms.worksheet_row_versions
         (organization_id, worksheet_id, row_id, from_sequence, sort_key,
          cell_values, is_deleted)
-      VALUES (
-        ${scope.organizationId}, ${changeset.worksheetId}, ${write.rowId},
-        ${revision.sequence}, ${write.sortKey ?? sortKey ?? write.rowId},
-        ${JSON.stringify(write.values)}::jsonb, ${write.isDeleted}
-      )
+      VALUES ${Prisma.join(values)}
     `);
   }
 
-  await tx.$executeRaw(Prisma.sql`
+  const counted = await tx.$queryRaw<{ rowCount: number }[]>(Prisma.sql`
     UPDATE estadistica_forms.worksheet_revisions
     SET row_count = (
       SELECT count(*)
@@ -849,13 +905,74 @@ async function writeRevision(
         AND NOT v.is_deleted
     )
     WHERE id = ${revision.id}
+    RETURNING row_count AS "rowCount"
   `);
+  // Este es el recuento que manda: la hoja está bloqueada y las filas ya
+  // escritas. Lanzar aquí deshace la transacción entera (revisión, filas y
+  // recibo); los avisos al importar y al enviar solo adelantan el rechazo.
+  if (exceedsRowLimit(counted[0].rowCount)) {
+    throw apiError(ErrorCodes.WORKSHEET_ROW_LIMIT_EXCEEDED);
+  }
   await tx.$executeRaw(Prisma.sql`
     UPDATE estadistica_forms.worksheets
-    SET head_revision_id = ${revision.id}, generation = generation + 1
+    SET head_revision_id = ${revision.id},
+      generation = generation + 1,
+      schema_version = ${schemaVersion}
     WHERE id = ${changeset.worksheetId}
   `);
   return revision;
+}
+
+/**
+ * Sin cambios de columnas, la revisión sigue en el esquema de la base. Con
+ * ellos, se guarda el esquema completo que resulta como una versión nueva:
+ * las anteriores no cambian, así una revisión antigua se sigue leyendo igual.
+ */
+async function writeSchemaVersion(
+  tx: Prisma.TransactionClient,
+  scope: ProjectScope,
+  changeset: Changeset,
+): Promise<number> {
+  const schemaOperations = changeset.operations.filter(isSchemaOperation);
+  if (schemaOperations.length === 0) {
+    return changeset.baseSchemaVersion;
+  }
+  const baseColumns = await findColumnsIn(
+    tx,
+    scope,
+    changeset.worksheetId,
+    changeset.baseSchemaVersion,
+  );
+  const columns = resultingColumns(baseColumns, schemaOperations);
+  // La hoja ya está bloqueada: su versión de esquema no cambia mientras tanto.
+  // Se parte de la hoja y no de las columnas: un esquema puede quedar vacío.
+  const rows = await tx.$queryRaw<{ next: number }[]>(Prisma.sql`
+    SELECT schema_version + 1 AS next
+    FROM estadistica_forms.worksheets
+    WHERE id = ${changeset.worksheetId}
+  `);
+  const schemaVersion = rows[0].next;
+  if (columns.length > 0) {
+    const values = columns.map(
+      (column) => Prisma.sql`(
+        ${scope.organizationId}, ${changeset.worksheetId}, ${schemaVersion},
+        ${column.id}, ${column.name}, ${normalizeName(column.name)},
+        ${column.type}, ${column.position}, ${column.required},
+        ${jsonOrNull(column.options)}::jsonb, ${jsonOrNull(column.formula)}::jsonb
+      )`,
+    );
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO estadistica_forms.worksheet_column_versions
+        (organization_id, worksheet_id, schema_version, column_id, name,
+         name_normalized, type, position, required, options, formula)
+      VALUES ${Prisma.join(values)}
+    `);
+  }
+  return schemaVersion;
+}
+
+function jsonOrNull(value: unknown) {
+  return value === undefined ? null : JSON.stringify(value);
 }
 
 type RowWrite = Readonly<{
@@ -871,7 +988,7 @@ function rowWrites(
   headRows: RowValues,
 ): RowWrite[] {
   const writes = new Map<string, RowWrite>();
-  for (const operation of operations) {
+  for (const operation of operations.filter(isRowOperation)) {
     if (operation.type === 'insert_row') {
       writes.set(operation.rowId, {
         rowId: operation.rowId,
@@ -908,22 +1025,27 @@ function rowWrites(
   return [...writes.values()];
 }
 
-/** Cierra la versión vigente de la fila y devuelve su clave de orden, si había. */
-async function closeOpenVersion(
+/**
+ * Cierra la versión vigente de cada fila y devuelve su clave de orden. Una
+ * fila nueva no tiene versión que cerrar y no aparece en el resultado.
+ */
+async function closeOpenVersions(
   tx: Prisma.TransactionClient,
   changeset: Changeset,
-  rowId: string,
+  rowIds: readonly string[],
   sequence: number,
-): Promise<string | null> {
-  const rows = await tx.$queryRaw<{ sortKey: string }[]>(Prisma.sql`
-    UPDATE estadistica_forms.worksheet_row_versions
-    SET to_sequence = ${sequence}
-    WHERE worksheet_id = ${changeset.worksheetId}
-      AND row_id = ${rowId}
-      AND to_sequence IS NULL
-    RETURNING sort_key AS "sortKey"
-  `);
-  return rows[0]?.sortKey ?? null;
+): Promise<Map<string, string>> {
+  const rows = await tx.$queryRaw<{ rowId: string; sortKey: string }[]>(
+    Prisma.sql`
+      UPDATE estadistica_forms.worksheet_row_versions
+      SET to_sequence = ${sequence}
+      WHERE worksheet_id = ${changeset.worksheetId}
+        AND row_id IN (${Prisma.join([...rowIds])})
+        AND to_sequence IS NULL
+      RETURNING row_id AS "rowId", sort_key AS "sortKey"
+    `,
+  );
+  return new Map(rows.map(({ rowId, sortKey }) => [rowId, sortKey]));
 }
 
 async function findRowsIn(

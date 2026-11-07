@@ -756,4 +756,164 @@ export const API_MESSAGES = {
     'No hay nada que deshacer: la hoja ya no tiene los cambios de esa revisión.',
     'There is nothing to undo: the worksheet no longer has the changes from that revision.',
   ),
+  [ErrorCodes.OPERATION_COLUMN_EXISTS]: entry(
+    400,
+    'Ya existe una columna con ese ID. El campo indica cuál.',
+    'A column with that ID already exists. The field shows which one.',
+  ),
+  [ErrorCodes.COLUMN_IN_USE]: entry(
+    400,
+    'Una columna calculada usa esta columna: cambia o borra antes esa fórmula. El campo indica cuál.',
+    'A calculated column uses this column: change or delete that formula first. The field shows which one.',
+  ),
+  [ErrorCodes.WORKSHEET_IMPORT_NOT_FOUND]: entry(
+    404,
+    'No se encontró la importación.',
+    'The import was not found.',
+  ),
+  [ErrorCodes.IMPORT_OPTIONS_INVALID]: entry(
+    400,
+    'Las opciones de la importación no son válidas. El campo indica cuál.',
+    'The import options are not valid. The field shows which one.',
+  ),
+  [ErrorCodes.IMPORT_MAPPING_INVALID]: entry(
+    400,
+    'El mapeo de columnas no es válido: revisa cabeceras y columnas. El campo indica cuál.',
+    'The column mapping is not valid: check headers and columns. The field shows which one.',
+  ),
+  [ErrorCodes.IMPORT_ROWS_INVALID]: entry(
+    422,
+    'Hay filas con problemas. Corrígelas en el archivo o exclúyelas de forma explícita.',
+    'Some rows have problems. Fix them in the file or exclude them explicitly.',
+  ),
+  [ErrorCodes.IMPORT_KEY_MISSING]: entry(
+    400,
+    'La fila no tiene valor en la columna clave.',
+    'The row has no value in the key column.',
+  ),
+  [ErrorCodes.IMPORT_KEY_DUPLICATE]: entry(
+    400,
+    'La clave se repite en el archivo.',
+    'The key appears more than once in the file.',
+  ),
+  [ErrorCodes.IMPORT_KEY_AMBIGUOUS]: entry(
+    400,
+    'La clave coincide con varias filas de la hoja.',
+    'The key matches more than one row in the worksheet.',
+  ),
+  [ErrorCodes.IMPORT_NOTHING_TO_CHANGE]: entry(
+    409,
+    'El archivo no cambia nada en la hoja: no se creó ningún borrador.',
+    'The file changes nothing in the worksheet: no draft was created.',
+  ),
+  [ErrorCodes.WORKSHEET_ROW_LIMIT_EXCEEDED]: entry(
+    409,
+    'La hoja pasaría de 5.000 filas, el máximo permitido. Borra filas o reparte los datos en otra hoja.',
+    'The worksheet would exceed 5,000 rows, the maximum allowed. Delete rows or split the data into another worksheet.',
+  ),
+  [ErrorCodes.XLSX_ENCRYPTED]: entry(
+    400,
+    'El archivo está cifrado o es un .xls antiguo. Guárdalo como .xlsx sin contraseña.',
+    'The file is encrypted or is a legacy .xls. Save it as .xlsx without a password.',
+  ),
+  [ErrorCodes.XLSX_ACTIVE_CONTENT]: entry(
+    400,
+    'El libro tiene macros, enlaces externos u objetos incrustados. Guárdalo como .xlsx sin ellos.',
+    'The workbook has macros, external links or embedded objects. Save it as .xlsx without them.',
+  ),
+  [ErrorCodes.XLSX_LIMITS_EXCEEDED]: entry(
+    413,
+    'El libro descomprimido supera los límites de tamaño, de partes o de tiempo de lectura.',
+    'The uncompressed workbook exceeds the size, part count or reading time limits.',
+  ),
+  [ErrorCodes.XLSX_INVALID]: entry(
+    400,
+    'No se pudo leer el libro: el archivo está dañado o no es un .xlsx válido.',
+    'The workbook could not be read: the file is damaged or is not a valid .xlsx.',
+  ),
+  [ErrorCodes.XLSX_SHEET_REQUIRED]: entry(
+    400,
+    'El libro tiene varias hojas: elige cuál importar.',
+    'The workbook has several sheets: choose which one to import.',
+  ),
+  [ErrorCodes.XLSX_SHEET_NOT_FOUND]: entry(
+    400,
+    'El libro no tiene una hoja con ese nombre.',
+    'The workbook has no sheet with that name.',
+  ),
+  [ErrorCodes.XLSX_EMPTY]: entry(
+    400,
+    'La hoja debe tener la fila de cabecera y al menos una fila de datos debajo.',
+    'The sheet must have the header row and at least one data row below it.',
+  ),
+  [ErrorCodes.XLSX_ROW_LIMIT]: entry(
+    400,
+    'La hoja supera 5.000 filas de datos.',
+    'The sheet exceeds 5,000 data rows.',
+  ),
+  [ErrorCodes.XLSX_CELL_ERROR]: entry(
+    400,
+    'La celda tiene un error de fórmula (por ejemplo, #DIV/0!).',
+    'The cell has a formula error (for example, #DIV/0!).',
+  ),
+  [ErrorCodes.XLSX_FORMULA_NOT_CALCULATED]: entry(
+    400,
+    'La celda tiene una fórmula sin valor calculado. Abre y guarda el libro en Excel antes de importarlo.',
+    'The cell has a formula without a calculated value. Open and save the workbook in Excel before importing it.',
+  ),
+  [ErrorCodes.WORKSHEET_EXPORT_NOT_FOUND]: entry(
+    404,
+    'No se encontró la exportación de la hoja.',
+    'The worksheet export was not found.',
+  ),
+  [ErrorCodes.WORKSHEET_EXPORT_TOO_LARGE]: entry(
+    413,
+    'La exportación supera 50 MiB. Elige menos columnas o filtra las filas.',
+    'The export exceeds 50 MiB. Choose fewer columns or filter the rows.',
+  ),
+  [ErrorCodes.WORKSHEET_CATALOG_OWNER_REQUIRED]: entry(
+    403,
+    'Solo el propietario del proyecto puede llevar una hoja a su catálogo: el catálogo y el feed siguen siendo suyos.',
+    'Only the project owner can send a worksheet to its catalog: the catalog and the feed still belong to them.',
+  ),
+  [ErrorCodes.CATALOG_ID_COLUMN_INVALID]: entry(
+    400,
+    'La columna identificadora debe existir en la revisión y estar entre las columnas elegidas.',
+    'The identifier column must exist in the revision and be one of the chosen columns.',
+  ),
+  [ErrorCodes.WORKSHEET_CATALOG_ROWS_INVALID]: entry(
+    422,
+    'Hay filas que el catálogo no admitiría. Corrígelas en la hoja o déjalas fuera con un filtro.',
+    'Some rows would not be accepted by the catalog. Fix them in the worksheet or leave them out with a filter.',
+  ),
+  [ErrorCodes.CATALOG_ID_MISSING]: entry(
+    400,
+    'La fila no tiene valor en la columna identificadora.',
+    'The row has no value in the identifier column.',
+  ),
+  [ErrorCodes.CATALOG_ID_DUPLICATE]: entry(
+    400,
+    'El identificador ya aparece en otra fila.',
+    'The identifier already appears in another row.',
+  ),
+  [ErrorCodes.CATALOG_RECORD_TOO_LARGE]: entry(
+    400,
+    'La fila ocupa más de 1 MiB en el CSV del catálogo.',
+    'The row takes more than 1 MiB in the catalog CSV.',
+  ),
+  [ErrorCodes.WORKSHEET_CATALOG_EMPTY]: entry(
+    422,
+    'No hay filas que llevar al catálogo. Revisa el filtro.',
+    'There are no rows to send to the catalog. Check the filter.',
+  ),
+  [ErrorCodes.WORKSHEET_CATALOG_TOO_LARGE]: entry(
+    413,
+    'El CSV del catálogo superaría 10 MiB. Elige menos columnas o filtra las filas.',
+    'The catalog CSV would exceed 10 MiB. Choose fewer columns or filter the rows.',
+  ),
+  [ErrorCodes.WORKSHEET_CATALOG_SNAPSHOT_NOT_FOUND]: entry(
+    404,
+    'No se encontró el snapshot de catálogo de la hoja.',
+    'The worksheet catalog snapshot was not found.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

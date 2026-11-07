@@ -11,7 +11,9 @@ import { WorksheetsService } from './worksheets.service.js';
 /**
  * Usa las funciones de bloqueo y permisos de organizaciones directamente; no
  * necesita sus servicios. Nada de organizaciones ni de proyectos depende de
- * este módulo; los borradores de E4 sí, y por eso exporta el repositorio.
+ * este módulo; los borradores de E4 sí, y por eso exporta el repositorio. Las
+ * exportaciones (E5.3) leen las filas de una revisión con la misma consulta
+ * que `rows/query`.
  */
 @Module({
   imports: [AuthModule, PrismaModule, UsersModule],
@@ -22,6 +24,6 @@ import { WorksheetsService } from './worksheets.service.js';
     WorksheetRowsRepository,
     WorksheetRowsService,
   ],
-  exports: [WorksheetsRepository],
+  exports: [WorksheetsRepository, WorksheetRowsRepository],
 })
 export class WorksheetsModule {}

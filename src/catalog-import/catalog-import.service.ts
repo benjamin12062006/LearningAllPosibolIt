@@ -12,7 +12,10 @@ import {
 import { ArtifactStore } from '../artifacts/artifact.store.js';
 import { OutboxRelay } from '../outbox/outbox.relay.js';
 import { UsersService } from '../users/users.service.js';
-import { CatalogImportRepository } from './catalog-import.repository.js';
+import {
+  CatalogImportRepository,
+  type AcceptanceRecorder,
+} from './catalog-import.repository.js';
 import { CatalogImportWorker } from './catalog-import.worker.js';
 import type {
   Acceptance,
@@ -48,7 +51,8 @@ export class CatalogImportService {
   /**
    * Acepta un CSV ya recibido: lo guarda como artefacto, registra el snapshot y
    * su trabajo en cola y avisa al worker. El procesamiento es asíncrono. Sin
-   * `plannedIds`, los ids se generan aquí.
+   * `plannedIds`, los ids se generan aquí. `recordSource` guarda algo más en la
+   * misma transacción (la procedencia de un snapshot que viene de una hoja).
    */
   async accept(
     ownerId: string,
@@ -57,6 +61,7 @@ export class CatalogImportService {
     fields: ImportFields,
     requestId: string,
     plannedIds?: PlannedImportIds,
+    recordSource?: AcceptanceRecorder,
   ) {
     const acceptance = buildAcceptance(
       ownerId,
@@ -68,7 +73,7 @@ export class CatalogImportService {
     );
 
     await this.moveToArtifacts(upload, acceptance);
-    await this.recordAcceptance(acceptance);
+    await this.recordAcceptance(acceptance, recordSource);
     this.worker.wake();
 
     return {
@@ -145,9 +150,14 @@ export class CatalogImportService {
     }
   }
 
-  private async recordAcceptance(acceptance: Acceptance) {
+  private async recordAcceptance(
+    acceptance: Acceptance,
+    recordSource?: AcceptanceRecorder,
+  ) {
     try {
-      await this.repository.accept(acceptance);
+      await (recordSource
+        ? this.repository.accept(acceptance, recordSource)
+        : this.repository.accept(acceptance));
     } catch (error) {
       await this.recoverFromFailedAcceptance(acceptance, error);
     }

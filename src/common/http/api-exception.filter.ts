@@ -115,12 +115,18 @@ function resolveErrorCode(code: unknown, status: number): ErrorCode {
 
 /**
  * Códigos cuya respuesta puede llevar `issues`. `EVALUATION_COLUMN_MISSING` los
- * usa para decir qué atributos del mapeo apuntan a columnas inexistentes.
+ * usa para decir qué atributos del mapeo apuntan a columnas inexistentes; los
+ * de importación de hojas, qué opción, cabecera o fila falla (E5.1); el puente
+ * al catálogo, qué filas rechazaría (E5.4).
  */
 const CODES_WITH_ISSUES: ReadonlySet<ErrorCode> = new Set([
   ErrorCodes.VALIDATION_FAILED,
   ErrorCodes.INVALID_UUID,
   ErrorCodes.EVALUATION_COLUMN_MISSING,
+  ErrorCodes.IMPORT_OPTIONS_INVALID,
+  ErrorCodes.IMPORT_MAPPING_INVALID,
+  ErrorCodes.IMPORT_ROWS_INVALID,
+  ErrorCodes.WORKSHEET_CATALOG_ROWS_INVALID,
 ]);
 
 function readValidationIssues(

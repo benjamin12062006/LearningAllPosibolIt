@@ -14,7 +14,7 @@ export type Changeset = Readonly<{
   id: string;
   worksheetId: string;
   authorId: string;
-  source: 'manual' | 'revert';
+  source: 'manual' | 'revert' | 'import';
   title: string;
   status: ChangesetStatus;
   /** ETag del borrador: cambia con cada guardado o reapertura (D3, D7). */
@@ -34,6 +34,8 @@ export type RevisionPointer = Readonly<{
   id: string;
   sequence: number;
   schemaVersion: number;
+  /** Filas vivas de la revisión: con las operaciones, dice si se pasa del límite. */
+  rowCount: number;
 }>;
 
 export type Decision = Readonly<{

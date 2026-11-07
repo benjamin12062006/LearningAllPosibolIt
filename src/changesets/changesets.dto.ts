@@ -71,10 +71,14 @@ export class ApplyChangesetDto {
   expectedHeadRevisionId!: string;
 }
 
-/** Elección para un conflicto de celda (`columnId`) o de fila (`null`). */
+/**
+ * Elección para un conflicto de celda (`rowId` y `columnId`), de fila
+ * (`columnId` null) o de columna (`rowId` null, E4.7).
+ */
 export class ConflictResolutionDto {
+  @ValidateIf((_object, value) => value !== null)
   @IsUUID()
-  rowId!: string;
+  rowId!: string | null;
 
   @ValidateIf((_object, value) => value !== null)
   @IsUUID()

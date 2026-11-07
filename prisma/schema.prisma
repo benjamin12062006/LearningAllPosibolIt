@@ -29,6 +29,9 @@ model AppUser {
   changesetDecisions   WorksheetChangesetDecision[]
   operationReceipts    OperationReceipt[]
   auditEvents          AuditEvent[]
+  worksheetImports     WorksheetImport[]
+  worksheetExports     WorksheetExport[]
+  worksheetSnapshots   WorksheetSnapshot[]
 
   @@unique([identityIssuer, identitySubject])
   @@map("app_users")
@@ -98,6 +101,7 @@ model CatalogSnapshot {
   rows                 CatalogRow[]
   jobs                 CatalogImportJob[]
   evaluations          Evaluation[]
+  worksheetSource      WorksheetSnapshot?
 
   @@unique([projectId, id])
   @@index([projectId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_catalog_snapshots_project_created")
@@ -415,6 +419,8 @@ model Worksheet {
   revisions      WorksheetRevision[]      @relation("WorksheetRevisions")
   rowVersions    WorksheetRowVersion[]
   changesets     WorksheetChangeset[]
+  exports        WorksheetExport[]
+  snapshots      WorksheetSnapshot[]
 
   @@unique([workbookId, nameNormalized])
   @@unique([organizationId, id])
@@ -468,6 +474,8 @@ model WorksheetRevision {
   closedRows     WorksheetRowVersion[] @relation("RowTo")
   changeset      WorksheetChangeset?   @relation("ChangesetRevision", fields: [organizationId, changesetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
   baseOf         WorksheetChangeset[]  @relation("ChangesetBase")
+  exports        WorksheetExport[]
+  snapshots      WorksheetSnapshot[]
 
   @@unique([worksheetId, sequence])
   @@unique([worksheetId, id])
@@ -523,6 +531,8 @@ model WorksheetChangeset {
   decisions         WorksheetChangesetDecision[]
   /// Como mucho una: lo garantiza el índice único de `changeset_id`.
   revisions         WorksheetRevision[]          @relation("ChangesetRevision")
+  /// Como mucho una: la importación que creó este borrador (E5.1).
+  imports           WorksheetImport[]
 
   @@unique([organizationId, id])
   @@index([organizationId, worksheetId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_worksheet_changesets_worksheet_created")
@@ -608,5 +618,94 @@ model OutboxEvent {
 
   @@index([status, createdAt, id], map: "idx_outbox_events_ready")
   @@map("outbox_events")
+  @@schema("estadistica_forms")
+}
+
+/// Importación de un CSV a un borrador de hoja (E5.1). El original no se
+/// guarda: su hash, sus opciones y el informe son la procedencia.
+model WorksheetImport {
+  id             String             @id
+  organizationId String             @map("organization_id")
+  projectId      String             @map("project_id")
+  worksheetId    String             @map("worksheet_id")
+  changesetId    String             @unique @map("changeset_id")
+  createdBy      String             @map("created_by")
+  format         String
+  fileHash       String             @map("file_hash")
+  fileBytes      Int                @map("file_bytes")
+  options        Json
+  report         Json
+  excludedRows   Json               @map("excluded_rows")
+  includedHash   String             @map("included_hash")
+  createdAt      String             @map("created_at")
+  changeset      WorksheetChangeset @relation(fields: [organizationId, changesetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator        AppUser            @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([organizationId, worksheetId, createdAt(sort: Desc)], map: "idx_worksheet_imports_worksheet_created")
+  @@map("worksheet_imports")
+  @@schema("estadistica_forms")
+}
+
+/// Exportación de una revisión fija de hoja a CSV o XLSX (E5.3). El archivo se
+/// guarda en `worksheet-exports/` y solo se referencia después de releerlo y
+/// comprobar su SHA-256.
+model WorksheetExport {
+  id                String            @id
+  organizationId    String            @map("organization_id")
+  projectId         String            @map("project_id")
+  worksheetId       String            @map("worksheet_id")
+  revisionId        String            @map("revision_id")
+  revisionSequence  Int               @map("revision_sequence")
+  createdBy         String            @map("created_by")
+  format            String
+  /// Solo CSV: separador y política de fórmulas.
+  options           Json
+  /// Columnas resueltas, filtro y orden tal como se validaron.
+  query             Json
+  serializerVersion String            @map("serializer_version")
+  rowCount          Int               @map("row_count")
+  columnCount       Int               @map("column_count")
+  problemCellCount  Int               @map("problem_cell_count")
+  byteSize          Int               @map("byte_size")
+  checksum          String
+  artifactKey       String            @unique @map("artifact_key")
+  createdAt         String            @map("created_at")
+  worksheet         Worksheet         @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  revision          WorksheetRevision @relation(fields: [worksheetId, revisionId], references: [worksheetId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator           AppUser           @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([organizationId, worksheetId, createdAt(sort: Desc)], map: "idx_worksheet_exports_worksheet_created")
+  @@map("worksheet_exports")
+  @@schema("estadistica_forms")
+}
+
+/// Procedencia de un snapshot de catálogo creado desde una revisión de hoja
+/// (E5.4, plan imports&exports 01, D22–D28): qué hoja, revisión y columnas lo
+/// formaron. Se borra con su snapshot; la revisión, nunca.
+model WorksheetSnapshot {
+  snapshotId        String            @id @map("snapshot_id")
+  projectId         String            @map("project_id")
+  organizationId    String            @map("organization_id")
+  worksheetId       String            @map("worksheet_id")
+  revisionId        String            @map("revision_id")
+  revisionSequence  Int               @map("revision_sequence")
+  createdBy         String            @map("created_by")
+  idColumnId        String            @map("id_column_id")
+  /// Columnas elegidas con la cabecera que tienen en el snapshot.
+  columns           Json
+  /// Filtro y orden tal como se validaron.
+  query             Json
+  serializerVersion String            @map("serializer_version")
+  rowCount          Int               @map("row_count")
+  sourceHash        String            @map("source_hash")
+  createdAt         String            @map("created_at")
+  snapshot          CatalogSnapshot   @relation(fields: [projectId, snapshotId], references: [projectId, id], onDelete: Cascade, onUpdate: NoAction)
+  worksheet         Worksheet         @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  revision          WorksheetRevision @relation(fields: [worksheetId, revisionId], references: [worksheetId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator           AppUser           @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([projectId, snapshotId])
+  @@index([organizationId, worksheetId, createdAt(sort: Desc)], map: "idx_worksheet_catalog_snapshots_worksheet_created")
+  @@map("worksheet_catalog_snapshots")
   @@schema("estadistica_forms")
 }

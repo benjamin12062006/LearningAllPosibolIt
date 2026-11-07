@@ -18,17 +18,28 @@ import { pipeline } from 'node:stream/promises';
 import {
   IMPORT_LIMITS,
   ImportFailure,
+  type StoredUpload,
 } from '../catalog-import/import.types.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import {
   ARTIFACT_STORE_OPTIONS,
   type ArtifactStoreOptions,
+  type ByteSink,
 } from './artifacts.types.js';
 
-type Folder = 'tmp' | 'artifacts' | 'exports' | 'feeds';
+type Folder = 'tmp' | 'artifacts' | 'exports' | 'feeds' | 'worksheet-exports';
+
+/** Extensión de una exportación de hoja (E5.3). */
+export type WorksheetExportExtension = 'csv' | 'xlsx';
 
 /** Carpetas donde un archivo queda guardado (no temporal). */
-export type FinalFolder = Exclude<Folder, 'tmp'>;
+type StoredFolder = Exclude<Folder, 'tmp'>;
+
+/**
+ * Las carpetas guardadas cuyos archivos puede borrar el outbox (plan
+ * jobs&files, D9). Las exportaciones de hojas no se borran por eventos.
+ */
+export type FinalFolder = Exclude<StoredFolder, 'worksheet-exports'>;
 
 /** Las carpetas finales, para comprobar lo que llega de un evento guardado. */
 export const FINAL_FOLDERS: readonly FinalFolder[] = [
@@ -53,13 +64,16 @@ export type WrittenArtifact = Readonly<{
  */
 const IMPORT_KEY_PATTERN = /^[0-9a-f-]{36}\.csv$/;
 const TSV_KEY_PATTERN = /^[0-9a-f-]{36}\.tsv$/;
+/** `<uuid>.csv` o `<uuid>.xlsx`: exportaciones de hojas (E5.3). */
+const WORKSHEET_EXPORT_KEY_PATTERN = /^[0-9a-f-]{36}\.(csv|xlsx)$/;
 
 /** `tmp/` recibe los dos tipos; cada carpeta final, solo el suyo. */
 const KEY_PATTERNS: Record<Folder, readonly RegExp[]> = {
-  tmp: [IMPORT_KEY_PATTERN, TSV_KEY_PATTERN],
+  tmp: [IMPORT_KEY_PATTERN, TSV_KEY_PATTERN, WORKSHEET_EXPORT_KEY_PATTERN],
   artifacts: [IMPORT_KEY_PATTERN],
   exports: [TSV_KEY_PATTERN],
   feeds: [TSV_KEY_PATTERN],
+  'worksheet-exports': [WORKSHEET_EXPORT_KEY_PATTERN],
 };
 
 /**
@@ -77,7 +91,14 @@ export class ArtifactStore implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    for (const folder of ['', 'tmp', 'artifacts', 'exports', 'feeds']) {
+    for (const folder of [
+      '',
+      'tmp',
+      'artifacts',
+      'exports',
+      'feeds',
+      'worksheet-exports',
+    ]) {
       await mkdir(join(this.options.root, folder), {
         recursive: true,
         mode: 0o700,
@@ -127,6 +148,27 @@ export class ArtifactStore implements OnModuleInit {
     }
   }
 
+  /**
+   * Escribe en `tmp/` un CSV que genera la propia API para importarlo (el
+   * puente desde una hoja, E5.4): queda igual que una subida de `receive`, con
+   * su tamaño y su SHA-256, y `finalize` lo enlaza al aceptarse. Si `write`
+   * falla, no queda nada. Devuelve también lo que devuelva `write`.
+   */
+  async writeImportUpload<Result>(
+    write: (sink: ByteSink) => Promise<Result>,
+  ): Promise<Readonly<{ upload: StoredUpload; result: Result }>> {
+    const { file, result } = await this.writeTemporaryInChunks(
+      `${randomUUID()}.csv`,
+      write,
+    );
+    const upload = {
+      filename: file.key,
+      size: file.byteSize,
+      hash: file.checksum,
+    };
+    return { upload, result };
+  }
+
   finalize(temporary: string, key: string) {
     return this.linkInto('artifacts', temporary, key);
   }
@@ -170,7 +212,7 @@ export class ArtifactStore implements OnModuleInit {
     };
 
     await this.writeTemporary(written.key, content);
-    await this.moveToExports(written.key);
+    await this.moveInto('exports', written.key);
     await this.verifyStored('exports', written);
 
     return written;
@@ -248,7 +290,44 @@ export class ArtifactStore implements OnModuleInit {
     return this.remove('feeds', key);
   }
 
-  private async linkInto(folder: FinalFolder, temporary: string, key: string) {
+  // ---------------------------------------------------------------------------
+  // Exportaciones de hojas: CSV y XLSX generados por trozos (E5.3).
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Guarda lo que `write` genera, sin tenerlo entero en memoria ([12]): se
+   * escribe en `tmp/` contando bytes y calculando el SHA-256 al vuelo, se
+   * enlaza en `worksheet-exports/` y se relee antes de devolverlo (plan
+   * imports&exports 01, D20). Si algo falla, no queda ningún archivo.
+   * Devuelve también lo que devuelva `write` (por ejemplo, qué escribió).
+   */
+  async writeWorksheetExport<Result>(
+    extension: WorksheetExportExtension,
+    write: (sink: ByteSink) => Promise<Result>,
+  ): Promise<Readonly<{ file: WrittenArtifact; result: Result }>> {
+    const key = `${randomUUID()}.${extension}`;
+    const written = await this.writeTemporaryInChunks(key, write);
+    await this.moveInto('worksheet-exports', key);
+    await this.verifyInChunks('worksheet-exports', written.file);
+    return written;
+  }
+
+  /** Abre el archivo antes de responder, por el mismo motivo que `openExport`. */
+  async openWorksheetExport(key: string): Promise<Readable> {
+    const file = await open(this.pathOf('worksheet-exports', key), 'r');
+    return file.createReadStream();
+  }
+
+  /** Exportaciones de hojas guardadas y su última escritura, para la limpieza. */
+  listWorksheetExports(): Promise<StoredArtifact[]> {
+    return this.list('worksheet-exports');
+  }
+
+  removeWorksheetExport(key: string) {
+    return this.remove('worksheet-exports', key);
+  }
+
+  private async linkInto(folder: StoredFolder, temporary: string, key: string) {
     // `link` es exclusivo: una colisión no reemplaza un archivo ya existente.
     await link(this.pathOf('tmp', temporary), this.pathOf(folder, key));
     try {
@@ -261,7 +340,7 @@ export class ArtifactStore implements OnModuleInit {
     }
   }
 
-  private async list(folder: FinalFolder): Promise<StoredArtifact[]> {
+  private async list(folder: StoredFolder): Promise<StoredArtifact[]> {
     const names = await readdir(join(this.options.root, folder));
     const stored: StoredArtifact[] = [];
     for (const key of names) {
@@ -295,20 +374,68 @@ export class ArtifactStore implements OnModuleInit {
   }
 
   /** Si el enlace falla, el temporal no lo va a recoger nadie: se borra aquí. */
-  private async moveToExports(key: string) {
+  private async moveInto(folder: StoredFolder, key: string) {
     try {
-      await this.linkInto('exports', key, key);
+      await this.linkInto(folder, key, key);
     } catch (error) {
       await this.removeTemporary(key);
       throw error;
     }
   }
 
+  private async writeTemporaryInChunks<Result>(
+    key: string,
+    write: (sink: ByteSink) => Promise<Result>,
+  ): Promise<Readonly<{ file: WrittenArtifact; result: Result }>> {
+    const file = await open(this.pathOf('tmp', key), 'wx', 0o600);
+    const hash = createHash('sha256');
+    let byteSize = 0;
+    const sink: ByteSink = {
+      write: async (chunk) => {
+        hash.update(chunk);
+        byteSize += chunk.length;
+        await file.writeFile(chunk);
+      },
+    };
+
+    try {
+      const result = await write(sink);
+      await file.sync();
+      return { file: { key, byteSize, checksum: hash.digest('hex') }, result };
+    } catch (error) {
+      await this.removeTemporary(key);
+      throw error;
+    } finally {
+      await file.close();
+    }
+  }
+
+  /** Como `verifyStored`, pero leyendo por trozos: el archivo puede ser grande. */
+  private async verifyInChunks(folder: StoredFolder, written: WrittenArtifact) {
+    const hash = createHash('sha256');
+    let byteSize = 0;
+    for await (const chunk of createReadStream(
+      this.pathOf(folder, written.key),
+    )) {
+      if (Buffer.isBuffer(chunk)) {
+        hash.update(chunk);
+        byteSize += chunk.length;
+      }
+    }
+    const matches =
+      byteSize === written.byteSize && hash.digest('hex') === written.checksum;
+    if (matches) {
+      return;
+    }
+    await this.remove(folder, written.key);
+    throw new Error('El archivo guardado no coincide con el generado.');
+  }
+
   /**
    * Si releer el archivo falla, queda sin referencia y la limpieza de huérfanos
    * lo retira (plan de reviews y exports, D6).
    */
-  private async verifyStored(folder: FinalFolder, written: WrittenArtifact) {
+  private async verifyStored(folder: StoredFolder, written: WrittenArtifact) {
     const stored = await readFile(this.pathOf(folder, written.key));
     if (isSameContent(stored, written)) {
       return;

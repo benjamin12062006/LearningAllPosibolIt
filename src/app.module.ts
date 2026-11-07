@@ -13,6 +13,9 @@ import { FeedsModule } from './feeds/feeds.module.js';
 import { OrganizationsModule } from './organizations/organizations.module.js';
 import { WorksheetsModule } from './worksheets/worksheets.module.js';
 import { ChangesetsModule } from './changesets/changesets.module.js';
+import { WorksheetImportsModule } from './worksheet-imports/worksheet-imports.module.js';
+import { WorksheetExportsModule } from './worksheet-exports/worksheet-exports.module.js';
+import { WorksheetCatalogSnapshotsModule } from './worksheet-catalog-snapshots/worksheet-catalog-snapshots.module.js';
 import { HealthModule } from './health/health.module.js';
 
 @Module({
@@ -30,6 +33,9 @@ import { HealthModule } from './health/health.module.js';
     FeedRefreshesModule,
     WorksheetsModule,
     ChangesetsModule,
+    WorksheetImportsModule,
+    WorksheetExportsModule,
+    WorksheetCatalogSnapshotsModule,
     HealthModule,
     GraphqlApiModule,
   ],

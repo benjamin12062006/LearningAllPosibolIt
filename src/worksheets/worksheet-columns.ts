@@ -28,7 +28,13 @@ export const WORKSHEET_LIMITS = {
   columnsPerWorksheet: 200,
   nameLength: 120,
   optionsPerColumn: 100,
+  /** Filas vivas de una revisión; se comprueba al aplicar (plan imports&exports 01). */
+  rowsPerWorksheet: 5000,
 } as const;
+
+export function exceedsRowLimit(rowCount: number) {
+  return rowCount > WORKSHEET_LIMITS.rowsPerWorksheet;
+}
 
 /** Opción de una columna de selección: la celda guarda `id`, no la etiqueta (V1). */
 export type SelectionOption = Readonly<{ id: string; label: string }>;

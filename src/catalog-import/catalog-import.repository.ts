@@ -112,6 +112,15 @@ type ParsedFile = {
   bytes: number;
 };
 
+/**
+ * Lo que quien acepta guarda junto al snapshot, dentro de la misma transacción:
+ * el puente desde una hoja guarda así su procedencia (plan imports&exports 01,
+ * D22). Si lanza, no se crea nada.
+ */
+export type AcceptanceRecorder = (
+  tx: Prisma.TransactionClient,
+) => Promise<void>;
+
 /** Un trabajo está activo mientras espera en la cola o se está procesando. */
 const ACTIVE_JOB_STATUSES = ['queued', 'running'];
 
@@ -126,7 +135,7 @@ export class CatalogImportRepository {
   // ---------------------------------------------------------------------------
 
   /** Registra el snapshot y su trabajo en cola, o rechaza la importación. */
-  accept(input: Acceptance) {
+  accept(input: Acceptance, recordSource?: AcceptanceRecorder) {
     return this.prisma.$transaction(async (tx) => {
       // FOR UPDATE bloquea la fila del proyecto: dos peticiones simultáneas no
       // pueden pasar a la vez la comprobación de importación activa.
@@ -173,6 +182,7 @@ export class CatalogImportRepository {
           createdAt: now,
         },
       });
+      await recordSource?.(tx);
     });
   }
 

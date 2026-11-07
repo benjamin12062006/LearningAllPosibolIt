@@ -6,6 +6,7 @@ import { ErrorCodes } from '../common/http/error-codes.js';
 import { publicError } from '../common/http/public-error.js';
 import { UsersService } from '../users/users.service.js';
 import { evaluateRow } from '../worksheets/row-evaluation.js';
+import { exceedsRowLimit } from '../worksheets/worksheet-columns.js';
 import type {
   ProjectScope,
   WorksheetColumn,
@@ -15,14 +16,18 @@ import {
   contentHash,
   countByStatus,
   resultingRows,
+  rowCountChange,
   type DiffEntry,
+  type SchemaDrift,
 } from './changeset-diff.js';
 import {
+  isRowOperation,
   mentionedRowIds,
   normalizeOperations,
   type Operation,
   type OperationIssue,
 } from './changeset-operations.js';
+import { isSchemaOperation, resultingColumns } from './changeset-schema.js';
 import { inverseOperations } from './changeset-revert.js';
 import type {
   ApplyChangesetDto,
@@ -48,6 +53,8 @@ export type ChangesetReview = Readonly<{
   contentHash: string;
   entries: readonly DiffEntry[];
   counts: ReturnType<typeof countByStatus>;
+  /** Filas vivas que tendría la hoja si se aplicara sobre la revisión actual. */
+  resultingRowCount: number;
   problems: readonly Readonly<{
     rowId: string;
     columnId: string;
@@ -106,7 +113,12 @@ export class ChangesetsService {
     const user = await this.usersService.findCurrent(identity);
     const changeset = await this.requireChangeset(user.id, scope, changesetId);
 
-    const operations = await this.normalizeOrReject(scope, changeset, input);
+    const operations = await this.normalizeOrReject(
+      scope,
+      changeset.worksheetId,
+      baseOf(changeset),
+      input,
+    );
     return this.repository.saveOperations(
       user.id,
       scope,
@@ -135,12 +147,21 @@ export class ChangesetsService {
   ) {
     const user = await this.usersService.findCurrent(identity);
     const changeset = await this.requireChangeset(user.id, scope, changesetId);
+    // Antes que los problemas: no tiene sentido validar un contenido que la
+    // persona ya no tiene delante. El repositorio lo repite bajo bloqueo.
+    if (changeset.draftVersion !== draftVersion) {
+      throw apiError(ErrorCodes.CHANGESET_STALE);
+    }
     const review = await this.buildReview(user.id, scope, changeset);
 
     if (review.headRevisionId !== changeset.baseRevisionId) {
       throw apiError(ErrorCodes.CHANGESET_BASE_OUTDATED);
     }
     assertNoBlockingProblems(review);
+    // Aviso temprano: aplicar lo vuelve a comprobar con la hoja bloqueada.
+    if (exceedsRowLimit(review.resultingRowCount)) {
+      throw apiError(ErrorCodes.WORKSHEET_ROW_LIMIT_EXCEEDED);
+    }
     return this.repository.submit(
       user.id,
       scope,
@@ -218,7 +239,9 @@ export class ChangesetsService {
 
   /**
    * Rebase (D9): lo ya hecho o sin cambio se descarta; cada conflicto necesita
-   * una elección. Sin elección para alguno, 409 y el borrador no cambia.
+   * una elección. Sin elección para alguno, 409 y el borrador no cambia. Lo que
+   * queda se vuelve a validar sobre el head: elegir la propuesta para una fila
+   * que otra persona borró no la resucita (400, como al guardar).
    */
   async rebase(
     identity: AuthenticatedIdentity,
@@ -230,12 +253,14 @@ export class ChangesetsService {
     const user = await this.usersService.findCurrent(identity);
     const changeset = await this.requireChangeset(user.id, scope, changesetId);
     const head = await this.requireHead(user.id, scope, changeset.worksheetId);
-    const entries = await this.compareWithHead(scope, changeset, head);
+    const { entries } = await this.compareWithHead(scope, changeset, head);
 
-    const operations = keepAfterRebase(
-      changeset.operations,
-      entries,
-      resolutions,
+    const kept = keepAfterRebase(changeset.operations, entries, resolutions);
+    const operations = await this.normalizeOrReject(
+      scope,
+      changeset.worksheetId,
+      head,
+      kept,
     );
     return this.repository.rebase(user.id, scope, changesetId, {
       expectedVersion: draftVersion,
@@ -310,21 +335,25 @@ export class ChangesetsService {
     return head;
   }
 
-  /** La base es inmutable: leerla fuera de la transacción es seguro. */
+  /**
+   * Valida las operaciones contra una revisión publicada. Una revisión es
+   * inmutable: leerla fuera de la transacción es seguro.
+   */
   private async normalizeOrReject(
     scope: ProjectScope,
-    changeset: Changeset,
+    worksheetId: string,
+    base: Pick<RevisionPointer, 'sequence' | 'schemaVersion'>,
     input: readonly unknown[],
   ): Promise<readonly Operation[]> {
     const columns = await this.repository.findColumns(
       scope,
-      changeset.worksheetId,
-      changeset.baseSchemaVersion,
+      worksheetId,
+      base.schemaVersion,
     );
     const baseRows = await this.repository.findRowsAt(
       scope,
-      changeset.worksheetId,
-      changeset.baseSequence,
+      worksheetId,
+      base.sequence,
       mentionedRowIds(input),
     );
     const savedAt = new Date().toISOString();
@@ -346,28 +375,12 @@ export class ChangesetsService {
     changeset: Changeset,
   ): Promise<ChangesetReview> {
     const head = await this.requireHead(userId, scope, changeset.worksheetId);
-    const rowIds = changeset.operations.map(({ rowId }) => rowId);
-    const [columns, baseRows] = await Promise.all([
-      this.repository.findColumns(
-        scope,
-        changeset.worksheetId,
-        changeset.baseSchemaVersion,
-      ),
-      this.repository.findRowsAt(
-        scope,
-        changeset.worksheetId,
-        changeset.baseSequence,
-        rowIds,
-      ),
-    ]);
-    const headRows = await this.repository.findRowsAt(
-      scope,
-      changeset.worksheetId,
-      head.sequence,
-      rowIds,
+    const { entries, baseRows, headRows, baseColumns } =
+      await this.compareWithHead(scope, changeset, head);
+    const columns = resultingColumns(
+      baseColumns,
+      changeset.operations.filter(isSchemaOperation),
     );
-
-    const entries = compareOperations(changeset.operations, baseRows, headRows);
     return {
       baseRevisionId: changeset.baseRevisionId,
       headRevisionId: head.id,
@@ -379,6 +392,8 @@ export class ChangesetsService {
       }),
       entries,
       counts: countByStatus(entries),
+      resultingRowCount:
+        head.rowCount + rowCountChange(changeset.operations, headRows),
       problems: blockingProblems(
         columns,
         resultingRows(changeset.operations, baseRows),
@@ -386,25 +401,43 @@ export class ChangesetsService {
     };
   }
 
+  /** Base, revisión actual y propuesta de cada operación, con el esquema de ambas. */
   private async compareWithHead(
     scope: ProjectScope,
     changeset: Changeset,
     head: RevisionPointer,
   ) {
-    const rowIds = changeset.operations.map(({ rowId }) => rowId);
-    const baseRows = await this.repository.findRowsAt(
-      scope,
-      changeset.worksheetId,
-      changeset.baseSequence,
-      rowIds,
-    );
-    const headRows = await this.repository.findRowsAt(
-      scope,
-      changeset.worksheetId,
-      head.sequence,
-      rowIds,
-    );
-    return compareOperations(changeset.operations, baseRows, headRows);
+    const { worksheetId } = changeset;
+    const rowIds = changeset.operations
+      .filter(isRowOperation)
+      .map(({ rowId }) => rowId);
+    const [baseColumns, headColumns, baseRows, headRows] = await Promise.all([
+      this.repository.findColumns(
+        scope,
+        worksheetId,
+        changeset.baseSchemaVersion,
+      ),
+      this.repository.findColumns(scope, worksheetId, head.schemaVersion),
+      this.repository.findRowsAt(
+        scope,
+        worksheetId,
+        changeset.baseSequence,
+        rowIds,
+      ),
+      this.repository.findRowsAt(scope, worksheetId, head.sequence, rowIds),
+    ]);
+    const drift = schemaDrift(changeset, head, baseColumns, headColumns);
+    return {
+      entries: compareOperations(
+        changeset.operations,
+        baseRows,
+        headRows,
+        drift,
+      ),
+      baseRows,
+      headRows,
+      baseColumns,
+    };
   }
 
   /** El conflicto se registra después del rollback, en su propia transacción. */
@@ -420,6 +453,13 @@ export class ChangesetsService {
     await this.repository.markConflicted(scope, changesetId, userId);
     throw apiError(ErrorCodes.WORKSHEET_HEAD_CHANGED);
   }
+}
+
+function baseOf(changeset: Changeset) {
+  return {
+    sequence: changeset.baseSequence,
+    schemaVersion: changeset.baseSchemaVersion,
+  };
 }
 
 function parseIfMatch(ifMatch: string | undefined): number {
@@ -530,6 +570,22 @@ function keepAfterRebase(
   return kept;
 }
 
-function conflictKey(rowId: string, columnId: string | null) {
-  return `${rowId}:${columnId ?? ''}`;
+/** Una celda (`rowId` y `columnId`), una fila (`columnId` null) o una columna (`rowId` null). */
+function conflictKey(rowId: string | null, columnId: string | null) {
+  return `${rowId ?? ''}:${columnId ?? ''}`;
+}
+
+function schemaDrift(
+  changeset: Changeset,
+  head: RevisionPointer,
+  baseColumns: readonly WorksheetColumn[],
+  headColumns: readonly WorksheetColumn[],
+): SchemaDrift {
+  const headIds = new Set(headColumns.map(({ id }) => id));
+  return {
+    changed: head.schemaVersion !== changeset.baseSchemaVersion,
+    removedColumnIds: new Set(
+      baseColumns.map(({ id }) => id).filter((id) => !headIds.has(id)),
+    ),
+  };
 }
