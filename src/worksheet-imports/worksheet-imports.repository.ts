@@ -16,6 +16,7 @@ import type {
   RevisionPointer,
 } from '../changesets/changesets.types.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { LONG_TRANSACTION } from '../database/transaction-timeouts.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
   findColumnsIn,
@@ -164,7 +165,7 @@ export class WorksheetImportsRepository {
         import: created,
         changeset: await readChangeset(tx, actorId, scope, changesetId),
       };
-    });
+    }, LONG_TRANSACTION);
   }
 
   find(

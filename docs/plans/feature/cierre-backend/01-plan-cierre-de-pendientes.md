@@ -1,0 +1,48 @@
+# 01 — Cerrar los pendientes del backend (E1–E5)
+
+Fecha de creación: 2026-11-07  
+Última actualización: 2026-11-08  
+Estado: En curso. C1–C5 hechas y verificadas (2026-11-08); sigue C6.  
+Ámbito: `claudeLearningAllPosibolIt`, solo la API. No incluye E6–E10, que siguen su propio orden en [18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md).  
+Relacionada con: [fuentes 01, estado de los pendientes](../../../fonts/feature/cierre-backend/01-estado-de-los-pendientes.md), [plan de organizaciones (E1.2)](../organizations&access/01-plan-organizaciones-y-acceso.md), [plan de E4](../changesets/01-plan-e4-borradores-y-revisiones.md), [plan de E5](../imports&exports/01-plan-e5-importar-y-exportar-hojas.md), [plan aplazado de GraphQL](../graphql&rulesets-evaluations-exports/01-plan-aplazado-sincronizacion-graphql.md).  
+Revisión de referencia: `main` `c280506`.
+
+## Objetivo
+
+Dejar sin cabos sueltos lo que ya está construido (E1–E5) antes de abrir E6: la importación máxima no responde 500, un proyecto se crea una sola vez, la batería no falla al azar, la concurrencia de E4 está probada en PostgreSQL real, una columna puede cambiar de tipo sin perder datos, el acceso es por membresía en todos los módulos y GraphQL expone lo que existe.
+
+## Decisiones
+
+| ID | Decisión | Respaldo |
+| --- | --- | --- |
+| P1 | **Medir antes de cambiar el plazo.** Medir por partes la transacción de crear una importación de 5.000 × 200 (bloqueo, `insertDraft`, inserción de la importación, relectura del borrador), también enviar y aplicar, en PGlite y en el PostgreSQL de P4. Según la medida: menos trabajo dentro de la transacción (por ejemplo, no releer el borrador entero para responder) y, solo si sigue haciendo falta, un plazo con nombre y justificado (`LONG_TRANSACTION_TIMEOUT_MS`) en las transacciones que trabajan con la hoja entera. Prueba: la importación del máximo responde 201. | E1, H7 |
+| P2 | `POST /projects` admite `Idempotency-Key` opcional con los recibos de E4 (`findReceipt` y `saveReceipt` en la misma transacción que crea el proyecto): la misma clave con el mismo cuerpo devuelve el mismo proyecto; con otro cuerpo, 422 como en `apply`. Sin cabecera, la ruta se comporta exactamente igual que hoy. | E5 |
+| P3 | Reproducir la E2E inestable repitiendo solo esa suite (como mucho 30 veces, en serie) antes de tocar nada. Después, que la respuesta de un multipart inválido espere a que termine la limpieza del temporal. La prueba no cambia. | E6 |
+| P4 | PostgreSQL real solo para lo que PGlite no puede probar: un contenedor `postgres:15.2` (la imagen ya está descargada) con 2 CPU y 1 GiB, arrancado por un script y parado al terminar. Las pruebas de concurrencia (T07 y T09: dos guardados y dos `apply` a la vez, revocación frente a `apply`) solo se ejecutan si se les da su URL, que tiene que ser de `localhost`; en la batería normal se saltan con un aviso. | E3 |
+| P5 | **E4.8, cambiar el tipo de una columna**, como una operación de borrador más (`change_column_type`). Al guardarla se convierte cada celda con las reglas estrictas de E5.1 (D4) y se devuelve cada valor incompatible con su fila; no se aplica mientras quede alguno, salvo que el mismo borrador lo corrija (`set_cell`) o lo deje vacío explícitamente. Una calculada que dependa de la columna se revalida. Un tipo cambiado frente a una edición de esa columna es un conflicto estructural. Los detalles (qué conversiones existen, por ejemplo decimal → entero) se deciden en su ficha. | E4, H3, H4 |
+| P6 | **E1.2, acceso por membresía**, módulo a módulo y con las pruebas existentes sin cambiar sus aserciones, en este orden: proyectos (rutas antiguas), importaciones de catálogo, reglas, evaluaciones, exportaciones TSV, feeds y actualizaciones. Leer pide `organization.read`; importar, editar reglas y evaluar, `worksheet.write`; aprobar una exportación y publicar el feed, `changeset.approve` (aprobar datos, [11]). Lo ajeno sigue respondiendo 404 y lo visible sin permiso, 403. Al terminar: el 403 `WORKSHEET_CATALOG_OWNER_REQUIRED` de E5.4 pasa a ser el permiso de la organización, `owner_id` queda solo como procedencia y una migración pone `projects.organization_id` en `NOT NULL` (antes, comprobar en Neon que no queda ningún nulo; la migración la aplica el usuario). El permiso de cada acción se confirma en su ficha antes de escribir código. | E2, H1, H2, H6 |
+| P7 | **GraphQL al final**, siguiendo el plan aplazado: inventario de lo que solo está en REST, las necesidades N1–N13, el experimento de `@InputType({ isOneOf: true })`, lecturas y mutaciones sobre los mismos servicios (subidas, descargas y SSE siguen en REST), límite de coste y de cantidad además de profundidad, DataLoader por petición, pruebas de autorización iguales en los dos transportes y esquema esperado actualizado. Va después de P6 para no escribir la autorización dos veces. | E7, H5, H6 |
+| P8 | **Cuidar el portátil.** Una sola tanda pesada cada vez (suite completa, defectos a propósito, arranque real o PostgreSQL de P4), Jest siempre en serie, un solo contenedor con límites y nada que quede corriendo al terminar una etapa. | Petición del usuario, 2026-11-07 |
+
+## Etapas
+
+Cada etapa sigue el flujo de siempre: ficha propia si hay fuentes nuevas, bitácora «En curso» → «Implementado y verificado», pruebas en el estilo del proyecto, defectos a propósito, suite completa, tipos, lint, Prettier y, si hay migración, esquema frente a migraciones. Las migraciones en Neon las aplica el usuario.
+
+1. ✅ **C1 — Batería estable** (P3), [bitácora 01](../../../../bitacora-construccion/feature/cierre-backend/01-bateria-estable.md). *Ajustado en C1:* como el fallo no se reproducía sin carga (30 pasadas bien), se probó con una E2E nueva que retrasa el borrado y con la suite completa tres veces. Primero porque las demás etapas se apoyan en una batería que no falle al azar. Comprobación: 30 repeticiones de la suite de importación de catálogo sin fallos, y suite completa.
+2. ✅ **C2 — Crear proyecto una sola vez** (P2), [bitácora 02](../../../../bitacora-construccion/feature/cierre-backend/02-crear-proyecto-una-sola-vez.md). *Ajustado en C2:* el bloqueo con dos peticiones simultáneas no se puede probar en PGlite; pasa a C3. Comprobación: E2E con dos peticiones con la misma clave (un proyecto), con otro cuerpo (422) y sin clave (dos proyectos, como hoy); GraphQL `createProject` sin cambios.
+3. ✅ **C3 — PostgreSQL real y concurrencia de E4** (P4), [bitácora 03](../../../../bitacora-construccion/feature/cierre-backend/03-concurrencia-en-postgresql-real.md); `pnpm test:features:postgres`. Comprobación: T07 y T09 contra el contenedor, y el doble clic de C2 (dos `POST /projects` simultáneos con la misma clave: un proyecto y dos 201); la batería normal sigue en PGlite y salta esas pruebas.
+4. ✅ **C4 — Importar el máximo** (P1), [bitácora 04](../../../../bitacora-construccion/feature/cierre-backend/04-importar-el-maximo.md). *Ajustado en C4:* la medida mostró que quitar trabajo exige cambiar contratos de E4 (formato de las operaciones y respuestas con el borrador entero), así que se aplicó el plazo con nombre `LONG_TRANSACTION` (30 s) y lo otro queda como propuesta aparte. Sin medir en Neon. Comprobación: mediciones por partes anotadas en su bitácora; E2E o arranque real con 5.000 × 200 que responde 201, en PGlite y en el contenedor de C3.
+5. ✅ **C5 — Cambiar el tipo de una columna, E4.8** (P5), [bitácora 05](../../../../bitacora-construccion/feature/cierre-backend/05-cambiar-el-tipo-de-una-columna.md) y [ficha 02](../../../fonts/feature/cierre-backend/02-fuentes-de-cambiar-el-tipo-de-columna.md). *Ajustado en C5:* la conversión no se guarda en el borrador (pasaría de 1.000 operaciones); se calcula desde la base al revisar y al aplicar, y un incompatible bloquea como cualquier celda inválida. Ficha propia (conversiones admitidas). Comprobación: unitarias de conversión, informe de incompatibles, conflicto estructural y aplicar → leer filas por HTTP.
+6. **C6 — Acceso por membresía, E1.2** (P6). Ficha propia (permiso por acción, URL pública del feed y workers). Una bitácora por módulo o por grupo pequeño de módulos (C6.1 proyectos, C6.2 catálogo, C6.3 reglas y evaluaciones, C6.4 exportaciones, feeds y actualizaciones, C6.5 cierre con `NOT NULL`). Comprobación: con dos organizaciones, un miembro de cada rol y alguien ajeno, por cada ruta.
+7. **C7 — GraphQL** (P7). Pasa el plan aplazado a «Plan» con su propia numeración y etapas. Comprobación: paridad REST/GraphQL de validación y autorización, límite de coste y esquema esperado.
+
+## Comprobación prevista
+
+Además de lo de cada etapa: al cerrar C6, recorrido completo con un miembro que no es el propietario (hoja → catálogo → reglas → evaluación → TSV → feed), y al cerrar C7, el mismo recorrido por GraphQL en lo que exponga. Arranque real de `AppModule` al final de C4, C6 y C7.
+
+## Límites
+
+- Fuera de este plan: E6–E10. Lo que construyan después se expone en GraphQL dentro de su propia etapa o en una pasada posterior, según se decida entonces.
+- C6 cambia quién puede usar rutas existentes (más personas que el propietario), pero no sus rutas, cuerpos ni respuestas. Si alguna prueba existente tuviera que cambiar su aserción, se para y se pregunta.
+- Nada se aplica en Neon desde aquí: la migración de C6.5 la aplica el usuario después de comprobar que no quedan nulos.
+- La prueba con PostgreSQL real de C3 es local y no entra en la batería por defecto; no sustituye a una prueba contra Neon.

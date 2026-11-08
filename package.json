@@ -31,7 +31,8 @@
     "test:features:integration": "pnpm test:features:compile && node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.features.config.mjs --runInBand --selectProjects integration",
     "test:features:e2e": "pnpm test:features:compile && node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.features.config.mjs --runInBand --selectProjects e2e",
     "test:features:cov": "pnpm test:features:compile && node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.features.config.mjs --runInBand --coverage",
-    "test:features:watch": "pnpm test:features:compile && node scripts/testing/watch-features.mjs"
+    "test:features:watch": "pnpm test:features:compile && node scripts/testing/watch-features.mjs",
+    "test:features:postgres": "node scripts/testing/postgres-features.mjs"
   },
   "dependencies": {
     "@apollo/server": "5.5.1",

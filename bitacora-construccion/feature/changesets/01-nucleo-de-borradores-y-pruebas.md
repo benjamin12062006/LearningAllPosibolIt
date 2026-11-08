@@ -1,7 +1,7 @@
 # 01 — E4.0–E4.6: núcleo de borradores, aplicación y su batería de pruebas
 
 Fecha de creación: 2026-11-06  
-Última actualización: 2026-11-06  
+Última actualización: 2026-11-08  
 Estado: Implementado y verificado (salvo la concurrencia en PostgreSQL real, ver «Consecuencias»).  
 Relacionada con: [plan 01](../../../docs/plans/feature/changesets/01-plan-e4-borradores-y-revisiones.md), [fuentes 01](../../../docs/fonts/feature/changesets/01-fuentes-de-borradores-y-revisiones.md), [bitácora 02](02-cambios-de-esquema.md), [bitácora de hojas 03](../worksheets/03-validadores-y-calculos.md).
 
@@ -58,4 +58,4 @@ El código de E4.0–E4.6 (recibos, auditoría, operaciones, guardado con `If-Ma
 ## Consecuencias
 
 - **T10 por HTTP** se probó con dos peticiones simultáneas con la misma clave; PGlite serializa las conexiones, así que eso demuestra el recibo, **no** el bloqueo entre conexiones.
-- **Concurrencia real pendiente** (T07 y T09 con dos conexiones, dos `apply` a la vez): necesita PostgreSQL con varias conexiones. En esta máquina no hay PostgreSQL instalado y Docker (OrbStack) no estaba en marcha.
+- **Concurrencia real pendiente** (T07 y T09 con dos conexiones, dos `apply` a la vez): necesita PostgreSQL con varias conexiones. En esta máquina no hay PostgreSQL instalado y Docker (OrbStack) no estaba en marcha. *Actualización 2026-11-08: probada en C3 del plan de cierre ([bitácora 03](../cierre-backend/03-concurrencia-en-postgresql-real.md)), contra `postgres:15.2` con varias conexiones.*

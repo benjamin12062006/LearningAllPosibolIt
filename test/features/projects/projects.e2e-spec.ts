@@ -364,4 +364,96 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
         .expect(({ body }) => expect(body.code).toBe('VALIDATION_FAILED'));
     }
   });
+
+  describe('Idempotency-Key al crear: un doble clic no crea dos proyectos (C2 del plan de cierre)', () => {
+    const create = (body: object, key?: string, session = 'alice-session') => {
+      const pending = request(app.getHttpServer())
+        .post(api)
+        .auth(session, { type: 'bearer' });
+      return (
+        key === undefined ? pending : pending.set('Idempotency-Key', key)
+      ).send(body);
+    };
+    const countProjects = async () => {
+      const { rows } = await database.connection.pool.query(
+        'SELECT count(*)::int AS n FROM estadistica_forms.projects',
+      );
+      return rows[0].n as number;
+    };
+
+    it('la misma clave y el mismo cuerpo devuelven el mismo proyecto, también con espacios distintos', async () => {
+      const first = await create(projectInput, 'crear-1').expect(201);
+      const again = await create(
+        { ...projectInput, name: ` ${projectInput.name} ` },
+        'crear-1',
+      ).expect(201);
+
+      expect(again.body).toEqual(first.body);
+      expect(await countProjects()).toBe(1);
+    });
+
+    it('dos peticiones a la vez con la misma clave crean uno solo', async () => {
+      const [one, two] = await Promise.all([
+        create(projectInput, 'doble-clic'),
+        create(projectInput, 'doble-clic'),
+      ]);
+
+      expect([one.status, two.status]).toEqual([201, 201]);
+      expect(two.body.project.id).toBe(one.body.project.id);
+      expect(await countProjects()).toBe(1);
+    });
+
+    it('la misma clave con otro cuerpo es 422 y no crea nada más', async () => {
+      await create(projectInput, 'crear-2').expect(201);
+
+      await create({ ...projectInput, name: 'Otra tienda' }, 'crear-2')
+        .expect(422)
+        .expect(({ body }) =>
+          expect(body).toMatchObject(publicError('IDEMPOTENCY_KEY_REUSED')),
+        );
+      expect(await countProjects()).toBe(1);
+    });
+
+    it('sin clave se comporta como siempre; una clave vacía o de más de 255 caracteres es 400', async () => {
+      await create(projectInput).expect(201);
+      await create(projectInput).expect(201);
+      expect(await countProjects()).toBe(2);
+
+      for (const key of ['   ', 'k'.repeat(256)]) {
+        await create(projectInput, key)
+          .expect(400)
+          .expect(({ body }) =>
+            expect(body).toMatchObject(publicError('IDEMPOTENCY_KEY_REQUIRED')),
+          );
+      }
+      expect(await countProjects()).toBe(2);
+    });
+
+    it('la clave es de cada persona: Bob con la misma clave crea el suyo', async () => {
+      const alices = await create(projectInput, 'compartida').expect(201);
+      const bobs = await create(
+        projectInput,
+        'compartida',
+        'bob-session',
+      ).expect(201);
+
+      expect(bobs.body.project.id).not.toBe(alices.body.project.id);
+      expect(await countProjects()).toBe(2);
+    });
+
+    it('si el proyecto ya se borró, repetir la clave responde 404 y no lo crea otra vez', async () => {
+      const { body } = await create(projectInput, 'crear-3').expect(201);
+      await database.connection.pool.query(
+        'DELETE FROM estadistica_forms.projects WHERE id = $1',
+        [body.project.id],
+      );
+
+      await create(projectInput, 'crear-3')
+        .expect(404)
+        .expect(({ body: error }) =>
+          expect(error).toMatchObject(publicError('PROJECT_NOT_FOUND')),
+        );
+      expect(await countProjects()).toBe(0);
+    });
+  });
 });

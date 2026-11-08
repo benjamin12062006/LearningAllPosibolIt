@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -34,12 +35,19 @@ export class ProjectsController {
     return { projects: items, page };
   }
 
+  /** `Idempotency-Key` opcional: con ella, repetir la petición no crea otro proyecto. */
   @Post()
   async create(
     @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Body() body: CreateProjectDto,
   ) {
-    return { project: await this.projectsService.create(identity, body) };
+    const project = await this.projectsService.create(
+      identity,
+      body,
+      idempotencyKey,
+    );
+    return { project };
   }
 
   @Get(':id')

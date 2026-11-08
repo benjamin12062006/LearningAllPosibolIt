@@ -201,6 +201,13 @@ function canonicalOperation(operation: Operation): unknown {
   if (operation.type === 'delete_column') {
     return [operation.type, operation.columnId];
   }
+  if (operation.type === 'change_column_type') {
+    const options = (operation.options ?? []).map(({ id, label }) => [
+      id,
+      label,
+    ]);
+    return [operation.type, operation.columnId, operation.columnType, options];
+  }
   if (operation.type === 'insert_row') {
     const values = Object.keys(operation.values)
       .sort()
@@ -229,10 +236,22 @@ function compareSchema(
     columnId: operation.columnId,
     base: null,
     head: null,
-    proposed: operation.type === 'delete_column' ? null : operation.name,
+    proposed: proposedSchema(operation),
     status: drift.changed ? 'conflict' : 'change',
     reason: drift.changed ? 'schema_changed' : null,
   };
+}
+
+/** Lo que se ve como propuesta: el nombre nuevo o el tipo nuevo; al borrar, nada. */
+function proposedSchema(operation: SchemaOperation): string | null {
+  switch (operation.type) {
+    case 'delete_column':
+      return null;
+    case 'change_column_type':
+      return operation.columnType;
+    default:
+      return operation.name;
+  }
 }
 
 /**

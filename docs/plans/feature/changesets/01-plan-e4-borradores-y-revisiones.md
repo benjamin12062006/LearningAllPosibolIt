@@ -30,7 +30,7 @@ Un editor prepara un borrador sobre la revisión actual de una hoja, lo guarda s
 | D9 | `rebase` mueve la base al head actual: lo ya satisfecho o sin cambio se descarta y cada conflicto necesita una elección (`proposed` o `head`); sin resolver → 409 con la lista. **Ajustado en la batería de E4:** lo que queda se vuelve a validar contra el head, así elegir `proposed` sobre una fila borrada da 400 en vez de resucitarla. | G4, C21 |
 | D10 | `POST P/revisions/:revisionId/revert-proposal` crea un borrador nuevo sobre el head con las operaciones inversas de las filas que cambió esa revisión. | G6, T12 |
 | D11 | Organización archivada: ninguna escritura (como en E1.4). Lecturas por membresía. | E1.4 |
-| D12 | Cambios de esquema (renombrar, añadir o borrar columnas con detección de dependencias, T06) son un incremento propio, E4.7, después del núcleo. **Ajustado en E4.7:** cambiar el tipo de una columna queda aplazado (exige previsualizar valores incompatibles, [12]). | G1, [fuentes 02](../../../fonts/feature/changesets/02-fuentes-de-cambios-de-esquema.md) |
+| D12 | Cambios de esquema (renombrar, añadir o borrar columnas con detección de dependencias, T06) son un incremento propio, E4.7, después del núcleo. **Ajustado en E4.7:** cambiar el tipo de una columna queda aplazado (exige previsualizar valores incompatibles, [12]). **Hecho en C5 del plan de cierre (2026-11-08)**, como E4.8: [bitácora C5](../../../../bitacora-construccion/feature/cierre-backend/05-cambiar-el-tipo-de-una-columna.md). | G1, [fuentes 02](../../../fonts/feature/changesets/02-fuentes-de-cambios-de-esquema.md) |
 
 ## Incrementos
 
@@ -60,6 +60,6 @@ Esta comprobación cubre un recorrido. La batería específica de E4 y E4.7 se h
 ## Límites y continuidad
 
 - **Pendiente:** concurrencia real (dos pestañas a la vez, dos applies simultáneos). El diseño se apoya en bloqueos de fila (F39) y en la restricción única; PGlite serializa las conexiones y no lo demuestra. Necesita PostgreSQL con varias conexiones.
-- Aplazado: cambiar el tipo de una columna y revertir una revisión de esquema.
+- Aplazado: revertir una revisión de esquema. (Cambiar el tipo de una columna se hizo en C5 del plan de cierre, 2026-11-08.)
 - Sin trabajos en segundo plano: con el límite de 5.000 filas el apply cabe en una transacción acotada.
 - Siguiente: E5 (importar y exportar hojas).

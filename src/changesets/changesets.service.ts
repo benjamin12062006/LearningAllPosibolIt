@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import { parseIdempotencyKey } from '../common/http/idempotency-key.js';
 import { publicError } from '../common/http/public-error.js';
 import { UsersService } from '../users/users.service.js';
 import { evaluateRow } from '../worksheets/row-evaluation.js';
@@ -26,7 +27,14 @@ import {
   normalizeOperations,
   type Operation,
   type OperationIssue,
+  type RowValues,
 } from './changeset-operations.js';
+import {
+  planConversion,
+  retypedColumnIds,
+  type ColumnConversion,
+  type ConversionPlan,
+} from './changeset-conversion.js';
 import { isSchemaOperation, resultingColumns } from './changeset-schema.js';
 import { inverseOperations } from './changeset-revert.js';
 import type {
@@ -60,6 +68,11 @@ export type ChangesetReview = Readonly<{
     columnId: string;
     code: string;
   }>[];
+  /**
+   * Lo que hace cada cambio de tipo (C5): celdas convertidas e incompatibles.
+   * Cada incompatible aparece además en `problems`.
+   */
+  columnConversions: readonly ColumnConversion[];
 }>;
 
 /**
@@ -217,7 +230,7 @@ export class ChangesetsService {
     idempotencyKey: string | undefined,
     input: ApplyChangesetDto,
   ) {
-    const key = requireIdempotencyKey(idempotencyKey);
+    const key = parseIdempotencyKey(idempotencyKey);
     const user = await this.usersService.findCurrent(identity);
     try {
       return await this.repository.apply(user.id, scope, changesetId, {
@@ -381,6 +394,12 @@ export class ChangesetsService {
       baseColumns,
       changeset.operations.filter(isSchemaOperation),
     );
+    const { conversion, rows } = await this.previewConversion(
+      scope,
+      changeset,
+      baseColumns,
+      baseRows,
+    );
     return {
       baseRevisionId: changeset.baseRevisionId,
       headRevisionId: head.id,
@@ -396,8 +415,39 @@ export class ChangesetsService {
         head.rowCount + rowCountChange(changeset.operations, headRows),
       problems: blockingProblems(
         columns,
-        resultingRows(changeset.operations, baseRows),
+        rowsToCheck(changeset.operations, conversion, rows),
       ),
+      columnConversions: conversion.conversions,
+    };
+  }
+
+  /**
+   * La conversión de los cambios de tipo sobre la revisión base: para ella hay
+   * que leer todas las filas con valor en esas columnas, no solo las que el
+   * borrador menciona.
+   */
+  private async previewConversion(
+    scope: ProjectScope,
+    changeset: Changeset,
+    baseColumns: readonly WorksheetColumn[],
+    mentionedRows: RowValues,
+  ): Promise<Readonly<{ conversion: ConversionPlan; rows: RowValues }>> {
+    const columnIds = retypedColumnIds(changeset.operations);
+    const rows: RowValues =
+      columnIds.length === 0
+        ? mentionedRows
+        : new Map([
+            ...mentionedRows,
+            ...(await this.repository.findRowsWithValuesAt(
+              scope,
+              changeset.worksheetId,
+              changeset.baseSequence,
+              columnIds,
+            )),
+          ]);
+    return {
+      conversion: planConversion(changeset.operations, baseColumns, rows),
+      rows,
     };
   }
 
@@ -473,18 +523,31 @@ function parseIfMatch(ifMatch: string | undefined): number {
   return Number(match[1]);
 }
 
-/** Una clave de 1 a 255 caracteres visibles; sin ella, 400 (F47). */
-function requireIdempotencyKey(key: string | undefined): string {
-  const trimmed = key?.trim() ?? '';
-  if (trimmed.length === 0 || trimmed.length > 255) {
-    throw apiError(ErrorCodes.IDEMPOTENCY_KEY_REQUIRED);
-  }
-  return trimmed;
-}
-
 function payloadHashOf(input: ApplyChangesetDto) {
   const canonical = [input.contentHash, input.expectedHeadRevisionId];
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+/**
+ * Las filas cuyo resultado se valida: las que tocan el borrador y la
+ * conversión y, con su valor de antes, las que tienen un incompatible.
+ */
+function rowsToCheck(
+  operations: readonly Operation[],
+  conversion: ConversionPlan,
+  baseRows: RowValues,
+) {
+  const rows = resultingRows(
+    [...operations, ...conversion.operations],
+    baseRows,
+  );
+  for (const { rowId } of conversion.incompatible) {
+    const base = baseRows.get(rowId);
+    if (base && !rows.has(rowId)) {
+      rows.set(rowId, { ...base });
+    }
+  }
+  return rows;
 }
 
 function blockingProblems(

@@ -333,4 +333,50 @@ describe('Aplicar un borrador con PostgreSQL temporal: todo o nada', () => {
     );
     expect(rows).toEqual([{ resource_id: approved.id }]);
   });
+
+  it('C5: aplicar convierte con la cabecera bloqueada y, si quedara un incompatible, no escribe nada', async () => {
+    await apply(
+      await approvedChangeset([
+        {
+          type: 'insert_row',
+          rowId: ROW_A,
+          sortKey: 'a',
+          values: { [sku()]: 'true' },
+        },
+        {
+          type: 'insert_row',
+          rowId: ROW_B,
+          sortKey: 'b',
+          values: { [sku()]: 'quizá' },
+        },
+      ]),
+      'filas',
+    );
+    const toBoolean: Operation[] = [
+      { type: 'change_column_type', columnId: sku(), columnType: 'boolean' },
+    ];
+
+    // Aprobado desde el repositorio: no pasa por la revisión de `submit`.
+    const blocked = await approvedChangeset(toBoolean);
+    const before = await snapshot(blocked.id);
+    await expect(apply(blocked, 'bloqueado')).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'VALIDATION_FAILED' }),
+    });
+    expect(await snapshot(blocked.id)).toEqual(before);
+
+    await changesets.cancel(owner.id, scope, blocked.id);
+    const fixed = await approvedChangeset([
+      ...toBoolean,
+      { type: 'set_cell', rowId: ROW_B, columnId: sku(), value: false },
+    ]);
+    const result = await apply(fixed, 'corregido');
+    const rows = await changesets.findRowsAt(
+      scope,
+      worksheet.id,
+      result.sequence,
+      [ROW_A, ROW_B],
+    );
+    expect(rows.get(ROW_A)).toEqual({ [sku()]: true });
+    expect(rows.get(ROW_B)).toEqual({ [sku()]: false });
+  });
 });

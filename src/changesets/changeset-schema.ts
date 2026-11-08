@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ErrorCodes, type ErrorCode } from '../common/http/error-codes.js';
 import { referencedColumns } from '../worksheets/column-plan.js';
 import {
+  NUMERIC_COLUMN_TYPES,
   WORKSHEET_LIMITS,
   normalizeName,
   type SelectionOption,
@@ -10,11 +11,11 @@ import type { WorksheetColumn } from '../worksheets/worksheets.types.js';
 
 /**
  * Cambios de esquema dentro de un borrador (E4.7, D12). Una columna se añade,
- * se renombra o se borra por su ID; los valores de las filas no se reescriben:
- * una columna borrada deja de leerse y su ID no se reutiliza.
- *
- * Cambiar el tipo de una columna queda fuera: [12] exige previsualizar cada
- * valor incompatible antes de convertir, y eso es un incremento propio.
+ * se renombra, se borra o cambia de tipo por su ID. Añadir, renombrar y borrar
+ * no reescriben valores: una columna borrada deja de leerse y su ID no se
+ * reutiliza. Cambiar el tipo (E4.8, C5 del plan de cierre) sí convierte los
+ * valores, pero esa conversión no se guarda aquí: se calcula al revisar y al
+ * aplicar (`changeset-conversion.ts`).
  */
 
 /** Tipos que se pueden añadir desde un borrador: los que guardan valor. */
@@ -49,12 +50,22 @@ export type DeleteColumn = Readonly<{
   columnId: string;
 }>;
 
-export type SchemaOperation = AddColumn | RenameColumn | DeleteColumn;
+/** Hacia selección lleva sus opciones; hacia otro tipo, ninguna. */
+export type ChangeColumnType = Readonly<{
+  type: 'change_column_type';
+  columnId: string;
+  columnType: AddableColumnType;
+  options?: readonly SelectionOption[];
+}>;
+
+export type SchemaOperation =
+  AddColumn | RenameColumn | DeleteColumn | ChangeColumnType;
 
 export const SCHEMA_OPERATION_TYPES: readonly string[] = [
   'add_column',
   'rename_column',
   'delete_column',
+  'change_column_type',
 ];
 
 export type SchemaIssue = Readonly<{ field: string; code: ErrorCode }>;
@@ -100,12 +111,15 @@ export function resultingColumns(
 ): WorksheetColumn[] {
   const deleted = new Set<string>();
   const renamed = new Map<string, string>();
+  const retyped = new Map<string, ChangeColumnType>();
   const added: WorksheetColumn[] = [];
   for (const operation of operations) {
     if (operation.type === 'delete_column') {
       deleted.add(operation.columnId);
     } else if (operation.type === 'rename_column') {
       renamed.set(operation.columnId, operation.name);
+    } else if (operation.type === 'change_column_type') {
+      retyped.set(operation.columnId, operation);
     } else {
       added.push(addedColumn(operation));
     }
@@ -114,10 +128,12 @@ export function resultingColumns(
   const kept = [...baseColumns]
     .sort((a, b) => a.position - b.position)
     .filter((column) => !deleted.has(column.id))
-    .map((column) => ({
-      ...column,
-      name: renamed.get(column.id) ?? column.name,
-    }));
+    .map((column) =>
+      withType(
+        { ...column, name: renamed.get(column.id) ?? column.name },
+        retyped.get(column.id),
+      ),
+    );
   return [...kept, ...added].map((column, position) => ({
     ...column,
     position,
@@ -128,6 +144,22 @@ export function isSchemaOperation(
   operation: Readonly<{ type: string }>,
 ): operation is SchemaOperation {
   return SCHEMA_OPERATION_TYPES.includes(operation.type);
+}
+
+/** El tipo nuevo, con sus opciones si es selección y sin ellas si no. */
+function withType(
+  column: WorksheetColumn,
+  change: ChangeColumnType | undefined,
+): WorksheetColumn {
+  if (!change) {
+    return column;
+  }
+  const { options: _previous, ...rest } = column;
+  return {
+    ...rest,
+    type: change.columnType,
+    ...(change.options ? { options: change.options } : {}),
+  };
 }
 
 function addedColumn(operation: AddColumn): WorksheetColumn {
@@ -143,7 +175,12 @@ function addedColumn(operation: AddColumn): WorksheetColumn {
 
 type ColumnPlan =
   | { kind: 'add'; operation: AddColumn; path: string }
-  | { kind: 'rename'; name: string; path: string }
+  | {
+      kind: 'rename';
+      name: string | null;
+      retype: ChangeColumnType | null;
+      path: string;
+    }
   | { kind: 'delete'; path: string }
   | { kind: 'cancelled' };
 
@@ -172,6 +209,10 @@ class SchemaPlanner {
     }
     if (isDeleteColumnShape(item)) {
       this.deleteColumn(item.columnId, path);
+      return;
+    }
+    if (isChangeColumnTypeShape(item)) {
+      this.changeColumnType(item, path);
       return;
     }
     this.report(path, ErrorCodes.OPERATION_INVALID);
@@ -223,7 +264,50 @@ class SchemaPlanner {
       this.report(`${path}.columnId`, ErrorCodes.OPERATION_COLUMN_UNKNOWN);
       return;
     }
-    this.plans.set(columnId, { kind: 'rename', name, path });
+    const retype = plan?.kind === 'rename' ? plan.retype : null;
+    this.plans.set(columnId, { kind: 'rename', name, retype, path });
+  }
+
+  /**
+   * Solo una columna de la base que guarda valores, una vez y hacia otro tipo.
+   * De selección a selección no: cambiar opciones no es cambiar el tipo.
+   */
+  private changeColumnType(item: ChangeColumnTypeShape, path: string) {
+    const plan = this.plans.get(item.columnId);
+    const base = this.baseById.get(item.columnId);
+    if (!base) {
+      // Una columna añadida en el mismo borrador se añade ya con su tipo.
+      const isAddedHere = plan?.kind === 'add' || plan?.kind === 'cancelled';
+      this.report(
+        `${path}.columnId`,
+        isAddedHere
+          ? ErrorCodes.OPERATION_INVALID
+          : ErrorCodes.OPERATION_COLUMN_UNKNOWN,
+      );
+      return;
+    }
+    const isRepeated = plan?.kind === 'rename' && plan.retype !== null;
+    const isUnchangeable =
+      base.type === 'calculated' ||
+      base.type === item.columnType ||
+      plan?.kind === 'delete' ||
+      isRepeated;
+    if (isUnchangeable) {
+      this.report(path, ErrorCodes.OPERATION_INVALID);
+      return;
+    }
+    const options = this.planOptions(item, path);
+    if (options === null) {
+      return;
+    }
+    const retype: ChangeColumnType = {
+      type: 'change_column_type',
+      columnId: item.columnId,
+      columnType: item.columnType,
+      ...(options ? { options } : {}),
+    };
+    const name = plan?.kind === 'rename' ? plan.name : null;
+    this.plans.set(item.columnId, { kind: 'rename', name, retype, path });
   }
 
   private deleteColumn(columnId: string, path: string) {
@@ -240,6 +324,11 @@ class SchemaPlanner {
       this.report(`${path}.columnId`, ErrorCodes.OPERATION_COLUMN_UNKNOWN);
       return;
     }
+    // Borrar después de cambiar el tipo deja el cambio sin sentido.
+    if (plan?.kind === 'rename' && plan.retype) {
+      this.report(path, ErrorCodes.OPERATION_INVALID);
+      return;
+    }
     this.plans.set(columnId, { kind: 'delete', path });
   }
 
@@ -248,7 +337,10 @@ class SchemaPlanner {
    * trae (porque el cliente reenvía lo guardado) se conserva; si no, se crea.
    * `undefined` cuando la columna no es de selección; `null` si son inválidas.
    */
-  private planOptions(item: AddColumnShape, path: string) {
+  private planOptions(
+    item: AddColumnShape | ChangeColumnTypeShape,
+    path: string,
+  ) {
     if (item.columnType !== 'selection') {
       if (item.options !== undefined) {
         this.report(`${path}.options`, ErrorCodes.COLUMN_OPTIONS_INVALID);
@@ -281,12 +373,17 @@ class SchemaPlanner {
       const plan = this.plans.get(column.id);
       if (plan?.kind === 'delete') {
         operations.push({ type: 'delete_column', columnId: column.id });
-      } else if (plan?.kind === 'rename' && plan.name !== column.name) {
-        operations.push({
-          type: 'rename_column',
-          columnId: column.id,
-          name: plan.name,
-        });
+      } else if (plan?.kind === 'rename') {
+        if (plan.name !== null && plan.name !== column.name) {
+          operations.push({
+            type: 'rename_column',
+            columnId: column.id,
+            name: plan.name,
+          });
+        }
+        if (plan.retype) {
+          operations.push(plan.retype);
+        }
       }
     }
     for (const plan of this.plans.values()) {
@@ -314,14 +411,19 @@ class SchemaPlanner {
       this.report('operations', ErrorCodes.OPERATION_INVALID);
     }
 
-    const remaining = new Set(columns.map(({ id }) => id));
+    // Una calculada necesita sus entradas, y que sigan siendo numéricas.
+    const numeric = new Set(
+      columns
+        .filter(({ type }) => NUMERIC_COLUMN_TYPES.includes(type))
+        .map(({ id }) => id),
+    );
     for (const column of columns) {
-      const missing = column.formula
+      const unusable = column.formula
         ? referencedColumns(column.formula.expression).filter(
-            (id) => !remaining.has(id),
+            (id) => !numeric.has(id),
           )
         : [];
-      for (const columnId of missing) {
+      for (const columnId of unusable) {
         this.report(this.pathOf(columnId), ErrorCodes.COLUMN_IN_USE);
       }
     }
@@ -377,6 +479,27 @@ function isRenameColumnShape(value: unknown): value is Readonly<{
     value.type === 'rename_column' &&
     isUuid(value.columnId) &&
     isColumnName(value.name)
+  );
+}
+
+type ChangeColumnTypeShape = Readonly<{
+  type: 'change_column_type';
+  columnId: string;
+  columnType: AddableColumnType;
+  options?: readonly OptionShape[];
+}>;
+
+function isChangeColumnTypeShape(
+  value: unknown,
+): value is ChangeColumnTypeShape {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['type', 'columnId', 'columnType', 'options']) &&
+    value.type === 'change_column_type' &&
+    isUuid(value.columnId) &&
+    (ADDABLE_COLUMN_TYPES as readonly unknown[]).includes(value.columnType) &&
+    (value.options === undefined ||
+      (Array.isArray(value.options) && value.options.every(isOptionShape)))
   );
 }
 

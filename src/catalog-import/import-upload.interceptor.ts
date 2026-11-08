@@ -48,8 +48,9 @@ export class ImportUploadInterceptor implements NestInterceptor {
     request.importRequestId = request.requestId ?? randomUUID();
 
     return defer(async () => {
+      const storageWork = new StorageWork();
       try {
-        await this.receive(request, response);
+        await this.receive(request, response, storageWork);
         if (!request.file) {
           throw apiError(ErrorCodes.IMPORT_FILE_REQUIRED);
         }
@@ -58,6 +59,7 @@ export class ImportUploadInterceptor implements NestInterceptor {
         }
         return await lastValueFrom(next.handle());
       } finally {
+        await storageWork.settled();
         if (request.file?.filename) {
           await this.store.removeTemporary(request.file.filename);
         }
@@ -65,9 +67,13 @@ export class ImportUploadInterceptor implements NestInterceptor {
     });
   }
 
-  private async receive(request: ImportRequest, response: Response) {
+  private async receive(
+    request: ImportRequest,
+    response: Response,
+    storageWork: StorageWork,
+  ) {
     const upload = multer({
-      storage: this.streamingStorage(),
+      storage: this.streamingStorage(storageWork),
       limits: UPLOAD_LIMITS,
     }).single('file');
 
@@ -83,7 +89,7 @@ export class ImportUploadInterceptor implements NestInterceptor {
   }
 
   /** Almacenamiento de multer que delega en `ArtifactStore` y respeta la cancelación del cliente. */
-  private streamingStorage(): multer.StorageEngine {
+  private streamingStorage(storageWork: StorageWork): multer.StorageEngine {
     return {
       _handleFile: (request: Request, file, callback) => {
         const abort = new AbortController();
@@ -93,7 +99,8 @@ export class ImportUploadInterceptor implements NestInterceptor {
           abort.abort();
         }
 
-        void this.store.receive(file.stream, abort.signal).then(
+        const receiving = this.store.receive(file.stream, abort.signal);
+        void storageWork.track(receiving).then(
           (result) => {
             request.off('aborted', onAbort);
             callback(null, result);
@@ -118,6 +125,26 @@ export class ImportUploadInterceptor implements NestInterceptor {
         );
       },
     };
+  }
+}
+
+/**
+ * Lo que el almacenamiento de multer tiene a medias en una petición. Si el
+ * flujo del archivo falla (un multipart cortado), multer deja de esperar al
+ * almacenamiento y responde con el error; sin esperar aquí, el 400 saldría
+ * antes de que `ArtifactStore.receive` borrara su temporal.
+ */
+class StorageWork {
+  private readonly running: Promise<unknown>[] = [];
+
+  track<Result>(work: Promise<Result>): Promise<Result> {
+    this.running.push(work);
+    return work;
+  }
+
+  /** Termine bien o mal: cada operación ya limpia lo suyo si falla. */
+  async settled() {
+    await Promise.allSettled(this.running);
   }
 }
 

@@ -280,6 +280,26 @@ describe('CatalogImport HTTP multipart con Nest y persistencia reales', () => {
     expect(await prisma.catalogSnapshot.count()).toBe(0);
   });
 
+  it('multipart incompleto: el 400 espera a que se borre el temporal, aunque el disco vaya lento', async () => {
+    // Con la batería completa el disco va cargado y borrar tarda: la prueba
+    // anterior fallaba a veces. Aquí se retrasa el borrado a propósito.
+    const remove = store.removeTemporary.bind(store);
+    jest.spyOn(store, 'removeTemporary').mockImplementation(async (key) => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return remove(key);
+    });
+
+    await request(app.getHttpServer())
+      .post(url())
+      .auth(token, { type: 'bearer' })
+      .set('Content-Type', 'multipart/form-data; boundary=demo')
+      .send(
+        '--demo\r\nContent-Disposition: form-data; name="file"; filename="shop.csv"\r\nContent-Type: text/csv\r\n\r\nid\n1\n',
+      )
+      .expect(400);
+    expect(await readdir(join(root, 'tmp'))).toEqual([]);
+  });
+
   it.each([
     'unknown',
     'duplicate',

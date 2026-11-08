@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import {
+  findReceipt,
+  saveReceipt,
+  type ReceiptKey,
+} from '../audit/audit-trail.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import type { PageRequest } from '../common/http/pagination.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { lockOrganization } from '../organizations/organization-lock.js';
 import type { OrganizationRole } from '../organizations/organization-roles.js';
 import { ensurePersonalOrganization } from '../organizations/organizations.repository.js';
 import {
@@ -21,6 +27,17 @@ type ProjectMemberRow = Readonly<{
   organizationId: string;
   role: OrganizationRole;
 }>;
+
+/** La clave que manda el cliente y el hash del cuerpo validado (C2 del plan de cierre). */
+export type ProjectIdempotency = Readonly<{
+  key: string;
+  payloadHash: string;
+}>;
+
+/** Lo que guarda el recibo: solo el id; al repetir, el proyecto se vuelve a leer. */
+type CreatedProjectReceipt = Readonly<{ projectId: string }>;
+
+const CREATE_OPERATION = 'project.create';
 
 const PROJECT_COLUMNS = Prisma.sql`
   id,
@@ -60,41 +77,58 @@ export class ProjectsRepository {
   }
 
   /**
-   * Inserta desde `app_users`: si el propietario ya no existe, no se crea nada.
    * El proyecto nace dentro de la organización personal de quien lo crea, en la
-   * misma transacción (doble escritura de la transición a organizaciones).
+   * misma transacción (doble escritura de la transición a organizaciones). Con
+   * `idempotency`, repetir la misma clave y el mismo cuerpo devuelve el
+   * proyecto ya creado en lugar de otro (un doble clic).
    */
   async create(
     ownerId: string,
     name: string,
     configuration: ProjectConfiguration,
+    idempotency: ProjectIdempotency | null = null,
   ): Promise<Project> {
     return this.prisma.$transaction(async (tx) => {
       const organizationId = await ensurePersonalOrganization(tx, ownerId);
       if (!organizationId) {
         throw apiError(ErrorCodes.PROFILE_NOT_FOUND);
       }
-
-      const rows = await tx.$queryRaw<ProjectRow[]>(Prisma.sql`
-        INSERT INTO estadistica_forms.projects
-          (id, name, owner_id, organization_id, created_at, country, currency, channel_profile)
-        SELECT
-          ${randomUUID()},
-          ${name},
-          id,
-          ${organizationId},
-          ${new Date().toISOString()},
-          ${configuration.country},
-          ${configuration.currency},
-          ${configuration.channelProfile}
-        FROM estadistica_forms.app_users
-        WHERE id = ${ownerId}
-        RETURNING ${PROJECT_COLUMNS}
-      `);
-      if (!rows[0]) {
-        throw apiError(ErrorCodes.PROFILE_NOT_FOUND);
+      if (!idempotency) {
+        return insertProject(tx, ownerId, organizationId, name, configuration);
       }
-      return toProject(rows[0]);
+
+      // Con la organización bloqueada, dos peticiones con la misma clave van
+      // en fila: la segunda ya encuentra el recibo de la primera.
+      await lockOrganization(tx, organizationId);
+      const receiptKey: ReceiptKey = {
+        organizationId,
+        actorId: ownerId,
+        operation: CREATE_OPERATION,
+        resourceId: organizationId,
+        idempotencyKey: idempotency.key,
+      };
+      const receipt = await findReceipt(tx, receiptKey);
+      if (receipt) {
+        if (receipt.payloadHash !== idempotency.payloadHash) {
+          throw apiError(ErrorCodes.IDEMPOTENCY_KEY_REUSED);
+        }
+        return findCreatedProject(tx, ownerId, receipt.result);
+      }
+
+      const project = await insertProject(
+        tx,
+        ownerId,
+        organizationId,
+        name,
+        configuration,
+      );
+      const result: CreatedProjectReceipt = { projectId: project.id };
+      await saveReceipt(tx, receiptKey, {
+        payloadHash: idempotency.payloadHash,
+        result,
+        now: project.createdAt,
+      });
+      return project;
     });
   }
 
@@ -189,6 +223,67 @@ export class ProjectsRepository {
     `);
     return rows[0] ?? null;
   }
+}
+
+/** Inserta desde `app_users`: si el propietario ya no existe, no se crea nada. */
+async function insertProject(
+  tx: Prisma.TransactionClient,
+  ownerId: string,
+  organizationId: string,
+  name: string,
+  configuration: ProjectConfiguration,
+): Promise<Project> {
+  const rows = await tx.$queryRaw<ProjectRow[]>(Prisma.sql`
+    INSERT INTO estadistica_forms.projects
+      (id, name, owner_id, organization_id, created_at, country, currency, channel_profile)
+    SELECT
+      ${randomUUID()},
+      ${name},
+      id,
+      ${organizationId},
+      ${new Date().toISOString()},
+      ${configuration.country},
+      ${configuration.currency},
+      ${configuration.channelProfile}
+    FROM estadistica_forms.app_users
+    WHERE id = ${ownerId}
+    RETURNING ${PROJECT_COLUMNS}
+  `);
+  if (!rows[0]) {
+    throw apiError(ErrorCodes.PROFILE_NOT_FOUND);
+  }
+  return toProject(rows[0]);
+}
+
+/** El proyecto de un recibo, tal como está ahora; si ya se borró, 404. */
+async function findCreatedProject(
+  tx: Prisma.TransactionClient,
+  ownerId: string,
+  result: unknown,
+): Promise<Project> {
+  if (!isCreatedProjectReceipt(result)) {
+    throw apiError(ErrorCodes.INTERNAL_ERROR);
+  }
+  const rows = await tx.$queryRaw<ProjectRow[]>(Prisma.sql`
+    SELECT ${PROJECT_COLUMNS}
+    FROM estadistica_forms.projects
+    WHERE id = ${result.projectId} AND owner_id = ${ownerId}
+  `);
+  if (!rows[0]) {
+    throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+  }
+  return toProject(rows[0]);
+}
+
+function isCreatedProjectReceipt(
+  value: unknown,
+): value is CreatedProjectReceipt {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'projectId' in value &&
+    typeof value.projectId === 'string'
+  );
 }
 
 function toProject(row: ProjectRow): Project {

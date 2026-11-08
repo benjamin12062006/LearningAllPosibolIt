@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import { parseIdempotencyKey } from '../common/http/idempotency-key.js';
 import {
   fetchWindow,
   resolvePage,
@@ -10,7 +12,10 @@ import {
 } from '../common/http/pagination.js';
 import { UsersService } from '../users/users.service.js';
 import type { CreateProjectDto, UpdateProjectDto } from './projects.dto.js';
-import { ProjectsRepository } from './projects.repository.js';
+import {
+  ProjectsRepository,
+  type ProjectIdempotency,
+} from './projects.repository.js';
 import {
   hasCompleteConfiguration,
   type ConfiguredProject,
@@ -33,13 +38,34 @@ export class ProjectsService {
     return toPage(rows, page);
   }
 
-  async create(identity: AuthenticatedIdentity, input: CreateProjectDto) {
+  /**
+   * Sin `idempotencyKey`, como siempre. Con ella, repetir la petición (un doble
+   * clic) devuelve el mismo proyecto en lugar de crear otro.
+   */
+  async create(
+    identity: AuthenticatedIdentity,
+    input: CreateProjectDto,
+    idempotencyKey?: string,
+  ) {
     const owner = await this.usersService.findCurrent(identity);
-    return this.projectsRepository.create(owner.id, input.name, {
+    const configuration = {
       country: input.country,
       currency: input.currency,
       channelProfile: input.channelProfile,
-    });
+    };
+    if (idempotencyKey === undefined) {
+      return this.projectsRepository.create(
+        owner.id,
+        input.name,
+        configuration,
+      );
+    }
+    return this.projectsRepository.create(
+      owner.id,
+      input.name,
+      configuration,
+      idempotencyOf(idempotencyKey, input),
+    );
   }
 
   async findOwned(identity: AuthenticatedIdentity, id: string) {
@@ -103,4 +129,23 @@ function assertUpdateIsValid(input: UpdateProjectDto) {
 function countConfigurationFields(input: UpdateProjectDto) {
   const fields = [input.country, input.currency, input.channelProfile];
   return fields.filter((value) => value !== undefined).length;
+}
+
+/** El hash del cuerpo ya validado: la misma clave con otro proyecto es otra petición. */
+function idempotencyOf(
+  idempotencyKey: string,
+  input: CreateProjectDto,
+): ProjectIdempotency {
+  const canonical = [
+    input.name,
+    input.country,
+    input.currency,
+    input.channelProfile,
+  ];
+  return {
+    key: parseIdempotencyKey(idempotencyKey),
+    payloadHash: createHash('sha256')
+      .update(JSON.stringify(canonical))
+      .digest('hex'),
+  };
 }

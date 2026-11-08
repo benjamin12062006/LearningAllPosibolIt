@@ -8,6 +8,7 @@ import {
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { LONG_TRANSACTION } from '../database/transaction-timeouts.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
   can,
@@ -30,6 +31,7 @@ import {
   type Operation,
   type RowValues,
 } from './changeset-operations.js';
+import { planConversion, retypedColumnIds } from './changeset-conversion.js';
 import { isSchemaOperation, resultingColumns } from './changeset-schema.js';
 import type { RowChange } from './changeset-revert.js';
 import {
@@ -164,6 +166,26 @@ export class ChangesetsRepository {
     schemaVersion: number,
   ): Promise<WorksheetColumn[]> {
     return findColumnsIn(this.prisma, scope, worksheetId, schemaVersion);
+  }
+
+  /**
+   * Filas vivas en la revisión `sequence` con valor en alguna de esas
+   * columnas: las que convierte un cambio de tipo (C5). Como mucho, las 5.000
+   * de la hoja.
+   */
+  findRowsWithValuesAt(
+    scope: ProjectScope,
+    worksheetId: string,
+    sequence: number,
+    columnIds: readonly string[],
+  ): Promise<RowValues> {
+    return findRowsWithValuesIn(
+      this.prisma,
+      scope,
+      worksheetId,
+      sequence,
+      columnIds,
+    );
   }
 
   /** Filas vivas en la revisión `sequence`, solo las pedidas. */
@@ -324,7 +346,7 @@ export class ChangesetsRepository {
         contentHash: hash,
       });
       return readChangeset(tx, actorId, scope, changesetId);
-    });
+    }, LONG_TRANSACTION);
   }
 
   /** Vuelve a borrador y deja sin valor las decisiones anteriores (D7, T12). */
@@ -359,7 +381,7 @@ export class ChangesetsRepository {
         {},
       );
       return readChangeset(tx, actorId, scope, changesetId);
-    });
+    }, LONG_TRANSACTION);
   }
 
   /** Lo cierra el autor o quien puede aprobar; uno aplicado ya no se cancela. */
@@ -397,7 +419,7 @@ export class ChangesetsRepository {
         {},
       );
       return readChangeset(tx, actorId, scope, changesetId);
-    });
+    }, LONG_TRANSACTION);
   }
 
   /** Rebase (D9): nueva base, operaciones resueltas y otra versión de borrador. */
@@ -440,7 +462,7 @@ export class ChangesetsRepository {
         baseRevisionId: rebase.head.id,
       });
       return readChangeset(tx, actorId, scope, changesetId);
-    });
+    }, LONG_TRANSACTION);
   }
 
   // ── Escrituras de quien revisa ──
@@ -503,7 +525,7 @@ export class ChangesetsRepository {
         decision,
         changeset: await readChangeset(tx, actorId, scope, changesetId),
       };
-    });
+    }, LONG_TRANSACTION);
   }
 
   /**
@@ -545,6 +567,7 @@ export class ChangesetsRepository {
       await lockHeadOrThrow(tx, changeset, request.expectedHeadRevisionId);
 
       const now = new Date().toISOString();
+      const operations = await withConversion(tx, scope, changeset);
       const headRows = await findRowsIn(
         tx,
         scope,
@@ -552,16 +575,14 @@ export class ChangesetsRepository {
         changeset.baseSequence,
         [
           ...new Set(
-            changeset.operations
-              .filter(isRowOperation)
-              .map(({ rowId }) => rowId),
+            operations.filter(isRowOperation).map(({ rowId }) => rowId),
           ),
         ],
       );
       const revision = await writeRevision(
         tx,
         scope,
-        changeset,
+        { ...changeset, operations },
         headRows,
         actorId,
         now,
@@ -589,7 +610,7 @@ export class ChangesetsRepository {
         now,
       });
       return result;
-    });
+    }, LONG_TRANSACTION);
   }
 
   /**
@@ -621,7 +642,7 @@ export class ChangesetsRepository {
           {},
         );
       }
-    });
+    }, LONG_TRANSACTION);
   }
 }
 
@@ -1046,6 +1067,69 @@ async function closeOpenVersions(
     `,
   );
   return new Map(rows.map(({ rowId, sortKey }) => [rowId, sortKey]));
+}
+
+/**
+ * Las operaciones del borrador y, si cambia el tipo de alguna columna, detrás
+ * la conversión de cada celda, calculada con la cabecera ya bloqueada (que es
+ * la base): lo mismo que mostró la revisión. Si quedara un incompatible, no se
+ * aplica nada; no debería pasar, porque enviar ya lo comprueba y el contenido
+ * aprobado no cambia.
+ */
+async function withConversion(
+  tx: Prisma.TransactionClient,
+  scope: ProjectScope,
+  changeset: Changeset,
+): Promise<readonly Operation[]> {
+  const columnIds = retypedColumnIds(changeset.operations);
+  if (columnIds.length === 0) {
+    return changeset.operations;
+  }
+  const [baseColumns, rows] = await Promise.all([
+    findColumnsIn(
+      tx,
+      scope,
+      changeset.worksheetId,
+      changeset.baseSchemaVersion,
+    ),
+    findRowsWithValuesIn(
+      tx,
+      scope,
+      changeset.worksheetId,
+      changeset.baseSequence,
+      columnIds,
+    ),
+  ]);
+  const conversion = planConversion(changeset.operations, baseColumns, rows);
+  if (conversion.incompatible.length > 0) {
+    throw apiError(ErrorCodes.VALIDATION_FAILED);
+  }
+  return [...changeset.operations, ...conversion.operations];
+}
+
+async function findRowsWithValuesIn(
+  client: Prisma.TransactionClient,
+  scope: ProjectScope,
+  worksheetId: string,
+  sequence: number,
+  columnIds: readonly string[],
+): Promise<RowValues> {
+  if (columnIds.length === 0) {
+    return new Map();
+  }
+  const rows = await client.$queryRaw<
+    { rowId: string; cellValues: Record<string, unknown> }[]
+  >(Prisma.sql`
+    SELECT row_id AS "rowId", cell_values AS "cellValues"
+    FROM estadistica_forms.worksheet_row_versions
+    WHERE worksheet_id = ${worksheetId}
+      AND organization_id = ${scope.organizationId}
+      AND from_sequence <= ${sequence}
+      AND (to_sequence IS NULL OR to_sequence > ${sequence})
+      AND NOT is_deleted
+      AND jsonb_exists_any(cell_values, ARRAY[${Prisma.join([...columnIds])}])
+  `);
+  return new Map(rows.map((row) => [row.rowId, row.cellValues]));
 }
 
 async function findRowsIn(
