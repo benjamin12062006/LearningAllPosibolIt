@@ -88,7 +88,7 @@ export class WorksheetCatalogSnapshotsService {
       scope,
       worksheetId,
     );
-    assertCanSendToCatalog(access, user.id);
+    assertCanSendToCatalog(access);
     const revision = await this.requireRevision(
       user.id,
       scope,
@@ -197,7 +197,7 @@ export class WorksheetCatalogSnapshotsService {
 
   /**
    * Entra por el mismo camino que una subida (D22). Dentro de su transacción
-   * se vuelve a comprobar el acceso y se guarda la procedencia. Si `accept`
+   * se guarda la procedencia. Si `accept`
    * falla, el CSV puede seguir en `tmp/`: se retira (borrar uno que ya no está
    * no es un error).
    */
@@ -222,21 +222,10 @@ export class WorksheetCatalogSnapshotsService {
         { idColumn: input.plan.idColumn.name, delimiter: 'comma' },
         input.requestId,
         input.ids,
-        async (tx) => {
-          const access = await this.repository.findAccess(
-            userId,
-            scope,
-            input.catalogSnapshot.worksheetId,
-            tx,
-          );
-          assertCanSendToCatalog(access, userId);
-          await this.repository.insert(
-            tx,
-            userId,
-            scope,
-            input.catalogSnapshot,
-          );
-        },
+        // `accept` ya vuelve a comprobar, con el proyecto bloqueado, que
+        // quien acepta es miembro, puede importar y la organización está activa.
+        (tx) =>
+          this.repository.insert(tx, userId, scope, input.catalogSnapshot),
       );
     } catch (error) {
       await this.store.removeTemporary(upload.filename);
@@ -246,13 +235,12 @@ export class WorksheetCatalogSnapshotsService {
 }
 
 /**
- * D23, en este orden: miembro de esa hoja (404), organización activa (409),
- * permiso de escritura (403) y propietario del proyecto (403): reglas,
- * evaluaciones, TSV y feed siguen siendo suyos mientras E1.2 esté aplazada.
+ * D23, en este orden: miembro de esa hoja (404), organización activa (409) y
+ * permiso de escritura (403). *Ajustado en C6:* ya no hace falta ser el
+ * propietario del proyecto; el catálogo y el feed son de la organización.
  */
 function assertCanSendToCatalog(
   access: CatalogSourceAccess | null,
-  userId: string,
 ): asserts access is CatalogSourceAccess {
   if (!access) {
     throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
@@ -262,9 +250,6 @@ function assertCanSendToCatalog(
   }
   if (!can(access.role, 'worksheet.write')) {
     throw apiError(ErrorCodes.FORBIDDEN);
-  }
-  if (access.projectOwnerId !== userId) {
-    throw apiError(ErrorCodes.WORKSHEET_CATALOG_OWNER_REQUIRED);
   }
 }
 

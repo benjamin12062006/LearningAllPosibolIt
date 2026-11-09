@@ -4,6 +4,7 @@ import { ErrorCodes, type ErrorCode } from '../common/http/error-codes.js';
 import { publicError, type PublicError } from '../common/http/public-error.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { isProjectMember } from '../projects/project-access.js';
 import {
   claimIsCurrent,
   newExecutionToken,
@@ -110,7 +111,7 @@ export class FeedRefreshesRepository {
       JOIN estadistica_forms.projects p ON p.id = f.project_id
       WHERE f.id = ${feedId}
         AND p.id = ${projectId}
-        AND p.owner_id = ${ownerId}`;
+        AND ${isProjectMember(ownerId)}`;
     return rows[0] ?? null;
   }
 
@@ -198,7 +199,7 @@ export class FeedRefreshesRepository {
       WHERE r.id = ${target.refreshId}
         AND f.id = ${target.feedId}
         AND p.id = ${target.projectId}
-        AND p.owner_id = ${target.ownerId}`;
+        AND ${isProjectMember(target.ownerId)}`;
     return rows[0] ? toRefreshView(rows[0]) : null;
   }
 
@@ -518,6 +519,8 @@ async function readClaimed(
       r.id,
       r.feed_id AS "feedId",
       f.project_id AS "projectId",
+      -- La actualización automática actúa en nombre de quien creó el proyecto
+      -- (procedencia); aceptar la importación revalida su acceso (C6).
       p.owner_id AS "ownerId",
       r.stage,
       r.attempts,

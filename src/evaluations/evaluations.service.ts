@@ -119,7 +119,7 @@ export class EvaluationsService {
     query: PaginationQueryDto,
   ) {
     const owner = await this.usersService.findCurrent(identity);
-    await this.projectsService.findOwned(identity, projectId);
+    await this.projectsService.findVisible(identity, projectId);
 
     const page = resolvePage(query);
     const evaluations = await this.repository.findAllByOwner(
@@ -149,7 +149,7 @@ export class EvaluationsService {
     evaluationId: string,
   ) {
     const owner = await this.usersService.findCurrent(identity);
-    await this.projectsService.findOwned(identity, projectId);
+    await this.projectsService.findVisible(identity, projectId);
     const evaluation = await this.repository.findByOwner(
       owner.id,
       projectId,

@@ -5,8 +5,8 @@ import { ArtifactStore, isMissingFile } from '../artifacts/artifact.store.js';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import type { OrganizationPermission } from '../organizations/organization-roles.js';
 import { ProjectsService } from '../projects/projects.service.js';
-import { UsersService } from '../users/users.service.js';
 import { assertCanExport } from './export-approval.js';
 import type { CreateExportDto } from './exports.dto.js';
 import { ExportsRepository } from './exports.repository.js';
@@ -22,7 +22,6 @@ export class ExportsService {
   private readonly logger = new Logger(ExportsService.name);
 
   constructor(
-    private readonly usersService: UsersService,
     private readonly projectsService: ProjectsService,
     private readonly repository: ExportsRepository,
     private readonly store: ArtifactStore,
@@ -38,7 +37,12 @@ export class ExportsService {
     projectId: string,
     input: CreateExportDto,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    // Aprobar lo que sale al canal: Manager o más (C6).
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'changeset.approve',
+    );
     return this.createForOwner(ownerId, projectId, input);
   }
 
@@ -80,7 +84,11 @@ export class ExportsService {
     projectId: string,
     exportId: string,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'organization.read',
+    );
     const found = await this.repository.findByOwner(
       ownerId,
       projectId,
@@ -98,7 +106,11 @@ export class ExportsService {
     projectId: string,
     exportId: string,
   ): Promise<ExportDownload> {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'organization.read',
+    );
     const file = await this.repository.findFileByOwner(
       ownerId,
       projectId,
@@ -114,13 +126,20 @@ export class ExportsService {
   }
 
   /**
-   * El usuario actual, después de comprobar que el proyecto es suyo: si no lo
-   * es, `findOwned` responde 404 antes de buscar nada más.
+   * Quien actúa, después de comprobar su acceso al proyecto (C6): si no es
+   * miembro, 404 antes de buscar nada más; sin el permiso, 403.
    */
-  private async ownerOf(identity: AuthenticatedIdentity, projectId: string) {
-    const owner = await this.usersService.findCurrent(identity);
-    await this.projectsService.findOwned(identity, projectId);
-    return owner.id;
+  private async actorFor(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    permission: OrganizationPermission,
+  ) {
+    const { actorId } = await this.projectsService.requireAccess(
+      identity,
+      projectId,
+      permission,
+    );
+    return actorId;
   }
 
   private async findExisting(

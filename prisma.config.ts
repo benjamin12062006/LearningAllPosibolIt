@@ -7,8 +7,9 @@ try {
   if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
 }
 
-// Prisma Migrate necesita la conexión directa de Neon: el pooler (-pooler)
-// no soporta los bloqueos de sesión que usa para migrar.
+// Prisma Migrate usa la misma URL que la API (con Cloud SQL, el proxy local).
+// Si fuera una URL de Neon con pooler (-pooler), se usa la conexión directa:
+// el pooler no soporta los bloqueos de sesión que necesita para migrar.
 function migrationUrl(raw: string): string {
   let parsed: URL;
   try {

@@ -12,6 +12,13 @@ import type { ImportRow } from '../catalog-import/import.types.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
+  assertProjectPermission,
+  isProjectMember,
+  joinProjectAccess,
+  PROJECT_ACCESS_COLUMNS,
+  type ProjectMemberAccess,
+} from '../projects/project-access.js';
+import {
   claimIsCurrent,
   LostClaimError,
   newExecutionToken,
@@ -152,7 +159,7 @@ export class EvaluationsRepository {
       ${EVALUATION_SOURCE}
       WHERE e.id = ${evaluationId}
         AND p.id = ${projectId}
-        AND p.owner_id = ${ownerId}`;
+        AND ${isProjectMember(ownerId)}`;
     return rows[0] ? toEvaluationView(rows[0]) : null;
   }
 
@@ -170,7 +177,7 @@ export class EvaluationsRepository {
       SELECT ${EVALUATION_COLUMNS}
       ${EVALUATION_SOURCE}
       WHERE p.id = ${projectId}
-        AND p.owner_id = ${ownerId}
+        AND ${isProjectMember(ownerId)}
       ORDER BY e.created_at DESC, e.id DESC
       LIMIT ${window.limit} OFFSET ${window.offset}`;
     return rows.map(toEvaluationView);
@@ -398,7 +405,7 @@ export class EvaluationsRepository {
 
   private insertQueued(request: EvaluationRequest) {
     return this.prisma.$transaction(async (tx) => {
-      await lockOwnedProject(tx, request.ownerId, request.projectId);
+      await lockProjectForEvaluation(tx, request.ownerId, request.projectId);
       const headers = await readReadySnapshotHeaders(tx, request);
       const ruleset = await readRuleset(tx, request);
       assertColumnsExist(ruleset.mapping, headers);
@@ -424,22 +431,23 @@ export class EvaluationsRepository {
 }
 
 /**
- * FOR UPDATE sobre el proyecto: el mismo bloqueo que borrar el proyecto, así
- * que no se puede aceptar una evaluación mientras se borra.
+ * FOR UPDATE OF p sobre el proyecto: el mismo bloqueo que borrar el proyecto,
+ * así que no se puede aceptar una evaluación mientras se borra. Con él se
+ * comprueba que quien evalúa (también la actualización programada del feed,
+ * en nombre de quien la configuró) es miembro y puede preparar trabajo (C6).
  */
-async function lockOwnedProject(
+async function lockProjectForEvaluation(
   tx: Prisma.TransactionClient,
-  ownerId: string,
+  actorId: string,
   projectId: string,
 ) {
-  const projects = await tx.$queryRaw<IdRow[]>`
-    SELECT id
-    FROM estadistica_forms.projects
-    WHERE id = ${projectId} AND owner_id = ${ownerId}
-    FOR UPDATE`;
-  if (!projects[0]) {
-    throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
-  }
+  const projects = await tx.$queryRaw<ProjectMemberAccess[]>`
+    SELECT ${PROJECT_ACCESS_COLUMNS}
+    FROM estadistica_forms.projects p
+    ${joinProjectAccess(actorId)}
+    WHERE p.id = ${projectId}
+    FOR UPDATE OF p`;
+  assertProjectPermission(projects[0] ?? null, 'worksheet.write');
 }
 
 /**

@@ -3,6 +3,7 @@ import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { isProjectMember } from '../projects/project-access.js';
 import { enqueueArtifactsDelete } from '../outbox/outbox-events.js';
 import type { ImportDelimiter } from '../catalog-import/import.types.js';
 import type { FeedSchedule } from './feed-schedule.js';
@@ -193,7 +194,7 @@ export class FeedsRepository {
       SELECT ${FEED_COLUMNS}
       ${OWNED_FEEDS}
       WHERE p.id = ${projectId}
-        AND p.owner_id = ${ownerId}
+        AND ${isProjectMember(ownerId)}
       ORDER BY f.created_at, f.id`;
     return rows.map(toFeedView);
   }
@@ -208,7 +209,7 @@ export class FeedsRepository {
       ${OWNED_FEEDS}
       WHERE f.id = ${feedId}
         AND p.id = ${projectId}
-        AND p.owner_id = ${ownerId}`;
+        AND ${isProjectMember(ownerId)}`;
     return rows[0] ? toFeedView(rows[0]) : null;
   }
 
@@ -250,7 +251,7 @@ export class FeedsRepository {
       JOIN estadistica_forms.projects p ON p.id = x.project_id
       WHERE x.id = ${exportId}
         AND p.id = ${projectId}
-        AND p.owner_id = ${ownerId}`;
+        AND ${isProjectMember(ownerId)}`;
     return rows[0] ?? null;
   }
 
@@ -346,7 +347,7 @@ export class FeedsRepository {
       WHERE f.id = ${target.feedId}
         AND p.id = f.project_id
         AND p.id = ${target.projectId}
-        AND p.owner_id = ${target.ownerId}
+        AND ${isProjectMember(target.ownerId)}
       RETURNING f.id`;
     return updated[0] ? requireFeed(this.prisma, target.feedId) : null;
   }
@@ -370,7 +371,7 @@ export class FeedsRepository {
       WHERE f.id = ${target.feedId}
         AND p.id = f.project_id
         AND p.id = ${target.projectId}
-        AND p.owner_id = ${target.ownerId}
+        AND ${isProjectMember(target.ownerId)}
       RETURNING f.id`;
     return updated[0] ? requireFeed(this.prisma, target.feedId) : null;
   }
@@ -404,7 +405,7 @@ export class FeedsRepository {
       WHERE f.id = ${target.feedId}
         AND p.id = f.project_id
         AND p.id = ${target.projectId}
-        AND p.owner_id = ${target.ownerId}
+        AND ${isProjectMember(target.ownerId)}
       RETURNING f.id`;
     return updated[0] ? requireFeed(this.prisma, target.feedId) : null;
   }
@@ -429,7 +430,7 @@ export class FeedsRepository {
       WHERE f.id = ${target.feedId}
         AND p.id = f.project_id
         AND p.id = ${target.projectId}
-        AND p.owner_id = ${target.ownerId}
+        AND ${isProjectMember(target.ownerId)}
       RETURNING f.id`;
     return updated[0] ? requireFeed(this.prisma, target.feedId) : null;
   }

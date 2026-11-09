@@ -18,6 +18,13 @@ import {
 import { retryDelay, type RetryOptions } from '../jobs/retry-delay.js';
 import { enqueueArtifactsDelete } from '../outbox/outbox-events.js';
 import {
+  assertProjectPermission,
+  isProjectMember,
+  joinProjectAccess,
+  PROJECT_ACCESS_COLUMNS,
+  type ProjectMemberAccess,
+} from '../projects/project-access.js';
+import {
   hasCompleteConfiguration,
   type ChannelProfile,
 } from '../projects/projects.types.js';
@@ -38,6 +45,9 @@ type ProjectConfigurationRow = {
   currency: string | null;
   channelProfile: ChannelProfile | null;
 };
+
+/** El proyecto que acepta una importación y el acceso de quien la acepta. */
+type AcceptingProjectRow = ProjectConfigurationRow & ProjectMemberAccess;
 
 type IdRow = { id: string };
 
@@ -99,7 +109,9 @@ type ReadyJobRow = Omit<ClaimedImport, 'token' | 'leaseMs'>;
 
 type DeletedSnapshotRow = { snapshotId: string; artifactKey: string };
 
-type DeletableSnapshotRow = DeletedSnapshotRow & { jobStatus: string | null };
+type DeletableSnapshotRow = DeletedSnapshotRow & {
+  jobStatus: string | null;
+} & ProjectMemberAccess;
 
 type ExportKeyRow = { snapshotId: string; artifactKey: string };
 
@@ -137,17 +149,28 @@ export class CatalogImportRepository {
   /** Registra el snapshot y su trabajo en cola, o rechaza la importación. */
   accept(input: Acceptance, recordSource?: AcceptanceRecorder) {
     return this.prisma.$transaction(async (tx) => {
-      // FOR UPDATE bloquea la fila del proyecto: dos peticiones simultáneas no
-      // pueden pasar a la vez la comprobación de importación activa.
-      const projects = await tx.$queryRaw<ProjectConfigurationRow[]>`
-        SELECT country, currency, channel_profile AS "channelProfile"
-        FROM estadistica_forms.projects
-        WHERE id = ${input.projectId} AND owner_id = ${input.ownerId}
-        FOR UPDATE`;
-      const project = projects[0];
-      if (!project) {
-        throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
-      }
+      // FOR UPDATE OF p bloquea la fila del proyecto: dos peticiones simultáneas
+      // no pueden pasar a la vez la comprobación de importación activa. El
+      // acceso se comprueba aquí y no solo en el guard: la actualización
+      // programada del feed acepta en nombre de quien la configuró, y si ya no
+      // puede, no se importa nada (C6, «revalidar al aceptar un trabajo», [11]).
+      const projects = await tx.$queryRaw<AcceptingProjectRow[]>`
+        SELECT
+          p.country,
+          p.currency,
+          p.channel_profile AS "channelProfile",
+          ${PROJECT_ACCESS_COLUMNS}
+        FROM estadistica_forms.projects p
+        ${joinProjectAccess(input.ownerId)}
+        WHERE p.id = ${input.projectId}
+        FOR UPDATE OF p`;
+      const accepting = projects[0] ?? null;
+      assertProjectPermission(accepting, 'worksheet.write');
+      const project: ProjectConfigurationRow = {
+        country: accepting.country,
+        currency: accepting.currency,
+        channelProfile: accepting.channelProfile,
+      };
       if (!hasCompleteConfiguration(project)) {
         throw apiError(ErrorCodes.PROJECT_CONFIGURATION_REQUIRED);
       }
@@ -193,7 +216,7 @@ export class CatalogImportRepository {
       FROM estadistica_forms.catalog_import_jobs j
       JOIN estadistica_forms.projects p ON p.id = j.project_id
       WHERE p.id = ${projectId}
-        AND p.owner_id = ${ownerId}
+        AND ${isProjectMember(ownerId)}
         AND j.status IN ('queued', 'running')
       LIMIT 1`;
     return rows.length > 0;
@@ -213,7 +236,7 @@ export class CatalogImportRepository {
       WHERE j.id = ${input.jobId}
         AND s.id = ${input.snapshotId}
         AND p.id = ${input.projectId}
-        AND p.owner_id = ${input.ownerId}
+        AND ${isProjectMember(input.ownerId)}
         AND s.artifact_key = ${input.artifactKey}`;
     return rows.length === 1;
   }
@@ -222,8 +245,8 @@ export class CatalogImportRepository {
   async listSnapshots(ownerId: string, projectId: string, window: PageRequest) {
     const owned = await this.prisma.$queryRaw<IdRow[]>`
       SELECT id
-      FROM estadistica_forms.projects
-      WHERE id = ${projectId} AND owner_id = ${ownerId}`;
+      FROM estadistica_forms.projects p
+      WHERE p.id = ${projectId} AND ${isProjectMember(ownerId)}`;
     if (!owned[0]) {
       throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
     }
@@ -268,7 +291,7 @@ export class CatalogImportRepository {
       JOIN estadistica_forms.projects p ON p.id = j.project_id
       WHERE j.id = ${id}
         AND p.id = ${projectId}
-        AND p.owner_id = ${ownerId}`;
+        AND ${isProjectMember(ownerId)}`;
     const job = rows[0];
     if (!job) {
       throw apiError(ErrorCodes.IMPORT_NOT_FOUND);
@@ -297,7 +320,7 @@ export class CatalogImportRepository {
       JOIN estadistica_forms.projects p ON p.id = s.project_id
       WHERE s.id = ${id}
         AND p.id = ${projectId}
-        AND p.owner_id = ${ownerId}`;
+        AND ${isProjectMember(ownerId)}`;
     const snapshot = rows[0];
     if (!snapshot) {
       throw apiError(ErrorCodes.IMPORT_NOT_FOUND);
@@ -326,18 +349,21 @@ export class CatalogImportRepository {
         SELECT
           s.id AS "snapshotId",
           s.artifact_key AS "artifactKey",
-          j.status AS "jobStatus"
+          j.status AS "jobStatus",
+          ${PROJECT_ACCESS_COLUMNS}
         FROM estadistica_forms.catalog_snapshots s
         JOIN estadistica_forms.projects p ON p.id = s.project_id
+        ${joinProjectAccess(ownerId)}
         LEFT JOIN estadistica_forms.catalog_import_jobs j ON j.snapshot_id = s.id
         WHERE s.id = ${snapshotId}
           AND p.id = ${projectId}
-          AND p.owner_id = ${ownerId}
         FOR UPDATE OF s`;
       const snapshot = rows[0];
       if (!snapshot) {
         throw apiError(ErrorCodes.IMPORT_NOT_FOUND);
       }
+      // Borrar una importación prepara trabajo, como importarla (C6).
+      assertProjectPermission(snapshot, 'worksheet.write');
       if (isActiveStatus(snapshot.jobStatus)) {
         throw apiError(ErrorCodes.IMPORT_IN_PROGRESS);
       }
@@ -367,14 +393,14 @@ export class CatalogImportRepository {
     return this.prisma.$transaction(async (tx) => {
       // Mismo bloqueo que `accept`: no puede entrar una importación nueva
       // mientras se borra el proyecto.
-      const projects = await tx.$queryRaw<IdRow[]>`
-        SELECT id
-        FROM estadistica_forms.projects
-        WHERE id = ${projectId} AND owner_id = ${ownerId}
-        FOR UPDATE`;
-      if (!projects[0]) {
-        throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
-      }
+      const projects = await tx.$queryRaw<ProjectMemberAccess[]>`
+        SELECT ${PROJECT_ACCESS_COLUMNS}
+        FROM estadistica_forms.projects p
+        ${joinProjectAccess(ownerId)}
+        WHERE p.id = ${projectId}
+        FOR UPDATE OF p`;
+      // Borrar el proyecto entero: Admin u Owner (C6).
+      assertProjectPermission(projects[0] ?? null, 'members.manage');
       if (await this.hasActiveJobLocked(tx, projectId)) {
         throw apiError(ErrorCodes.IMPORT_IN_PROGRESS);
       }
@@ -405,7 +431,7 @@ export class CatalogImportRepository {
         RETURNING id AS "snapshotId", artifact_key AS "artifactKey"`;
       await tx.$executeRaw`
         DELETE FROM estadistica_forms.projects
-        WHERE id = ${projectId} AND owner_id = ${ownerId}`;
+        WHERE id = ${projectId}`;
       const imports = deleted.map((snapshot) => ({
         ...snapshot,
         exportArtifactKeys: exportKeys.get(snapshot.snapshotId) ?? [],

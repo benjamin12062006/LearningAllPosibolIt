@@ -34,7 +34,7 @@ export class ProjectsResolver {
     @CurrentIdentity() identity: AuthenticatedIdentity,
     @Args('id', { type: () => ID }, uuidParamPipe('id')) id: string,
   ) {
-    return this.projectsService.findOwned(identity, id);
+    return this.projectsService.findVisible(identity, id);
   }
 
   @Mutation(() => ProjectType, { name: 'createProject' })

@@ -3,6 +3,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { isProductValues } from '../evaluations/engine/google-merchant.profile.js';
 import type { EvaluationStatus } from '../evaluations/evaluations.types.js';
 import { Prisma, type Export } from '../generated/prisma/client.js';
+import { isProjectMember } from '../projects/project-access.js';
 import { assertCanExport, type EvaluationToExport } from './export-approval.js';
 import type { ExportView, NewExport } from './exports.types.js';
 import type { ExportableRow } from './products-tsv.js';
@@ -139,7 +140,7 @@ export class ExportsRepository {
       JOIN estadistica_forms.projects p ON p.id = x.project_id
       WHERE x.id = ${exportId}
         AND p.id = ${projectId}
-        AND p.owner_id = ${ownerId}`;
+        AND ${isProjectMember(ownerId)}`;
     return rows[0] ?? null;
   }
 
@@ -156,7 +157,7 @@ export class ExportsRepository {
       JOIN estadistica_forms.projects p ON p.id = x.project_id
       WHERE x.id = ${exportId}
         AND p.id = ${projectId}
-        AND p.owner_id = ${ownerId}`;
+        AND ${isProjectMember(ownerId)}`;
     return rows[0] ?? null;
   }
 
@@ -257,7 +258,7 @@ function evaluationToExportQuery(target: EvaluationTarget, lock: Prisma.Sql) {
       ON s.project_id = e.project_id AND s.id = e.snapshot_id
     WHERE e.id = ${target.evaluationId}
       AND p.id = ${target.projectId}
-      AND p.owner_id = ${target.ownerId}
+      AND ${isProjectMember(target.ownerId)}
     ${lock}`;
 }
 

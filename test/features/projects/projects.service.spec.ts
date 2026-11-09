@@ -29,7 +29,7 @@ describe('ProjectsService con inyección de Nest', () => {
   let repository: jest.Mocked<
     Pick<
       ProjectsRepository,
-      'findAllByOwner' | 'findByOwner' | 'create' | 'update'
+      'findAllForMember' | 'findVisible' | 'findAccess' | 'create' | 'update'
     >
   >;
 
@@ -40,12 +40,20 @@ describe('ProjectsService con inyección de Nest', () => {
         .mockResolvedValue(userFixture()),
     };
     repository = {
-      findAllByOwner: jest
-        .fn<ProjectsRepository['findAllByOwner']>()
+      findAllForMember: jest
+        .fn<ProjectsRepository['findAllForMember']>()
         .mockResolvedValue([projectFixture()]),
-      findByOwner: jest
-        .fn<ProjectsRepository['findByOwner']>()
+      findVisible: jest
+        .fn<ProjectsRepository['findVisible']>()
         .mockResolvedValue(projectFixture()),
+      // Alice es Owner de su organización personal: puede todo (C6).
+      findAccess: jest
+        .fn<ProjectsRepository['findAccess']>()
+        .mockResolvedValue({
+          organizationId: 'organizacion-personal',
+          role: 'owner',
+          isArchived: false,
+        }),
       create: jest
         .fn<ProjectsRepository['create']>()
         .mockResolvedValue(projectFixture()),
@@ -69,13 +77,13 @@ describe('ProjectsService con inyección de Nest', () => {
 
   it('lista usando el ID local resuelto desde la identidad y el resultado del proveedor inyectado', async () => {
     const expected = [projectFixture({ name: 'Resultado del doble' })];
-    repository.findAllByOwner.mockResolvedValue(expected);
+    repository.findAllForMember.mockResolvedValue(expected);
 
     const result = await service.findAll(alice);
 
     expect(users.findCurrent).toHaveBeenCalledWith(alice);
     // Pide una fila más que el límite para calcular `hasMore` sin COUNT.
-    expect(repository.findAllByOwner).toHaveBeenCalledWith(userFixture().id, {
+    expect(repository.findAllForMember).toHaveBeenCalledWith(userFixture().id, {
       limit: 21,
       offset: 0,
     });
@@ -89,11 +97,11 @@ describe('ProjectsService con inyección de Nest', () => {
     const rows = Array.from({ length: 3 }, (_, index) =>
       projectFixture({ id: `00000000-0000-4000-8000-00000000000${index}` }),
     );
-    repository.findAllByOwner.mockResolvedValue(rows);
+    repository.findAllForMember.mockResolvedValue(rows);
 
     const result = await service.findAll(alice, { limit: 2, offset: 4 });
 
-    expect(repository.findAllByOwner).toHaveBeenCalledWith(userFixture().id, {
+    expect(repository.findAllForMember).toHaveBeenCalledWith(userFixture().id, {
       limit: 3,
       offset: 4,
     });
@@ -126,15 +134,15 @@ describe('ProjectsService con inyección de Nest', () => {
   });
 
   it('oculta un proyecto ausente o ajeno sin actualizarlo', async () => {
-    repository.findByOwner.mockResolvedValue(null);
+    repository.findVisible.mockResolvedValue(null);
 
     await expect(
-      service.findOwned(alice, projectFixture().id),
+      service.findVisible(alice, projectFixture().id),
     ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
       service.update(alice, projectFixture().id, { name: 'Ajeno' }),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(repository.findByOwner).toHaveBeenCalledWith(
+    expect(repository.findVisible).toHaveBeenCalledWith(
       userFixture().id,
       projectFixture().id,
     );
@@ -184,7 +192,7 @@ describe('ProjectsService con inyección de Nest', () => {
   });
 
   it('impide continuar hacia importación si falta configuración heredada', async () => {
-    repository.findByOwner.mockResolvedValue(
+    repository.findVisible.mockResolvedValue(
       projectFixture({
         country: null,
         currency: null,

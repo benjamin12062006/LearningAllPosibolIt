@@ -46,11 +46,11 @@ model Project {
   country        String?
   currency       String?
   channelProfile String?           @map("channel_profile")
-  /// Nulo admitido hasta E1.2 (plan organizations&access O3); `ownerId` queda
-  /// como procedencia de quien lo creó.
-  organizationId String?           @map("organization_id")
+  /// Obligatoria desde C6 (E1.2): el acceso se decide por la membresía en
+  /// ella. `ownerId` queda como procedencia de quien lo creó.
+  organizationId String            @map("organization_id")
   owner          AppUser           @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   snapshots      CatalogSnapshot[]
   rulesets       RulesetVersion[]
   feed           Feed?

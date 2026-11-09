@@ -65,7 +65,7 @@ export class RulesetsService {
     projectId: string,
     query?: Partial<PageRequest>,
   ) {
-    await this.projectsService.findOwned(identity, projectId);
+    await this.projectsService.findVisible(identity, projectId);
     const page = resolvePage(query);
     const rows = await this.repository.findAllByProject(
       projectId,
@@ -79,7 +79,7 @@ export class RulesetsService {
     projectId: string,
     revision: number,
   ) {
-    await this.projectsService.findOwned(identity, projectId);
+    await this.projectsService.findVisible(identity, projectId);
     if (!isStorableRevision(revision)) {
       throw apiError(ErrorCodes.RULESET_NOT_FOUND);
     }

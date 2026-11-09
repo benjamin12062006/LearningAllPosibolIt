@@ -55,7 +55,7 @@ export class ProjectsController {
     @CurrentIdentity() identity: AuthenticatedIdentity,
     @Param('id', uuidParamPipe('id')) id: string,
   ) {
-    return { project: await this.projectsService.findOwned(identity, id) };
+    return { project: await this.projectsService.findVisible(identity, id) };
   }
 
   @Patch(':id')

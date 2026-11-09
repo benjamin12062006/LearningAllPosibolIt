@@ -15,7 +15,8 @@ export function createPostgreSqlConnection(
   const pool = new Pool({
     connectionString: config.url,
     max: 5,
-    // Neon suspende el cómputo inactivo: la primera conexión puede tardar.
+    // La primera conexión puede tardar: el proxy pide su token a Google (y
+    // Neon, si se usa, despierta el cómputo suspendido).
     connectionTimeoutMillis: 10_000,
     query_timeout: 10_000,
   });

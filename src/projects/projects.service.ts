@@ -10,7 +10,9 @@ import {
   toPage,
   type PageRequest,
 } from '../common/http/pagination.js';
+import type { OrganizationPermission } from '../organizations/organization-roles.js';
 import { UsersService } from '../users/users.service.js';
+import { assertProjectPermission } from './project-access.js';
 import type { CreateProjectDto, UpdateProjectDto } from './projects.dto.js';
 import {
   ProjectsRepository,
@@ -19,7 +21,11 @@ import {
 import {
   hasCompleteConfiguration,
   type ConfiguredProject,
+  type Project,
 } from './projects.types.js';
+
+/** Quién actúa y sobre qué proyecto, ya comprobado su permiso. */
+export type ProjectActor = Readonly<{ actorId: string; project: Project }>;
 
 @Injectable()
 export class ProjectsService {
@@ -28,11 +34,12 @@ export class ProjectsService {
     private readonly projectsRepository: ProjectsRepository,
   ) {}
 
+  /** Los proyectos de todas las organizaciones de la persona (C6). */
   async findAll(identity: AuthenticatedIdentity, query?: Partial<PageRequest>) {
-    const owner = await this.usersService.findCurrent(identity);
+    const user = await this.usersService.findCurrent(identity);
     const page = resolvePage(query);
-    const rows = await this.projectsRepository.findAllByOwner(
-      owner.id,
+    const rows = await this.projectsRepository.findAllForMember(
+      user.id,
       fetchWindow(page),
     );
     return toPage(rows, page);
@@ -68,41 +75,73 @@ export class ProjectsService {
     );
   }
 
-  async findOwned(identity: AuthenticatedIdentity, id: string) {
-    const owner = await this.usersService.findCurrent(identity);
-    const project = await this.projectsRepository.findByOwner(owner.id, id);
-    if (!project) {
-      throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
-    }
+  /** Lo ve cualquier miembro de su organización; si no, 404 (C6). */
+  async findVisible(
+    identity: AuthenticatedIdentity,
+    id: string,
+  ): Promise<Project> {
+    const { project } = await this.requireAccess(
+      identity,
+      id,
+      'organization.read',
+    );
     return project;
   }
 
+  /**
+   * La puerta de las rutas de `/projects/:projectId/…` (C6, E1.2): miembro
+   * (404), organización activa para escribir (409) y el permiso (403). Quien
+   * creó el proyecto ya no tiene acceso por serlo.
+   */
+  async requireAccess(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    permission: OrganizationPermission,
+  ): Promise<ProjectActor> {
+    const user = await this.usersService.findCurrent(identity);
+    const access = await this.projectsRepository.findAccess(user.id, projectId);
+    assertProjectPermission(access, permission);
+    const project = await this.projectsRepository.findVisible(
+      user.id,
+      projectId,
+    );
+    if (!project) {
+      throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
+    }
+    return { actorId: user.id, project };
+  }
+
+  /** Cambiar el nombre o la configuración del canal: Manager o más (C6). */
   async update(
     identity: AuthenticatedIdentity,
     id: string,
     input: UpdateProjectDto,
   ) {
-    const owner = await this.usersService.findCurrent(identity);
-    const current = await this.projectsRepository.findByOwner(owner.id, id);
-    if (!current) {
-      throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
-    }
+    const { actorId } = await this.requireAccess(
+      identity,
+      id,
+      'changeset.approve',
+    );
 
     assertUpdateIsValid(input);
 
-    const project = await this.projectsRepository.update(owner.id, id, input);
+    const project = await this.projectsRepository.update(actorId, id, input);
     if (!project) {
       throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
     }
     return project;
   }
 
-  /** Las importaciones necesitan país, moneda y canal. */
+  /**
+   * Las importaciones necesitan país, moneda y canal, y que quien importa
+   * pueda preparar trabajo (Editor o más, C6).
+   */
   async requireConfigured(
     identity: AuthenticatedIdentity,
     id: string,
+    permission: OrganizationPermission = 'worksheet.write',
   ): Promise<ConfiguredProject> {
-    const project = await this.findOwned(identity, id);
+    const { project } = await this.requireAccess(identity, id, permission);
     if (!hasCompleteConfiguration(project)) {
       throw apiError(ErrorCodes.PROJECT_CONFIGURATION_REQUIRED);
     }

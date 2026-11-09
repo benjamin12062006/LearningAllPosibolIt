@@ -18,6 +18,7 @@
     "api:request": "httpyac requests/ --env local",
     "api:auth-test": "node scripts/descope/run-auth-request.mts",
     "prisma:generate": "prisma generate",
+    "db:proxy": "node scripts/db/cloud-sql-proxy.mjs",
     "db:migrate": "prisma migrate deploy",
     "db:migration:create": "prisma migrate dev --create-only",
     "db:status": "prisma migrate status",

@@ -11,6 +11,7 @@ import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { DescopeService } from '../../../src/auth/descope.service.js';
+import { PrismaService } from '../../../src/database/prisma.service.js';
 import { configureHttp } from '../../../src/configure-http.js';
 import { publicError } from '../../../src/common/http/public-error.js';
 import { POSTGRESQL_CONNECTION } from '../../../src/database/postgresql.connection.js';
@@ -19,6 +20,7 @@ import { ProjectsService } from '../../../src/projects/projects.service.js';
 import type { Project } from '../../../src/projects/projects.types.js';
 import { UsersService } from '../../../src/users/users.service.js';
 import { alice, bob, projectInput } from '../support/project-fixtures.js';
+import { insertLegacyProject } from '../support/legacy-project.js';
 import { createTestDatabase } from '../support/test-database.js';
 
 describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () => {
@@ -162,7 +164,7 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
       .send({ name: 'Intrusión' })
       .expect(404);
 
-    expect(await projects.findOwned(bob, foreign.id)).toEqual(foreign);
+    expect(await projects.findVisible(bob, foreign.id)).toEqual(foreign);
     expect((await projects.findAll(alice)).items).toEqual([]);
   });
 
@@ -223,7 +225,7 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
       .send(input)
       .expect(400);
 
-    expect(await projects.findOwned(alice, original.id)).toEqual(original);
+    expect(await projects.findVisible(alice, original.id)).toEqual(original);
   });
 
   it('actualiza configuración completa y renombra sin perderla', async () => {
@@ -253,10 +255,10 @@ describe('Projects HTTP con guard, DTOs, servicios y persistencia reales', () =>
       createdAt: '2026-01-01',
     };
     const owner = await app.get(UsersService).findCurrent(alice);
-    await database.connection.pool.query(
-      'INSERT INTO estadistica_forms.projects (id,name,owner_id,created_at) VALUES ($1,$2,$3,$4)',
-      [inherited.id, inherited.name, owner.id, inherited.createdAt],
-    );
+    await insertLegacyProject(app.get(PrismaService), {
+      ...inherited,
+      ownerId: owner.id,
+    });
     await request(app.getHttpServer())
       .get(`${api}/${inherited.id}`)
       .auth('alice-session', { type: 'bearer' })

@@ -32,6 +32,7 @@ export type StoredUpload = { filename: string; size: number; hash: string };
 export type ImportRequest = AuthenticatedRequest & {
   /** Lo pone `assignRequestId` en cada petición (jobs&files, D12). */
   requestId?: string;
+  /** Quien sube y acepta la importación (desde C6, cualquier miembro con permiso). */
   importOwnerId?: string;
   importRequestId?: string;
   file?: Express.Multer.File & StoredUpload;
@@ -41,6 +42,10 @@ export type Acceptance = {
   snapshotId: string;
   jobId: string;
   projectId: string;
+  /**
+   * Quien acepta: hasta C6, el propietario del proyecto; desde C6, cualquier
+   * miembro con `worksheet.write`, que `accept` comprueba en su transacción.
+   */
   ownerId: string;
   artifactKey: string;
   sourceHash: string;

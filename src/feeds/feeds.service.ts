@@ -11,8 +11,8 @@ import {
   type PageRequest,
 } from '../common/http/pagination.js';
 import { OutboxRelay } from '../outbox/outbox.relay.js';
+import type { OrganizationPermission } from '../organizations/organization-roles.js';
 import { ProjectsService } from '../projects/projects.service.js';
-import { UsersService } from '../users/users.service.js';
 import { ENGINE_VERSION } from '../evaluations/engine/evaluate-row.js';
 import { PROFILE_VERSION } from '../evaluations/engine/google-merchant.profile.js';
 import { createDeliveryToken, deliveryUrlOf } from './delivery-token.js';
@@ -39,7 +39,6 @@ export class FeedsService {
   private readonly logger = new Logger(FeedsService.name);
 
   constructor(
-    private readonly usersService: UsersService,
     private readonly projectsService: ProjectsService,
     private readonly repository: FeedsRepository,
     private readonly store: ArtifactStore,
@@ -53,7 +52,7 @@ export class FeedsService {
    * devuelve aquí: la base guarda su hash (D7).
    */
   async create(identity: AuthenticatedIdentity, projectId: string) {
-    await this.ownerOf(identity, projectId);
+    await this.actorFor(identity, projectId, 'changeset.approve');
     const delivery = createDeliveryToken();
 
     const feed = await this.repository.create({
@@ -69,7 +68,11 @@ export class FeedsService {
   }
 
   async findAll(identity: AuthenticatedIdentity, projectId: string) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'organization.read',
+    );
     return this.repository.findAllByOwner(ownerId, projectId);
   }
 
@@ -78,7 +81,11 @@ export class FeedsService {
     projectId: string,
     feedId: string,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'organization.read',
+    );
     return this.requireFeed(ownerId, projectId, feedId);
   }
 
@@ -89,7 +96,11 @@ export class FeedsService {
     feedId: string,
     query?: Partial<PageRequest>,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'organization.read',
+    );
     await this.requireFeed(ownerId, projectId, feedId);
     const page = resolvePage(query);
     const rows = await this.repository.listVersions(feedId, fetchWindow(page));
@@ -108,7 +119,11 @@ export class FeedsService {
     feedId: string,
     input: PublishFeedDto,
   ): Promise<Publication> {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'changeset.approve',
+    );
     const feed = await this.requireFeed(ownerId, projectId, feedId);
     const source = await this.requireExport(ownerId, projectId, input.exportId);
 
@@ -181,7 +196,11 @@ export class FeedsService {
     feedId: string,
     input: UpdateFeedScheduleDto,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'changeset.approve',
+    );
     const feed = await this.repository.setSchedule({
       ownerId,
       projectId,
@@ -210,7 +229,11 @@ export class FeedsService {
     feedId: string,
     input: ApproveFeedPolicyDto,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'changeset.approve',
+    );
     const revisionExists = await this.repository.rulesetRevisionExists(
       projectId,
       input.rulesetRevision,
@@ -246,7 +269,11 @@ export class FeedsService {
     feedId: string,
     input: UpdateFeedSourceDto,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'changeset.approve',
+    );
     const feed = await this.repository.setSource({
       ownerId,
       projectId,
@@ -270,7 +297,11 @@ export class FeedsService {
     projectId: string,
     feedId: string,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'changeset.approve',
+    );
     const delivery = createDeliveryToken();
     const feed = await this.setDeliveryTokenHash(
       ownerId,
@@ -287,18 +318,30 @@ export class FeedsService {
     projectId: string,
     feedId: string,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'changeset.approve',
+    );
     await this.setDeliveryTokenHash(ownerId, projectId, feedId, null);
   }
 
   /**
-   * El usuario actual, después de comprobar que el proyecto es suyo: si no lo
-   * es, `findOwned` responde 404 antes de buscar nada más.
+   * Quien actúa, después de comprobar su acceso al proyecto (C6): si no es
+   * miembro, 404 antes de buscar nada más; sin el permiso, 403. Leer es de
+   * cualquier miembro; crear, publicar y configurar el feed, de Manager o más.
    */
-  private async ownerOf(identity: AuthenticatedIdentity, projectId: string) {
-    const owner = await this.usersService.findCurrent(identity);
-    await this.projectsService.findOwned(identity, projectId);
-    return owner.id;
+  private async actorFor(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    permission: OrganizationPermission,
+  ) {
+    const { actorId } = await this.projectsService.requireAccess(
+      identity,
+      projectId,
+      permission,
+    );
+    return actorId;
   }
 
   private async requireFeed(

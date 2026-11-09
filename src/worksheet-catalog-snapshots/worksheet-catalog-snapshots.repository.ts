@@ -10,7 +10,6 @@ import type { WorksheetCatalogSnapshot } from './worksheet-catalog-snapshots.typ
 export type CatalogSourceAccess = Readonly<{
   role: OrganizationRole;
   isArchived: boolean;
-  projectOwnerId: string;
   worksheetName: string;
 }>;
 
@@ -40,23 +39,18 @@ export class WorksheetCatalogSnapshotsRepository {
 
   /**
    * El papel de quien pregunta en la organización de la hoja, si está
-   * archivada, de quién es el proyecto y el nombre de la hoja. `null` si la
-   * hoja no existe en este proyecto o quien pregunta no es miembro. Dentro de
-   * `accept` se vuelve a leer sin bloquear la organización: `accept` ya tiene
-   * bloqueado el proyecto, y bloquear después la organización invertiría el
-   * orden de las escrituras de hojas (ficha 04, E17).
+   * archivada y el nombre de la hoja. `null` si la hoja no existe en este
+   * proyecto o quien pregunta no es miembro.
    */
   async findAccess(
     actorId: string,
     scope: ProjectScope,
     worksheetId: string,
-    client: Prisma.TransactionClient = this.prisma,
   ): Promise<CatalogSourceAccess | null> {
-    const rows = await client.$queryRaw<CatalogSourceAccess[]>(Prisma.sql`
+    const rows = await this.prisma.$queryRaw<CatalogSourceAccess[]>(Prisma.sql`
       SELECT
         m.role,
         o.archived_at IS NOT NULL AS "isArchived",
-        p.owner_id AS "projectOwnerId",
         w.name AS "worksheetName"
       FROM estadistica_forms.worksheets w
       JOIN estadistica_forms.projects p

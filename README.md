@@ -2,10 +2,12 @@
 
 Backend de formularios, estadísticas e investigación, construido paso a paso con **NestJS + TypeScript + pnpm**. Ya dispone de identidad validada, perfil local y proyectos privados persistidos con configuración de tienda.
 
-El código usa **PostgreSQL de Neon** mediante `DATABASE_URL`, `pg` y Prisma 7.10.0.
-El [plan del cambio](docs/plans/config/04-plan-cambiar-cloud-sql-por-neon.md) lo registra;
-la integración anterior con Google Cloud SQL se conserva solo como historia en la bitácora.
-Descope conserva la identidad y la sesión; PostgreSQL almacena el perfil y los proyectos en `estadistica_forms.projects`. La migración conserva los IDs y datos anteriores.
+El código usa **PostgreSQL en Google Cloud SQL** (proyecto `estadistica-forms-api`,
+instancia `estadistica-forms-db`) mediante `DATABASE_URL`, `pg` y Prisma 7.10.0, a
+través de Cloud SQL Auth Proxy. El [plan del cambio](docs/plans/google-cloud/db/01-plan-cloud-sql-propio.md)
+lo registra; las etapas anteriores en Neon y en la instancia compartida de
+`expo-city-bol` se conservan como historia en la bitácora.
+Descope conserva la identidad y la sesión; PostgreSQL almacena el perfil y los proyectos en `estadistica_forms.projects`.
 
 `prisma/migrations` contiene únicamente la historia PostgreSQL activa.
 La integración anterior se retiró tras guardar el commit local de restauración
@@ -13,24 +15,31 @@ La integración anterior se retiró tras guardar el commit local de restauració
 registra el alcance. El proyecto ya no incluye una segunda conexión ni migraciones
 alternativas. No se eliminaron bases remotas ni sus datos.
 
-## Configurar Neon
+## Configurar Cloud SQL
 
 Completa el `.env` existente a partir de [`.env.example`](./.env.example), conservando
 `DESCOPE_PROJECT_ID` y los secretos de Descope que ya utilizas:
 
 ```dotenv
-DATABASE_URL='postgresql://usuario:contraseña@ep-xxxx-pooler.region.aws.neon.tech/neondb?sslmode=require'
+CLOUD_SQL_INSTANCE=estadistica-forms-api:us-east4:estadistica-forms-db
+DATABASE_URL='postgresql://tu-correo%40gmail.com@127.0.0.1:5433/estadistica_forms'
 ```
 
-Usa la cadena de conexión con pooler (host `-pooler`) que muestra el panel de Neon.
-`DATABASE_URL` es solo del servidor: no la subas a Git ni la añadas al frontend. El
-runtime la usa tal cual; Prisma CLI deriva la conexión directa quitando `-pooler` del
-host, porque el pooler no soporta los bloqueos de sesión de las migraciones. Neon
-suspende el cómputo inactivo, así que la primera consulta tras una pausa puede tardar.
+La API y Prisma CLI se conectan al proxy local en `127.0.0.1:5433`; el proxy cifra
+la conexión hasta Google y entra con tu cuenta de Google (usuario IAM de la base),
+así que **no hay contraseña**. Necesita una sesión de `gcloud`
+(`gcloud auth application-default login`) con permiso `roles/cloudsql.client`.
+Deja el proxy abierto en otra terminal mientras uses la API:
+
+```sh
+pnpm db:proxy
+```
+
+`DATABASE_URL` es solo del servidor: no la subas a Git ni la añadas al frontend.
 
 ## Migrar y comprobar
 
-El runtime y Prisma CLI usan la misma variable `DATABASE_URL`; no hace falta proxy.
+El runtime y Prisma CLI usan la misma variable `DATABASE_URL`, con el proxy abierto.
 Desde esta carpeta:
 
 ```sh
@@ -48,7 +57,7 @@ del antiguo Go queda a cargo del usuario.
 
 La activación remota anterior en Cloud SQL (2026-10-22) quedó registrada en la
 [entrada 07](./bitacora-construccion/settings/07-aplicar-migraciones-y-verificar-cloud-sql.md);
-la base actual es Neon.
+la base actual es la instancia propia de Cloud SQL ([bitácora google-cloud/db 01](./bitacora-construccion/google-cloud/db/01-cloud-sql-propio.md)).
 Para repetir la prueba de persistencia ejecuta `pnpm db:smoke`: crea o reutiliza
 únicamente `postgresql-smoke@example.test`, comprueba idempotencia, edición y lectura
 SQL, y conserva esa fila identificable. No crea una cuenta Descope ni omite el guard

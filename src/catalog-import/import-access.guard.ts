@@ -14,7 +14,8 @@ import type { ImportRequest } from './import.types.js';
 
 /**
  * Rechaza la subida antes de leer el CSV (hasta 10 MiB) si el proyecto no
- * existe, no está configurado o ya tiene una importación activa.
+ * existe para quien sube, no puede importar (Editor o más, C6), no está
+ * configurado o ya tiene una importación activa.
  */
 @Injectable()
 export class ImportAccessGuard implements CanActivate {
@@ -33,15 +34,15 @@ export class ImportAccessGuard implements CanActivate {
 
     const projectId = readProjectId(request);
     await this.projects.requireConfigured(identity, projectId);
-    const owner = await this.users.findCurrent(identity);
+    const user = await this.users.findCurrent(identity);
 
     // Comprobación temprana; la definitiva, sin carreras, está en
     // `CatalogImportRepository.accept`.
-    if (await this.repository.hasActiveJob(owner.id, projectId)) {
+    if (await this.repository.hasActiveJob(user.id, projectId)) {
       throw apiError(ErrorCodes.IMPORT_ALREADY_ACTIVE);
     }
 
-    request.importOwnerId = owner.id;
+    request.importOwnerId = user.id;
     return true;
   }
 }

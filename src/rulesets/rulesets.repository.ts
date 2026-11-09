@@ -6,6 +6,12 @@ import { PrismaService } from '../database/prisma.service.js';
 import { isRuleset, type Ruleset } from '../evaluations/engine/ruleset.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
+  assertProjectPermission,
+  joinProjectAccess,
+  PROJECT_ACCESS_COLUMNS,
+  type ProjectMemberAccess,
+} from '../projects/project-access.js';
+import {
   hasCompleteConfiguration,
   type ChannelProfile,
 } from '../projects/projects.types.js';
@@ -45,12 +51,12 @@ export class RulesetsRepository {
    * bloqueo otra versión ocupa ese número, responde 409 en lugar de 500.
    */
   async create(
-    ownerId: string,
+    actorId: string,
     projectId: string,
     ruleset: Ruleset,
   ): Promise<RulesetVersion> {
     try {
-      return await this.insertNextRevision(ownerId, projectId, ruleset);
+      return await this.insertNextRevision(actorId, projectId, ruleset);
     } catch (error) {
       throw asRevisionConflict(error);
     }
@@ -84,12 +90,12 @@ export class RulesetsRepository {
   }
 
   private insertNextRevision(
-    ownerId: string,
+    actorId: string,
     projectId: string,
     ruleset: Ruleset,
   ) {
     return this.prisma.$transaction(async (tx) => {
-      await lockConfiguredProject(tx, ownerId, projectId);
+      await lockConfiguredProject(tx, actorId, projectId);
       const revision = await this.nextRevision(tx, projectId);
 
       // Con la API del modelo, una clave repetida llega como P2002; con
@@ -126,27 +132,30 @@ export class RulesetsRepository {
 }
 
 /**
- * FOR UPDATE bloquea la fila del proyecto hasta el final de la transacción: dos
- * guardados simultáneos no pueden leer el mismo máximo de revisión. Es el mismo
- * bloqueo que usan aceptar y borrar importaciones.
+ * FOR UPDATE OF p bloquea la fila del proyecto hasta el final de la
+ * transacción: dos guardados simultáneos no pueden leer el mismo máximo de
+ * revisión. Es el mismo bloqueo que usan aceptar y borrar importaciones. Con
+ * él se comprueba que quien guarda es miembro y puede preparar trabajo (C6).
  */
 async function lockConfiguredProject(
   tx: Prisma.TransactionClient,
-  ownerId: string,
+  actorId: string,
   projectId: string,
 ) {
-  const projects = await tx.$queryRaw<ProjectConfigurationRow[]>`
+  const projects = await tx.$queryRaw<
+    (ProjectConfigurationRow & ProjectMemberAccess)[]
+  >`
     SELECT
-      country,
-      currency,
-      channel_profile AS "channelProfile"
-    FROM estadistica_forms.projects
-    WHERE id = ${projectId} AND owner_id = ${ownerId}
-    FOR UPDATE`;
-  const project = projects[0];
-  if (!project) {
-    throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
-  }
+      p.country,
+      p.currency,
+      p.channel_profile AS "channelProfile",
+      ${PROJECT_ACCESS_COLUMNS}
+    FROM estadistica_forms.projects p
+    ${joinProjectAccess(actorId)}
+    WHERE p.id = ${projectId}
+    FOR UPDATE OF p`;
+  const project = projects[0] ?? null;
+  assertProjectPermission(project, 'worksheet.write');
   // El mapeo se valida contra el perfil del canal: sin configuración no hay perfil.
   if (!hasCompleteConfiguration(project)) {
     throw apiError(ErrorCodes.PROJECT_CONFIGURATION_REQUIRED);

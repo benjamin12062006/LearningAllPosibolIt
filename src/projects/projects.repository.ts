@@ -11,8 +11,8 @@ import type { PageRequest } from '../common/http/pagination.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { lockOrganization } from '../organizations/organization-lock.js';
-import type { OrganizationRole } from '../organizations/organization-roles.js';
 import { ensurePersonalOrganization } from '../organizations/organizations.repository.js';
+import { isProjectMember, type ProjectMemberAccess } from './project-access.js';
 import {
   hasCompleteConfiguration,
   type Project,
@@ -22,11 +22,6 @@ import {
 
 /** Fila tal como sale de SQL; `configurationStatus` se calcula después. */
 type ProjectRow = Omit<Project, 'configurationStatus'>;
-
-type ProjectMemberRow = Readonly<{
-  organizationId: string;
-  role: OrganizationRole;
-}>;
 
 /** La clave que manda el cliente y el hash del cuerpo validado (C2 del plan de cierre). */
 export type ProjectIdempotency = Readonly<{
@@ -52,26 +47,31 @@ const PROJECT_COLUMNS = Prisma.sql`
 export class ProjectsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Siempre acotado: el llamador decide la ventana (`limit`/`offset`). */
-  async findAllByOwner(
-    ownerId: string,
+  /**
+   * Los proyectos de todas las organizaciones de la persona (C6). Siempre
+   * acotado: el llamador decide la ventana (`limit`/`offset`).
+   */
+  async findAllForMember(
+    userId: string,
     page: { limit: number; offset: number },
   ): Promise<Project[]> {
     const rows = await this.prisma.$queryRaw<ProjectRow[]>(Prisma.sql`
       SELECT ${PROJECT_COLUMNS}
       FROM estadistica_forms.projects
-      WHERE owner_id = ${ownerId}
+      WHERE ${isProjectMember(userId, Prisma.raw('projects'))}
       ORDER BY created_at DESC, id DESC
       LIMIT ${page.limit} OFFSET ${page.offset}
     `);
     return rows.map(toProject);
   }
 
-  async findByOwner(ownerId: string, id: string): Promise<Project | null> {
+  /** El proyecto si quien pregunta es miembro de su organización; si no, `null`. */
+  async findVisible(userId: string, id: string): Promise<Project | null> {
     const rows = await this.prisma.$queryRaw<ProjectRow[]>(Prisma.sql`
       SELECT ${PROJECT_COLUMNS}
       FROM estadistica_forms.projects
-      WHERE id = ${id} AND owner_id = ${ownerId}
+      WHERE id = ${id}
+        AND ${isProjectMember(userId, Prisma.raw('projects'))}
     `);
     return rows[0] ? toProject(rows[0]) : null;
   }
@@ -137,8 +137,9 @@ export class ProjectsRepository {
    * queda bloqueada en cuanto el proyecto tiene una importación, porque cada
    * importación guarda la configuración con la que se hizo.
    */
+  /** El permiso lo comprueba el servicio antes; aquí, la membresía en el `WHERE`. */
   async update(
-    ownerId: string,
+    actorId: string,
     id: string,
     update: ProjectUpdate,
   ): Promise<Project | null> {
@@ -149,7 +150,8 @@ export class ProjectsRepository {
       const lockedRows = await tx.$queryRaw<ProjectRow[]>(Prisma.sql`
         SELECT ${PROJECT_COLUMNS}
         FROM estadistica_forms.projects
-        WHERE id = ${id} AND owner_id = ${ownerId}
+        WHERE id = ${id}
+          AND ${isProjectMember(actorId, Prisma.raw('projects'))}
         FOR UPDATE
       `);
       const current = lockedRows[0];
@@ -175,7 +177,7 @@ export class ProjectsRepository {
             THEN ${update.currency ?? null} ELSE currency END,
           channel_profile = CASE WHEN ${updatesConfiguration}
             THEN ${update.channelProfile ?? null} ELSE channel_profile END
-        WHERE id = ${id} AND owner_id = ${ownerId}
+        WHERE id = ${id}
         RETURNING ${PROJECT_COLUMNS}
       `);
       return rows[0] ? toProject(rows[0]) : null;
@@ -211,12 +213,28 @@ export class ProjectsRepository {
   async findMemberAccess(
     userId: string,
     projectId: string,
-  ): Promise<ProjectMemberRow | null> {
-    const rows = await this.prisma.$queryRaw<ProjectMemberRow[]>(Prisma.sql`
+  ): Promise<Pick<ProjectMemberAccess, 'organizationId' | 'role'> | null> {
+    const access = await this.findAccess(userId, projectId);
+    return access
+      ? { organizationId: access.organizationId, role: access.role }
+      : null;
+  }
+
+  /**
+   * Lo mismo y, además, si la organización está archivada: lo que necesita la
+   * puerta de las rutas de `/projects/:projectId/…` (C6).
+   */
+  async findAccess(
+    userId: string,
+    projectId: string,
+  ): Promise<ProjectMemberAccess | null> {
+    const rows = await this.prisma.$queryRaw<ProjectMemberAccess[]>(Prisma.sql`
       SELECT
         p.organization_id AS "organizationId",
-        m.role
+        m.role,
+        o.archived_at IS NOT NULL AS "isArchived"
       FROM estadistica_forms.projects p
+      JOIN estadistica_forms.organizations o ON o.id = p.organization_id
       JOIN estadistica_forms.organization_members m
         ON m.organization_id = p.organization_id AND m.user_id = ${userId}
       WHERE p.id = ${projectId}

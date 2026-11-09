@@ -14,6 +14,8 @@ import {
 } from '../../../src/users/users.repository.js';
 import { ProjectsRepository } from '../../../src/projects/projects.repository.js';
 import { alice, bob, projectInput } from '../support/project-fixtures.js';
+import { ensurePersonalOrganization } from '../../../src/organizations/organizations.repository.js';
+import { insertLegacyProject } from '../support/legacy-project.js';
 import { createTestDatabase } from '../support/test-database.js';
 
 describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
@@ -54,7 +56,7 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
       [tiedDate],
     );
 
-    const projects = await repository.findAllByOwner(owner.id, {
+    const projects = await repository.findAllForMember(owner.id, {
       limit: 100,
       offset: 0,
     });
@@ -63,7 +65,7 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
       [first.id, second.id].sort().reverse(),
     );
     expect(projects).toHaveLength(2);
-    expect(await repository.findByOwner(owner.id, first.id)).toEqual({
+    expect(await repository.findVisible(owner.id, first.id)).toEqual({
       ...first,
       createdAt: tiedDate,
     });
@@ -79,22 +81,24 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
     const foreign = await repository.create(other.id, 'Ajeno', projectInput);
 
     expect(
-      await repository.findAllByOwner(owner.id, { limit: 100, offset: 0 }),
+      await repository.findAllForMember(owner.id, { limit: 100, offset: 0 }),
     ).toEqual([own]);
-    expect(await repository.findByOwner(owner.id, foreign.id)).toBeNull();
+    expect(await repository.findVisible(owner.id, foreign.id)).toBeNull();
     expect(
       await repository.update(owner.id, foreign.id, { name: 'Intrusión' }),
     ).toBeNull();
-    expect(await repository.findByOwner(other.id, foreign.id)).toEqual(foreign);
+    expect(await repository.findVisible(other.id, foreign.id)).toEqual(foreign);
   });
 
   it('completa un heredado y permite renombrarlo conservando ID y fecha', async () => {
     const id = '00000000-0000-4000-8000-000000000003';
-    await database.connection.pool.query(
-      'INSERT INTO estadistica_forms.projects (id,name,owner_id,created_at) VALUES ($1,$2,$3,$4)',
-      [id, 'Heredado', owner.id, '2026-01-01'],
-    );
-    const inherited = await repository.findByOwner(owner.id, id);
+    await insertLegacyProject(prisma, {
+      id,
+      name: 'Heredado',
+      ownerId: owner.id,
+      createdAt: '2026-01-01',
+    });
+    const inherited = await repository.findVisible(owner.id, id);
     expect(inherited).toMatchObject({
       country: null,
       currency: null,
@@ -131,20 +135,26 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
           [country, currency, channel, project.id],
         ),
       ).rejects.toMatchObject({ code: '23514' });
-      expect(await repository.findByOwner(owner.id, project.id)).toEqual(
+      expect(await repository.findVisible(owner.id, project.id)).toEqual(
         project,
       );
     },
   );
 
   it('la FK impide insertar un proyecto huérfano', async () => {
+    // Con una organización real (obligatoria desde C6): lo que falla es el
+    // propietario que no existe.
+    const organizationId = await prisma.$transaction((tx) =>
+      ensurePersonalOrganization(tx, owner.id),
+    );
     await expect(
       database.connection.pool.query(
-        "INSERT INTO estadistica_forms.projects (id,name,owner_id,created_at) VALUES ('orphan','Huérfano','missing','2026-10-25')",
+        "INSERT INTO estadistica_forms.projects (id,name,owner_id,organization_id,created_at) VALUES ('orphan','Huérfano','missing',$1,'2026-10-25')",
+        [organizationId],
       ),
     ).rejects.toMatchObject({ code: '23503' });
     expect(
-      await repository.findAllByOwner(owner.id, { limit: 100, offset: 0 }),
+      await repository.findAllForMember(owner.id, { limit: 100, offset: 0 }),
     ).toEqual([]);
   });
 
@@ -153,7 +163,7 @@ describe('ProjectsRepository con Prisma y PostgreSQL temporal', () => {
     const { rows } = await database.connection.pool.query(
       'SELECT migration_name, rolled_back_at FROM estadistica_forms._prisma_migrations ORDER BY migration_name',
     );
-    expect(rows).toHaveLength(29);
+    expect(rows).toHaveLength(30);
     expect(rows.every((row) => row.rolled_back_at === null)).toBe(true);
   });
 });

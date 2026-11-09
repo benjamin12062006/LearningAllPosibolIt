@@ -3,15 +3,14 @@ import { randomUUID } from 'node:crypto';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import type { OrganizationPermission } from '../organizations/organization-roles.js';
 import { ProjectsService } from '../projects/projects.service.js';
-import { UsersService } from '../users/users.service.js';
 import { FeedRefreshWorker } from './feed-refresh.worker.js';
 import { FeedRefreshesRepository } from './feed-refreshes.repository.js';
 
 @Injectable()
 export class FeedRefreshesService {
   constructor(
-    private readonly usersService: UsersService,
     private readonly projectsService: ProjectsService,
     private readonly repository: FeedRefreshesRepository,
     private readonly worker: FeedRefreshWorker,
@@ -27,7 +26,7 @@ export class FeedRefreshesService {
     projectId: string,
     feedId: string,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(identity, projectId, 'worksheet.write');
     const feed = await this.repository.findFeedForRefresh(
       ownerId,
       projectId,
@@ -64,7 +63,11 @@ export class FeedRefreshesService {
     feedId: string,
     refreshId: string,
   ) {
-    const ownerId = await this.ownerOf(identity, projectId);
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'organization.read',
+    );
     const refresh = await this.repository.findByOwner({
       ownerId,
       projectId,
@@ -78,13 +81,21 @@ export class FeedRefreshesService {
   }
 
   /**
-   * El usuario actual, después de comprobar que el proyecto es suyo: si no lo
-   * es, `findOwned` responde 404 antes de buscar nada más.
+   * Quien actúa, después de comprobar su acceso al proyecto (C6): si no es
+   * miembro, 404 antes de buscar nada más; sin el permiso, 403. Lanzar una
+   * actualización prepara trabajo (Editor o más); consultarla, cualquier miembro.
    */
-  private async ownerOf(identity: AuthenticatedIdentity, projectId: string) {
-    const owner = await this.usersService.findCurrent(identity);
-    await this.projectsService.findOwned(identity, projectId);
-    return owner.id;
+  private async actorFor(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    permission: OrganizationPermission,
+  ) {
+    const { actorId } = await this.projectsService.requireAccess(
+      identity,
+      projectId,
+      permission,
+    );
+    return actorId;
   }
 }
 

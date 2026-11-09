@@ -13,7 +13,7 @@ export function resolveDatabaseConnection(
   configService: Pick<ConfigService, 'get'>,
 ): DatabaseConnection {
   const url = configService.get<string>('DATABASE_URL')?.trim();
-  if (!url) throw new Error('Falta DATABASE_URL para conectar con Neon.');
+  if (!url) throw new Error('Falta DATABASE_URL para conectar con PostgreSQL.');
 
   let parsed: URL;
   try {
@@ -31,7 +31,10 @@ export function resolveDatabaseConnection(
   return { url };
 }
 
-/** Fuera de la máquina local, la conexión debe ir cifrada. */
+/**
+ * Fuera de la máquina local, la conexión debe ir cifrada. En local va al
+ * Cloud SQL Auth Proxy, que cifra él el tramo hasta Google.
+ */
 function requiresTls(url: URL) {
   return !LOCAL_HOSTS.has(url.hostname);
 }

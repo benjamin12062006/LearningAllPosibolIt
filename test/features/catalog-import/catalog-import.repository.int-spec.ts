@@ -408,7 +408,7 @@ describe('Importación con repositorio, worker, disco y PostgreSQL reales', () =
     const snapshot = await prisma.catalogSnapshot.findUniqueOrThrow({
       where: { id: input.snapshotId },
     });
-    const project = await projects.findByOwner(ownerId, projectId);
+    const project = await projects.findVisible(ownerId, projectId);
     expect(snapshot.projectConfiguration).toMatchObject({
       country: project?.country,
       currency: project?.currency,

@@ -618,7 +618,7 @@ describe('Llevar una revisión de hoja al catálogo y al feed por HTTP (E5.4, T1
     expect(await count('catalog_snapshots')).toBe(0);
   });
 
-  it('acceso: ajeno 404; lector 403; quien escribe pero no es propietario del proyecto 403; archivada 409 (D23)', async () => {
+  it('acceso: ajeno 404; lector 403; un Editor que no creó el proyecto sí puede (C6); archivada 409 (D23)', async () => {
     await sendToCatalog(catalogRequest(), 'bob-session')
       .expect(404)
       .expect(({ body }) =>
@@ -630,16 +630,14 @@ describe('Llevar una revisión de hoja al catálogo y al feed por HTTP (E5.4, T1
       .expect(({ body }) =>
         expect(body).toMatchObject(publicError('FORBIDDEN')),
       );
-    for (const role of ['editor', 'owner'] as const) {
-      await setBobRole(role);
-      await sendToCatalog(catalogRequest(), 'bob-session')
-        .expect(403)
-        .expect(({ body }) =>
-          expect(body).toMatchObject(
-            publicError('WORKSHEET_CATALOG_OWNER_REQUIRED'),
-          ),
-        );
-    }
+    // Desde C6 el catálogo es de la organización: basta con poder preparar trabajo.
+    await setBobRole('editor');
+    const { body: bobs } = await sendToCatalog(
+      catalogRequest(),
+      'bob-session',
+    ).expect(202);
+    expect(bobs.catalogSnapshot.createdBy).toBe(bobId);
+    await finishImports();
 
     // Una organización personal no se archiva: se convierte antes en de equipo.
     await pool().query(
@@ -653,7 +651,8 @@ describe('Llevar una revisión de hoja al catálogo y al feed por HTTP (E5.4, T1
       .expect(({ body }) =>
         expect(body).toMatchObject(publicError('ORGANIZATION_ARCHIVED')),
       );
-    expect(await count('catalog_snapshots')).toBe(0);
+    // Solo el de Bob, de antes de archivar.
+    expect(await count('catalog_snapshots')).toBe(1);
   });
 
   it('si la organización se archiva mientras se escribe el CSV, la transacción de accept lo rechaza (D23)', async () => {

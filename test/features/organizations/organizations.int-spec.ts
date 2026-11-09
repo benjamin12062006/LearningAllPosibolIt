@@ -144,15 +144,15 @@ describe('Organización personal y lecturas por membresía con PostgreSQL tempor
     expect(await organizations.findMemberships(other.id, page)).toHaveLength(1);
   });
 
-  it('un proyecto heredado sin organización todavía no es visible por membresía', async () => {
-    const legacy = '00000000-0000-4000-8000-000000000003';
-    await database.connection.pool.query(
-      `INSERT INTO estadistica_forms.projects (id, name, owner_id, created_at)
-       VALUES ($1, 'Heredado', $2, '2026-01-01')`,
-      [legacy, owner.id],
-    );
-
-    expect(await projects.findMemberAccess(owner.id, legacy)).toBeNull();
-    expect(await projects.findByOwner(owner.id, legacy)).not.toBeNull();
+  it('C6: un proyecto ya no puede existir sin organización (NOT NULL)', async () => {
+    // Antes de C6 un proyecto heredado podía quedarse sin organización y solo
+    // lo veía quien lo creó; ahora el acceso es por membresía y la base lo exige.
+    await expect(
+      database.connection.pool.query(
+        `INSERT INTO estadistica_forms.projects (id, name, owner_id, created_at)
+         VALUES ($1, 'Heredado', $2, '2026-01-01')`,
+        ['00000000-0000-4000-8000-000000000003', owner.id],
+      ),
+    ).rejects.toMatchObject({ code: '23502' });
   });
 });
