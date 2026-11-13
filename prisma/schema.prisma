@@ -709,3 +709,19 @@ model WorksheetSnapshot {
   @@map("worksheet_catalog_snapshots")
   @@schema("estadistica_forms")
 }
+
+/// Fuentes ya mandadas al índice de conocimiento y su huella (plan E6, D16).
+/// Sin relación con `Project` a propósito: sobrevive al proyecto para poder
+/// quitarlo del índice.
+model KnowledgeSyncState {
+  projectId      String @map("project_id")
+  sourceType     String @map("source_type")
+  sourceId       String @map("source_id")
+  organizationId String @map("organization_id")
+  fingerprint    String
+  syncedAt       String @map("synced_at")
+
+  @@id([projectId, sourceType, sourceId])
+  @@map("knowledge_sync_state")
+  @@schema("estadistica_forms")
+}

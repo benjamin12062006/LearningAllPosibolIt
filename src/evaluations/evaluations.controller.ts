@@ -81,6 +81,25 @@ export class EvaluationsController {
     return { rows: items, page };
   }
 
+  /**
+   * «Requiere atención»: `{ attention: { affectedProducts, problemGroups,
+   * excludedProducts, exclusionGroups } }`. Cada grupo se abre con `…/rows`.
+   */
+  @Get(':evaluationId/attention')
+  async findAttention(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('evaluationId', uuidParamPipe('evaluationId')) evaluationId: string,
+  ) {
+    return {
+      attention: await this.evaluations.findAttention(
+        identity,
+        projectId,
+        evaluationId,
+      ),
+    };
+  }
+
   /** Descarga de `errores.csv` (D10); `StreamableFile` fija las cabeceras (F37). */
   @Get(':evaluationId/errors.csv')
   async downloadErrorsCsv(

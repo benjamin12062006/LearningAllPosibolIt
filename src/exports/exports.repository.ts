@@ -33,7 +33,11 @@ type EvaluationTarget = Pick<
 >;
 
 /** El archivo de una exportación: solo lo ve el servidor. */
-export type ExportFile = { artifactKey: string; byteSize: number };
+export type ExportFile = {
+  artifactKey: string;
+  byteSize: number;
+  rowCount: number;
+};
 
 type ArtifactKeyRow = { artifactKey: string };
 
@@ -152,7 +156,8 @@ export class ExportsRepository {
     const rows = await this.prisma.$queryRaw<ExportFile[]>`
       SELECT
         x.artifact_key AS "artifactKey",
-        x.byte_size AS "byteSize"
+        x.byte_size AS "byteSize",
+        x.row_count AS "rowCount"
       FROM estadistica_forms.exports x
       JOIN estadistica_forms.projects p ON p.id = x.project_id
       WHERE x.id = ${exportId}

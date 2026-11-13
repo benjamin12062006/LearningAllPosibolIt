@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import type { Readable } from 'node:stream';
 import { ArtifactStore, isMissingFile } from '../artifacts/artifact.store.js';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { apiError } from '../common/http/api-error.js';
@@ -25,14 +26,20 @@ import type {
 import { FeedsRepository } from './feeds.repository.js';
 import {
   FEED_OPTIONS,
+  type DeliveryBlock,
+  type DeliveryStatus,
   type ExportToPublish,
   type FeedOptions,
+  type FeedVersionView,
   type FeedView,
   type PublicationConfirmation,
   type PublishedBy,
 } from './feeds.types.js';
 
 type Publication = Readonly<{ feed: FeedView; published: boolean }>;
+
+/** El TSV de una versión, ya abierto, y cuántos productos lleva. */
+export type VersionDownload = Readonly<{ content: Readable; rowCount: number }>;
 
 @Injectable()
 export class FeedsService {
@@ -106,6 +113,81 @@ export class FeedsService {
     const rows = await this.repository.listVersions(feedId, fetchWindow(page));
     const { items, page: pageInfo } = toPage(rows, page);
     return { versions: items, page: pageInfo };
+  }
+
+  /** Una versión del historial, para saber de dónde sale lo que enseña el visor. */
+  async findVersion(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    feedId: string,
+    versionId: string,
+  ): Promise<FeedVersionView> {
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'organization.read',
+    );
+    await this.requireFeed(ownerId, projectId, feedId);
+    const version = await this.repository.findVersion(feedId, versionId);
+    if (!version) {
+      throw apiError(ErrorCodes.FEED_VERSION_NOT_FOUND);
+    }
+    return version;
+  }
+
+  /**
+   * Si la URL pública entrega el TSV y, si no, por qué (plan 02 de cierre, P3).
+   * Hace la misma comprobación que la entrega, sin el token.
+   */
+  async deliveryStatus(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    feedId: string,
+  ): Promise<DeliveryStatus> {
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'organization.read',
+    );
+    const feed = await this.requireFeed(ownerId, projectId, feedId);
+    const reason = await this.deliveryBlockOf(feed);
+    return {
+      delivering: reason === null,
+      reason,
+      deliveryEnabled: feed.deliveryEnabled,
+      publishedVersion: feed.publishedVersion,
+    };
+  }
+
+  /**
+   * El TSV de una versión del historial para el visor (plan E6, D1). Una versión
+   * de otro feed responde 404, como lo ajeno; si la retención ya retiró su
+   * archivo, 410.
+   */
+  async openVersionFile(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    feedId: string,
+    versionId: string,
+  ): Promise<VersionDownload> {
+    const ownerId = await this.actorFor(
+      identity,
+      projectId,
+      'organization.read',
+    );
+    await this.requireFeed(ownerId, projectId, feedId);
+
+    const file = await this.repository.findVersionFile(feedId, versionId);
+    if (!file) {
+      throw apiError(ErrorCodes.FEED_VERSION_NOT_FOUND);
+    }
+    if (file.artifactKey === null) {
+      throw apiError(ErrorCodes.FEED_VERSION_FILE_RETIRED);
+    }
+    return {
+      content: await this.openVersion(versionId, file.artifactKey),
+      rowCount: file.rowCount,
+    };
   }
 
   /**
@@ -467,6 +549,55 @@ export class FeedsService {
       await this.outbox.deliverNow();
     } catch {
       this.logger.error({ code: 'OUTBOX_DELIVERY_DEFERRED' });
+    }
+  }
+
+  /** El primer motivo por el que la URL pública no entregaría; nulo si entrega. */
+  private async deliveryBlockOf(feed: FeedView): Promise<DeliveryBlock | null> {
+    if (!feed.publishedVersion) {
+      return 'no_published_version';
+    }
+    if (!feed.deliveryEnabled) {
+      return 'delivery_disabled';
+    }
+    const hasFile = await this.hasReadableFile(
+      feed.id,
+      feed.publishedVersion.id,
+    );
+    return hasFile ? null : 'file_unavailable';
+  }
+
+  /** Abre y cierra el archivo: es lo que haría la entrega con la primera petición. */
+  private async hasReadableFile(feedId: string, versionId: string) {
+    const file = await this.repository.findVersionFile(feedId, versionId);
+    if (!file?.artifactKey) {
+      return false;
+    }
+    try {
+      const content = await this.store.openFeedVersion(file.artifactKey);
+      content.destroy();
+      return true;
+    } catch (error) {
+      if (!isMissingFile(error)) {
+        throw error;
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Abre antes de responder, como la entrega pública. La fila existe pero el
+   * archivo no: fallo del almacenamiento, `503`.
+   */
+  private async openVersion(versionId: string, key: string) {
+    try {
+      return await this.store.openFeedVersion(key);
+    } catch (error) {
+      if (!isMissingFile(error)) {
+        throw error;
+      }
+      this.logger.error({ code: 'FEED_FILE_MISSING', versionId });
+      throw apiError(ErrorCodes.FEED_FILE_UNAVAILABLE);
     }
   }
 

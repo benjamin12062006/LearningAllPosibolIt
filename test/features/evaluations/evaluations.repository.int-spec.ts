@@ -652,7 +652,7 @@ describe('Evaluaciones con Prisma, worker y PostgreSQL temporal', () => {
         page: { limit: number; offset: number },
         outcome?: 'valid' | 'invalid' | 'excluded',
       ) =>
-        (await repository.findRows(evaluation!.id, page, outcome)).map(
+        (await repository.findRows(evaluation!.id, page, { outcome })).map(
           (row) => row.sourceRow,
         );
 
@@ -668,7 +668,7 @@ describe('Evaluaciones con Prisma, worker y PostgreSQL temporal', () => {
       const [invalid] = await repository.findRows(
         evaluation!.id,
         { limit: 1, offset: 0 },
-        'invalid',
+        { outcome: 'invalid' },
       );
 
       expect(invalid.problems).toEqual([

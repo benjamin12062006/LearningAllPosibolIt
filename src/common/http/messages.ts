@@ -916,4 +916,29 @@ export const API_MESSAGES = {
     'No se encontró el snapshot de catálogo de la hoja.',
     'The worksheet catalog snapshot was not found.',
   ),
+  [ErrorCodes.FEED_VERSION_NOT_FOUND]: entry(
+    404,
+    'No se encontró la versión del feed.',
+    'The feed version was not found.',
+  ),
+  [ErrorCodes.FEED_VERSION_FILE_RETIRED]: entry(
+    410,
+    'El archivo de esta versión ya se retiró: solo se conservan las últimas versiones del feed.',
+    'This version file was already retired: only the latest feed versions are kept.',
+  ),
+  [ErrorCodes.KNOWLEDGE_DISABLED]: entry(
+    503,
+    'El asistente de IA no está activado en este servidor.',
+    'The AI assistant is not enabled on this server.',
+  ),
+  [ErrorCodes.PRODUCT_NOT_FOUND]: entry(
+    404,
+    'Ese producto no está en este archivo.',
+    'That product is not in this file.',
+  ),
+  [ErrorCodes.FEED_NOT_PUBLISHED]: entry(
+    409,
+    'El feed todavía no tiene una versión publicada con la que comparar.',
+    'The feed has no published version to compare with yet.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

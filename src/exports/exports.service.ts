@@ -15,7 +15,12 @@ import { buildProductsTsv } from './products-tsv.js';
 
 type SavedExport = Readonly<{ export: ExportView; created: boolean }>;
 
-export type ExportDownload = Readonly<{ content: Readable; byteSize: number }>;
+export type ExportDownload = Readonly<{
+  content: Readable;
+  byteSize: number;
+  /** Productos del TSV (sin la cabecera); lo usa el visor del feed. */
+  rowCount: number;
+}>;
 
 @Injectable()
 export class ExportsService {
@@ -122,6 +127,7 @@ export class ExportsService {
     return {
       content: await this.openFile(exportId, file.artifactKey),
       byteSize: file.byteSize,
+      rowCount: file.rowCount,
     };
   }
 

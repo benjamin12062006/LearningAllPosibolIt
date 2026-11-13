@@ -17,9 +17,15 @@ import type {
   EvaluationRowsQueryDto,
 } from './evaluations.dto.js';
 import { EvaluationsRepository } from './evaluations.repository.js';
-import { SAMPLE_ROWS, type EvaluationView } from './evaluations.types.js';
+import type { RowProblem } from './engine/google-merchant.profile.js';
+import {
+  SAMPLE_ROWS,
+  type AttentionView,
+  type EvaluationView,
+  type RowFilter,
+} from './evaluations.types.js';
 import { EvaluationWorker } from './evaluations.worker.js';
-import type { Language } from './problem-messages.js';
+import { describeProblem, type Language } from './problem-messages.js';
 
 @Injectable()
 export class EvaluationsService {
@@ -104,9 +110,35 @@ export class EvaluationsService {
     const rows = await this.repository.findRows(
       evaluationId,
       fetchWindow(page),
-      query.outcome,
+      rowFilterOf(query),
     );
     return toPage(rows, page);
+  }
+
+  /**
+   * «Requiere atención» (plan 02 de cierre, P4): los problemas agrupados y las
+   * exclusiones aparte. El total de afectados es el de productos inválidos de
+   * la evaluación: cada uno cuenta una vez aunque esté en varios grupos.
+   */
+  async findAttention(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    evaluationId: string,
+  ): Promise<AttentionView> {
+    const evaluation = await this.findOwned(identity, projectId, evaluationId);
+    assertHasResults(evaluation);
+
+    const problemGroups = await this.repository.findProblemGroups(evaluationId);
+    return {
+      evaluationId,
+      affectedProducts: evaluation.counts?.invalid ?? 0,
+      problemGroups: problemGroups.map(({ productCount, ...problem }) => ({
+        ...describeProblem(problem),
+        productCount,
+      })),
+      excludedProducts: evaluation.counts?.excluded ?? 0,
+      exclusionGroups: await this.repository.findExclusionGroups(evaluationId),
+    };
   }
 
   /**
@@ -160,6 +192,26 @@ export class EvaluationsService {
     }
     return evaluation;
   }
+}
+
+/** El filtro del informe a partir de la consulta ya validada. */
+function rowFilterOf(query: EvaluationRowsQueryDto): RowFilter {
+  return {
+    outcome: query.outcome,
+    problem: problemOf(query),
+    excludedByRule: query.rule,
+  };
+}
+
+/** La validación garantiza que `attribute` y `code` llegan juntos o no llegan. */
+function problemOf({
+  attribute,
+  code,
+}: EvaluationRowsQueryDto): RowProblem | undefined {
+  if (attribute === undefined || code === undefined) {
+    return undefined;
+  }
+  return { attribute, code };
 }
 
 /** Solo una evaluación terminada bien tiene filas completas y confirmadas. */

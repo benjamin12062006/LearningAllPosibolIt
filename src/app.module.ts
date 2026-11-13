@@ -17,6 +17,8 @@ import { WorksheetImportsModule } from './worksheet-imports/worksheet-imports.mo
 import { WorksheetExportsModule } from './worksheet-exports/worksheet-exports.module.js';
 import { WorksheetCatalogSnapshotsModule } from './worksheet-catalog-snapshots/worksheet-catalog-snapshots.module.js';
 import { HealthModule } from './health/health.module.js';
+import { FeedViewerModule } from './feed-viewer/feed-viewer.module.js';
+import { KnowledgeModule } from './knowledge/knowledge.module.js';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { HealthModule } from './health/health.module.js';
     WorksheetCatalogSnapshotsModule,
     HealthModule,
     GraphqlApiModule,
+    FeedViewerModule,
+    KnowledgeModule,
   ],
 })
 export class AppModule {}

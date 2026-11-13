@@ -21,6 +21,7 @@ import type {
   NewFeedVersion,
   PublicationConfirmation,
   PublishedBy,
+  VersionFile,
   RefreshOutcome,
   RefreshStage,
   RefreshStatus,
@@ -228,6 +229,35 @@ export class FeedsRepository {
       WHERE v.feed_id = ${feedId}
       ORDER BY v.created_at DESC, v.id DESC
       LIMIT ${window.limit} OFFSET ${window.offset}`;
+  }
+
+  /** El archivo de una versión de este feed; `null` si la versión es de otro. */
+  /** Una versión del historial; nula si no es de este feed. */
+  async findVersion(
+    feedId: string,
+    versionId: string,
+  ): Promise<FeedVersionView | null> {
+    const rows = await this.prisma.$queryRaw<FeedVersionView[]>`
+      SELECT ${VERSION_COLUMNS}
+      FROM estadistica_forms.feed_versions v
+      JOIN estadistica_forms.feeds f ON f.id = v.feed_id
+      WHERE v.id = ${versionId}
+        AND v.feed_id = ${feedId}`;
+    return rows[0] ?? null;
+  }
+
+  async findVersionFile(
+    feedId: string,
+    versionId: string,
+  ): Promise<VersionFile | null> {
+    const rows = await this.prisma.$queryRaw<VersionFile[]>`
+      SELECT
+        v.artifact_key AS "artifactKey",
+        v.row_count AS "rowCount"
+      FROM estadistica_forms.feed_versions v
+      WHERE v.id = ${versionId}
+        AND v.feed_id = ${feedId}`;
+    return rows[0] ?? null;
   }
 
   // ---------------------------------------------------------------------------

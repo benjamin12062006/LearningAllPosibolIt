@@ -56,6 +56,18 @@ export class FeedsController {
     return { feed: await this.feeds.findOne(identity, projectId, feedId) };
   }
 
+  /** `{ delivery: { delivering, reason, deliveryEnabled, publishedVersion } }`. */
+  @Get(':feedId/delivery')
+  async deliveryStatus(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('feedId', uuidParamPipe('feedId')) feedId: string,
+  ) {
+    return {
+      delivery: await this.feeds.deliveryStatus(identity, projectId, feedId),
+    };
+  }
+
   /**
    * `201` con la versión nueva publicada, o `200` si esa exportación ya era la
    * publicada (D6). `passthrough` solo fija el estado, como en exportaciones.

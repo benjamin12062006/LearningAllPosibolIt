@@ -2,6 +2,7 @@ import type { LocalizedMessage } from '../common/http/messages.js';
 import {
   isProductAttribute,
   MAX_LENGTHS,
+  PRODUCT_ATTRIBUTES,
   type ProblemAttribute,
   type ProblemCode,
   type RowProblem,
@@ -168,6 +169,15 @@ export function isRowProblem(value: unknown): value is RowProblem {
     Object.hasOwn(PROBLEM_TEXTS, code)
   );
 }
+
+/** Los códigos que el motor puede dar; con ellos se valida el filtro del informe. */
+export const PROBLEM_CODES = Object.keys(PROBLEM_TEXTS) as ProblemCode[];
+
+/** Dónde puede estar un problema: los atributos de Google y el `id`. */
+export const PROBLEM_ATTRIBUTES: readonly ProblemAttribute[] = [
+  'id',
+  ...PRODUCT_ATTRIBUTES,
+];
 
 export function describeProblem(problem: RowProblem): ProblemView {
   const text = PROBLEM_TEXTS[problem.code];

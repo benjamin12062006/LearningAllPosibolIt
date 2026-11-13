@@ -105,6 +105,22 @@ export type FeedView = Readonly<{
   updatedAt: string;
 }>;
 
+/** Por qué la URL pública no entrega el TSV (plan 02 de cierre, P3). */
+export type DeliveryBlock =
+  'no_published_version' | 'delivery_disabled' | 'file_unavailable';
+
+/**
+ * Lo que responde `GET …/feeds/:feedId/delivery`: si la URL pública entrega y,
+ * si no, el motivo. La ruta pública responde el mismo 404 a todos los «no»
+ * (D7); con sesión sí se puede explicar. El token nunca sale de aquí.
+ */
+export type DeliveryStatus = Readonly<{
+  delivering: boolean;
+  reason: DeliveryBlock | null;
+  deliveryEnabled: boolean;
+  publishedVersion: PublishedVersionView | null;
+}>;
+
 export type NewFeed = Readonly<{
   id: string;
   projectId: string;
@@ -120,6 +136,15 @@ export type ExportToPublish = Readonly<{
   rowCount: number;
   byteSize: number;
   tsvChecksum: string;
+}>;
+
+/**
+ * El archivo de una versión del historial, para el visor (plan E6, D1). La clave
+ * es nula si la retención ya lo retiró (D14).
+ */
+export type VersionFile = Readonly<{
+  artifactKey: string | null;
+  rowCount: number;
 }>;
 
 /** El archivo publicado al que lleva un token de entrega; solo lo ve el servidor. */

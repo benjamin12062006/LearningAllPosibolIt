@@ -3,7 +3,10 @@ import {
   type PublicError,
 } from '../common/http/public-error.js';
 import type { RetryOptions } from '../jobs/retry-delay.js';
-import type { ProductValues } from './engine/google-merchant.profile.js';
+import type {
+  ProductValues,
+  RowProblem,
+} from './engine/google-merchant.profile.js';
 import type { ProblemView } from './problem-messages.js';
 
 export const EVALUATION_LIMITS = {
@@ -27,6 +30,40 @@ export type EvaluationRowView = Readonly<{
   values: ProductValues | null;
   problems: readonly ProblemView[];
   excludedByRule: number | null;
+}>;
+
+/** Qué filas pide el informe: por resultado, por problema o por la regla que las excluyó. */
+export type RowFilter = Readonly<{
+  outcome?: RowOutcomeKind;
+  problem?: RowProblem;
+  excludedByRule?: number;
+}>;
+
+/** Un problema en un atributo y cuántos productos lo tienen. */
+export type ProblemGroupView = ProblemView & Readonly<{ productCount: number }>;
+
+/**
+ * Los productos que una regla del proyecto dejó fuera a propósito. `rule` es
+ * la regla tal como estaba en la revisión con la que se evaluó.
+ */
+export type ExclusionGroupView = Readonly<{
+  rulePosition: number;
+  rule: unknown;
+  productCount: number;
+}>;
+
+/**
+ * «Requiere atención» (docs-diagrams 22; plan 02 de cierre, P4): qué hay que
+ * arreglar antes de publicar. Un producto con dos problemas está en dos grupos
+ * pero cuenta una sola vez en `affectedProducts`. Las exclusiones van aparte:
+ * no son errores, son decisiones de las reglas.
+ */
+export type AttentionView = Readonly<{
+  evaluationId: string;
+  affectedProducts: number;
+  problemGroups: readonly ProblemGroupView[];
+  excludedProducts: number;
+  exclusionGroups: readonly ExclusionGroupView[];
 }>;
 
 /** Datos que la aceptación necesita; los IDs se generan antes de la transacción. */

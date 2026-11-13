@@ -44,12 +44,17 @@ import {
   type EvaluationCountsView,
   type EvaluationRequest,
   type EvaluationRowView,
-  type RowOutcomeKind,
   type EvaluationStatus,
+  type ExclusionGroupView,
+  type RowFilter,
+  type RowOutcomeKind,
   type EvaluationView,
 } from './evaluations.types.js';
 
 type IdRow = { id: string };
+
+/** Un grupo de problemas tal como sale de la base, sin textos. */
+export type ProblemGroupRow = RowProblem & { productCount: number };
 
 type SnapshotForEvaluationRow = { status: string; headers: unknown };
 
@@ -183,23 +188,62 @@ export class EvaluationsRepository {
     return rows.map(toEvaluationView);
   }
 
-  /** Filas de una evaluación en orden de `source_row`, opcionalmente de un resultado. */
+  /** Filas de una evaluación en orden de `source_row`, opcionalmente filtradas. */
   async findRows(
     evaluationId: string,
     page: { limit: number; offset: number },
-    outcome?: RowOutcomeKind,
+    filter: RowFilter = {},
   ): Promise<EvaluationRowView[]> {
-    const onlyOutcome = outcome
-      ? Prisma.sql`AND outcome = ${outcome}`
-      : Prisma.empty;
     const rows = await this.prisma.$queryRaw<StoredEvaluationRow[]>`
       SELECT ${ROW_COLUMNS}
       FROM estadistica_forms.evaluation_rows
       WHERE evaluation_id = ${evaluationId}
-        ${onlyOutcome}
+        ${rowFilterSql(filter)}
       ORDER BY source_row
       LIMIT ${page.limit} OFFSET ${page.offset}`;
     return rows.map(toRowView);
+  }
+
+  /**
+   * Los problemas de las filas inválidas, agrupados por atributo y código, del
+   * más frecuente al menos. Una fila es un producto (la importación rechaza los
+   * identificadores repetidos), pero se cuenta `DISTINCT` para que el recuento
+   * no dependa de esa garantía.
+   */
+  findProblemGroups(evaluationId: string): Promise<ProblemGroupRow[]> {
+    return this.prisma.$queryRaw<ProblemGroupRow[]>`
+      SELECT
+        problem->>'attribute' AS attribute,
+        problem->>'code' AS code,
+        count(DISTINCT r.external_id)::int AS "productCount"
+      FROM estadistica_forms.evaluation_rows r
+      CROSS JOIN LATERAL jsonb_array_elements(r.problems) AS problem
+      WHERE r.evaluation_id = ${evaluationId}
+        AND r.outcome = 'invalid'
+      GROUP BY 1, 2
+      ORDER BY "productCount" DESC, attribute, code`;
+  }
+
+  /**
+   * Los productos excluidos, por la regla que los dejó fuera. `rule` sale de
+   * la revisión con la que se evaluó; las posiciones empiezan en 1 y los
+   * arrays de `jsonb` en 0.
+   */
+  findExclusionGroups(evaluationId: string): Promise<ExclusionGroupView[]> {
+    return this.prisma.$queryRaw<ExclusionGroupView[]>`
+      SELECT
+        r.excluded_by_rule AS "rulePosition",
+        rv.rules -> (r.excluded_by_rule - 1) AS rule,
+        count(DISTINCT r.external_id)::int AS "productCount"
+      FROM estadistica_forms.evaluation_rows r
+      JOIN estadistica_forms.evaluations e ON e.id = r.evaluation_id
+      JOIN estadistica_forms.ruleset_versions rv
+        ON rv.project_id = e.project_id
+       AND rv.id = e.ruleset_version_id
+      WHERE r.evaluation_id = ${evaluationId}
+        AND r.outcome = 'excluded'
+      GROUP BY r.excluded_by_rule, rv.rules
+      ORDER BY r.excluded_by_rule`;
   }
 
   /** Todas las filas inválidas, para `errores.csv`: como mucho 5.000. */
@@ -667,6 +711,28 @@ function isTextList(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((item) => typeof item === 'string')
   );
+}
+
+/**
+ * Las condiciones del filtro del informe. Un problema se busca con `@>`: la
+ * fila lo tiene si su lista contiene ese par de atributo y código.
+ */
+function rowFilterSql(filter: RowFilter) {
+  const conditions: Prisma.Sql[] = [];
+  if (filter.outcome) {
+    conditions.push(Prisma.sql`AND outcome = ${filter.outcome}`);
+  }
+  if (filter.problem) {
+    const wanted = JSON.stringify([filter.problem]);
+    conditions.push(Prisma.sql`AND problems @> ${wanted}::jsonb`);
+  }
+  if (filter.excludedByRule !== undefined) {
+    conditions.push(
+      Prisma.sql`AND excluded_by_rule = ${filter.excludedByRule}`,
+    );
+  }
+  // `Prisma.join` no admite una lista vacía.
+  return conditions.length > 0 ? Prisma.join(conditions, ' ') : Prisma.empty;
 }
 
 function toRowView(row: StoredEvaluationRow): EvaluationRowView {
