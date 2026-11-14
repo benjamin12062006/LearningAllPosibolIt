@@ -1,4 +1,5 @@
-import type { ImportOptions } from './import-options.js';
+import type { ChangesetStatus } from '../changesets/changesets.types.js';
+import type { ColumnMapping, ImportOptions } from './import-options.js';
 import type { ExcludedRow, ImportReport } from './import-plan.js';
 
 export type ImportFormat = 'csv' | 'xlsx';
@@ -43,6 +44,16 @@ export type WorksheetImport = Readonly<{
   createdAt: string;
 }>;
 
+/**
+ * Una importación en el historial de la hoja (H2): sin la lista de filas
+ * excluidas, que puede tener miles; dice cuántas son y en qué quedó su borrador.
+ */
+export type WorksheetImportSummary = Omit<WorksheetImport, 'excludedRows'> &
+  Readonly<{
+    excludedRowCount: number;
+    changesetStatus: ChangesetStatus;
+  }>;
+
 /** Lo que se ve antes de decidir el mapeo. */
 export type ImportPreview = Readonly<{
   format: ImportFormat;
@@ -56,6 +67,19 @@ export type ImportPreview = Readonly<{
   sample: readonly (readonly string[])[];
   /** Cabecera → columna existente con el mismo nombre normalizado. */
   suggestedColumns: readonly Readonly<{ header: string; columnId: string }>[];
+  /** Solo con `mappingId`: qué columnas de la plantilla encuentra este archivo (H3). */
+  template?: TemplateCoverage;
+}>;
+
+/**
+ * Cómo encaja una plantilla con un archivo: las columnas cuya cabecera está y
+ * las cabeceras que faltan. Faltar una cabecera hace fallar la importación.
+ */
+export type TemplateCoverage = Readonly<{
+  id: string;
+  name: string;
+  columns: readonly ColumnMapping[];
+  missingHeaders: readonly string[];
 }>;
 
 export function isTypedCell(field: ImportField): field is TypedCell {

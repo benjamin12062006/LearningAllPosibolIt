@@ -4,12 +4,14 @@ import {
   Get,
   Param,
   Post,
+  Query,
   StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
+import { PaginationQueryDto } from '../common/http/pagination.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
 import { CreateWorksheetExportDto } from './worksheet-exports.dto.js';
 import { WorksheetExportsService } from './worksheet-exports.service.js';
@@ -45,6 +47,25 @@ export class WorksheetExportsController {
       worksheetId,
       body,
     );
+  }
+
+  /** Historial (H2): `{ exports: [...], page }`, sin la clave del archivo. */
+  @Get('worksheets/:worksheetId/exports')
+  async findByWorksheet(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('worksheetId', uuidParamPipe('worksheetId')) worksheetId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    const { items, page } = await this.exports.findByWorksheet(
+      identity,
+      { organizationId, projectId },
+      worksheetId,
+      query,
+    );
+    return { exports: items, page };
   }
 
   @Get('worksheet-exports/:exportId')

@@ -15,6 +15,7 @@ import {
   ROW_QUERY_LIMITS,
   type ParsedRowQuery,
   type QueryIssue,
+  type RowQueryInput,
 } from './row-query.js';
 import { evaluateRow } from './row-evaluation.js';
 import { orderSql, whereSql } from './row-query-sql.js';
@@ -23,9 +24,14 @@ import {
   type ReadableRevision,
   type StoredRow,
 } from './worksheet-rows.repository.js';
+import { SavedViewsRepository } from './saved-views.repository.js';
 import type { QueryRowsDto } from './worksheets.dto.js';
 import { WorksheetsRepository } from './worksheets.repository.js';
 import type { ProjectScope, WorksheetColumn } from './worksheets.types.js';
+
+/** Lo que lee una consulta de filas: la petición, o la vista que pide. */
+type RowsRequest = RowQueryInput &
+  Readonly<{ revisionId?: string; cursor?: string; limit?: number }>;
 
 export type RowItem = Readonly<{
   rowId: string;
@@ -45,16 +51,23 @@ export class WorksheetRowsService {
     private readonly usersService: UsersService,
     private readonly worksheets: WorksheetsRepository,
     private readonly rows: WorksheetRowsRepository,
+    private readonly views: SavedViewsRepository,
   ) {}
 
   async query(
     identity: AuthenticatedIdentity,
     scope: ProjectScope,
     worksheetId: string,
-    input: QueryRowsDto,
+    request: QueryRowsDto,
   ) {
     const user = await this.usersService.findCurrent(identity);
     await this.requireProjectAccess(user.id, scope);
+    const input = await this.withSavedView(
+      user.id,
+      scope,
+      worksheetId,
+      request,
+    );
 
     const cursor = readCursor(input);
     const revision = await this.requireRevision(
@@ -99,6 +112,41 @@ export class WorksheetRowsService {
     };
   }
 
+  /**
+   * Con `viewId` (H4), el filtro, el orden y las columnas salen de la vista.
+   * Mandarlos además es un error y no se mezcla: así nadie lee creyendo que
+   * usa la vista cuando no. La vista se valida contra las columnas de la
+   * revisión que se lea, como cualquier consulta.
+   */
+  private async withSavedView(
+    userId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    request: QueryRowsDto,
+  ): Promise<RowsRequest> {
+    if (request.viewId === undefined) {
+      return request;
+    }
+    const repeated = (['filter', 'sort', 'columns'] as const).filter(
+      (field) => request[field] !== undefined,
+    );
+    if (repeated.length > 0) {
+      throw apiError(
+        ErrorCodes.VALIDATION_FAILED,
+        repeated.map((field) => ({
+          field,
+          ...publicError(ErrorCodes.VALIDATION_FAILED),
+        })),
+      );
+    }
+    const view = await this.views.find(userId, scope, request.viewId);
+    if (!view || view.worksheetId !== worksheetId) {
+      throw apiError(ErrorCodes.SAVED_VIEW_NOT_FOUND);
+    }
+    const { revisionId, cursor, limit } = request;
+    return { revisionId, cursor, limit, ...view.query };
+  }
+
   private async requireProjectAccess(userId: string, scope: ProjectScope) {
     if (!(await this.worksheets.findAccess(userId, scope))) {
       throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
@@ -135,7 +183,7 @@ export class WorksheetRowsService {
  * Un cursor ilegible, o uno que pide otra revisión que la enviada, no se
  * acepta: seguir leyendo nunca cambia de revisión.
  */
-function readCursor(input: QueryRowsDto): RowCursor | null {
+function readCursor(input: RowsRequest): RowCursor | null {
   if (input.cursor === undefined) {
     return null;
   }
@@ -157,7 +205,7 @@ function assertCursorMatches(cursor: RowCursor | null, queryHash: string) {
 }
 
 function parseOrReject(
-  input: QueryRowsDto,
+  input: RowsRequest,
   columns: Parameters<typeof parseRowQuery>[1],
 ): ParsedRowQuery {
   const result = parseRowQuery(input, columns);

@@ -4,6 +4,7 @@ import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import { parseIdempotencyKey } from '../common/http/idempotency-key.js';
+import { fetchWindow, resolvePage, toPage } from '../common/http/pagination.js';
 import { publicError } from '../common/http/public-error.js';
 import { UsersService } from '../users/users.service.js';
 import { evaluateRow } from '../worksheets/row-evaluation.js';
@@ -39,6 +40,7 @@ import { isSchemaOperation, resultingColumns } from './changeset-schema.js';
 import { inverseOperations } from './changeset-revert.js';
 import type {
   ApplyChangesetDto,
+  ChangesetListQueryDto,
   ConflictResolutionDto,
   DecisionDto,
 } from './changesets.dto.js';
@@ -112,6 +114,27 @@ export class ChangesetsService {
   ) {
     const user = await this.usersService.findCurrent(identity);
     return this.requireChangeset(user.id, scope, changesetId);
+  }
+
+  /** Borradores de una hoja (H2): de cualquier autor, como al leer uno. */
+  async findByWorksheet(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    query: ChangesetListQueryDto,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    await this.requireHead(user.id, scope, worksheetId);
+
+    const page = resolvePage(query);
+    const rows = await this.repository.findByWorksheet(
+      user.id,
+      scope,
+      worksheetId,
+      fetchWindow(page),
+      query.status,
+    );
+    return toPage(rows, page);
   }
 
   /** Guardar (D3): sin `If-Match` 428, con otra versión 412. */

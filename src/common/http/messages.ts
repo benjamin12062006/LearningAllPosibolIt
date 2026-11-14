@@ -951,4 +951,34 @@ export const API_MESSAGES = {
     'La hoja o su libro están archivados: se puede consultar, pero no cambiar. Restáurala primero.',
     'The worksheet or its workbook is archived: it can be read but not changed. Restore it first.',
   ),
+  [ErrorCodes.IMPORT_MAPPING_NOT_FOUND]: entry(
+    404,
+    'No se encontró la plantilla de mapeo de esta hoja.',
+    'The import mapping template for this worksheet was not found.',
+  ),
+  [ErrorCodes.IMPORT_MAPPING_NAME_TAKEN]: entry(
+    409,
+    'Ya hay una plantilla de mapeo con ese nombre en la hoja.',
+    'There is already an import mapping template with that name in the worksheet.',
+  ),
+  [ErrorCodes.SAVED_VIEW_NOT_FOUND]: entry(
+    404,
+    'No se encontró la vista guardada de esta hoja.',
+    'The saved view for this worksheet was not found.',
+  ),
+  [ErrorCodes.SAVED_VIEW_NAME_TAKEN]: entry(
+    409,
+    'Ya tienes una vista con ese nombre en la hoja.',
+    'You already have a view with that name in the worksheet.',
+  ),
+  [ErrorCodes.CATALOG_SNAPSHOT_NOT_READY]: entry(
+    409,
+    'El catálogo todavía no terminó de importarse o falló: no se puede abrir como hoja.',
+    'The catalog has not finished importing or it failed: it cannot be opened as a worksheet.',
+  ),
+  [ErrorCodes.GRAPHQL_QUERY_TOO_COSTLY]: entry(
+    400,
+    'La consulta pide demasiado de una vez: reduce los límites o divídela.',
+    'The query asks for too much at once: lower the limits or split it.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

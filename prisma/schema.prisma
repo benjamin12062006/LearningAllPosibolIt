@@ -33,6 +33,8 @@ model AppUser {
   worksheetExports     WorksheetExport[]
   worksheetSnapshots   WorksheetSnapshot[]
 
+  importMappings       WorksheetImportMapping[]
+  savedViews           WorksheetSavedView[]
   @@unique([identityIssuer, identitySubject])
   @@map("app_users")
   @@schema("estadistica_forms")
@@ -420,6 +422,8 @@ model Worksheet {
   /// es procedencia, no una dependencia.
   sourceWorksheetId String?               @map("source_worksheet_id")
   sourceRevisionId  String?               @map("source_revision_id")
+  /// Solo en una hoja abierta desde un catálogo (H5): el snapshot del que salió.
+  sourceCatalogSnapshotId String?         @map("source_catalog_snapshot_id")
   workbook       Workbook                 @relation(fields: [organizationId, projectId, workbookId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
   headRevision   WorksheetRevision?       @relation("WorksheetHead", fields: [id, headRevisionId], references: [worksheetId, id], onDelete: NoAction, onUpdate: NoAction)
   creator        AppUser                  @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
@@ -429,6 +433,8 @@ model Worksheet {
   changesets     WorksheetChangeset[]
   exports        WorksheetExport[]
   snapshots      WorksheetSnapshot[]
+  importMappings WorksheetImportMapping[]
+  savedViews     WorksheetSavedView[]
 
   @@unique([workbookId, nameNormalized])
   @@unique([organizationId, id])
@@ -731,5 +737,51 @@ model KnowledgeSyncState {
 
   @@id([projectId, sourceType, sourceId])
   @@map("knowledge_sync_state")
+  @@schema("estadistica_forms")
+}
+
+/// Plantilla de mapeo de importación de una hoja (H3): lo que no depende del
+/// archivo. `mapping` es `{ mode, matchColumnId, decimalSeparator,
+/// booleanLabels, columns }`, validado como las opciones de una importación.
+model WorksheetImportMapping {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  projectId      String    @map("project_id")
+  worksheetId    String    @map("worksheet_id")
+  name           String
+  nameNormalized String    @map("name_normalized")
+  mapping        Json
+  createdBy      String    @map("created_by")
+  createdAt      String    @map("created_at")
+  worksheet      Worksheet @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator        AppUser   @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([worksheetId, nameNormalized])
+  @@index([organizationId, worksheetId, createdAt(sort: Desc)], map: "idx_worksheet_import_mappings_worksheet_created")
+  @@map("worksheet_import_mappings")
+  @@schema("estadistica_forms")
+}
+
+/// Vista guardada de una hoja (H4): filtro, orden y columnas con nombre.
+/// `personal` solo la ve su autor; `team`, todos los miembros. `query` tiene
+/// la forma de `rows/query` (`filter`, `sort`, `columns`).
+model WorksheetSavedView {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  projectId      String    @map("project_id")
+  worksheetId    String    @map("worksheet_id")
+  ownerId        String    @map("owner_id")
+  name           String
+  nameNormalized String    @map("name_normalized")
+  visibility     String
+  query          Json
+  createdAt      String    @map("created_at")
+  updatedAt      String    @map("updated_at")
+  worksheet      Worksheet @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  owner          AppUser   @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([worksheetId, ownerId, nameNormalized])
+  @@index([organizationId, worksheetId, createdAt(sort: Desc)], map: "idx_worksheet_saved_views_worksheet_created")
+  @@map("worksheet_saved_views")
   @@schema("estadistica_forms")
 }

@@ -37,6 +37,23 @@ export type WorksheetRevisionSummary = Readonly<{
   createdAt: string;
 }>;
 
+/** Cómo nació una revisión: vacía, de un borrador aplicado o como copia de otra hoja. */
+export type RevisionSource =
+  'initialize' | 'changeset' | 'duplicate' | 'catalog';
+
+/** Una revisión en el historial de la hoja (plan 02 de cierre, H2). */
+export type WorksheetRevisionEntry = Readonly<{
+  id: string;
+  sequence: number;
+  schemaVersion: number;
+  source: RevisionSource;
+  rowCount: number;
+  /** El borrador que la produjo; nulo si no salió de uno. */
+  changesetId: string | null;
+  createdBy: string;
+  createdAt: string;
+}>;
+
 /** Hoja en un listado: sin columnas. */
 export type WorksheetSummary = Readonly<{
   id: string;
@@ -53,6 +70,8 @@ export type WorksheetSummary = Readonly<{
   workbookArchivedAt: string | null;
   /** Solo en una copia: de qué hoja y de qué revisión salió. */
   duplicatedFrom: Readonly<{ worksheetId: string; revisionId: string }> | null;
+  /** Solo en una hoja abierta desde un catálogo (H5): el snapshot del que salió. */
+  openedFromCatalog: Readonly<{ snapshotId: string }> | null;
 }>;
 
 export type Worksheet = WorksheetSummary &

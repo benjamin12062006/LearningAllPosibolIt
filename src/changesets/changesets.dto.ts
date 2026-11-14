@@ -14,7 +14,12 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { PaginationQueryDto } from '../common/http/pagination.js';
 import { MAX_OPERATIONS } from './changeset-operations.js';
+import {
+  CHANGESET_STATUSES,
+  type ChangesetStatus,
+} from './changesets.types.js';
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 
@@ -28,6 +33,13 @@ export class CreateChangesetDto {
   @IsNotEmpty()
   @MaxLength(200)
   title!: string;
+}
+
+/** `GET …/worksheets/:id/changesets?status=draft&limit=20`; sin `status`, todos. */
+export class ChangesetListQueryDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsIn(CHANGESET_STATUSES)
+  status?: ChangesetStatus;
 }
 
 /**

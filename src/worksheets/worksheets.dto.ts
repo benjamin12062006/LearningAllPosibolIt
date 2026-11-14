@@ -156,6 +156,11 @@ export class QueryRowsDto {
   @IsUUID()
   revisionId?: string;
 
+  /** Una vista guardada (H4): pone `filter`, `sort` y `columns`, que no pueden venir. */
+  @IsOptional()
+  @IsUUID()
+  viewId?: string;
+
   @IsOptional()
   @IsObject()
   filter?: Record<string, unknown>;
@@ -183,4 +188,48 @@ export class QueryRowsDto {
   @Min(1)
   @Max(ROW_QUERY_LIMITS.pageSize)
   limit?: number;
+}
+
+export const VIEW_VISIBILITIES = ['personal', 'team'] as const;
+export type ViewVisibility = (typeof VIEW_VISIBILITIES)[number];
+
+/** Lo que guarda una vista: lo mismo que pide `rows/query`, sin revisión ni página. */
+export class SavedViewQueryDto {
+  @IsOptional()
+  @IsObject()
+  filter?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(ROW_QUERY_LIMITS.sortColumns)
+  @ValidateNested({ each: true })
+  @Type(() => SortTermDto)
+  sort?: SortTermDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(WORKSHEET_LIMITS.columnsPerWorksheet)
+  @IsUUID('all', { each: true })
+  columns?: string[];
+}
+
+/**
+ * `POST …/worksheets/:id/saved-views` y `PUT …/saved-views/:id`. Una vista
+ * del equipo pide Editor; una personal, ser miembro.
+ */
+export class SaveViewDto {
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(WORKSHEET_LIMITS.nameLength)
+  name!: string;
+
+  @IsIn(VIEW_VISIBILITIES)
+  visibility!: ViewVisibility;
+
+  /** `@ValidateNested` no falla si falta: `@IsObject` sí. Vacío es «todas las filas». */
+  @IsObject()
+  @ValidateNested()
+  @Type(() => SavedViewQueryDto)
+  query!: SavedViewQueryDto;
 }

@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -17,6 +18,7 @@ import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
 import {
   ApplyChangesetDto,
+  ChangesetListQueryDto,
   CreateChangesetDto,
   DecisionDto,
   DraftVersionDto,
@@ -53,6 +55,25 @@ export class ChangesetsController {
       body.title,
     );
     return withEtag(response, changeset);
+  }
+
+  /** Historial (H2): `{ changesets: [resumen sin operaciones], page }`. */
+  @Get('worksheets/:worksheetId/changesets')
+  async findByWorksheet(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('worksheetId', uuidParamPipe('worksheetId')) worksheetId: string,
+    @Query() query: ChangesetListQueryDto,
+  ) {
+    const { items, page } = await this.changesets.findByWorksheet(
+      identity,
+      { organizationId, projectId },
+      worksheetId,
+      query,
+    );
+    return { changesets: items, page };
   }
 
   @Get('changesets/:changesetId')

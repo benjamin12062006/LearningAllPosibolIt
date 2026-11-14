@@ -13,7 +13,8 @@ import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 
 /** Campos de texto que admite el formulario, además del archivo `file`. */
-const FORM_FIELDS = ['delimiter', 'sheet', 'headerRow', 'options'];
+/** `mappingId` elige una plantilla de mapeo de la hoja (H3). */
+const FORM_FIELDS = ['delimiter', 'sheet', 'headerRow', 'options', 'mappingId'];
 
 /**
  * Un CSV o un XLSX de hoja cabe en memoria: como mucho 10 MiB (plan

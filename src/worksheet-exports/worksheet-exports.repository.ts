@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { recordAuditEvent } from '../audit/audit-trail.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import type { PageRequest } from '../common/http/pagination.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { ProjectScope } from '../worksheets/worksheets.types.js';
@@ -141,6 +142,25 @@ export class WorksheetExportsRepository {
     exportId: string,
   ): Promise<WorksheetExport | null> {
     return findExportIn(this.prisma, actorId, scope, exportId);
+  }
+
+  /** Exportaciones de una hoja (H2), de la más reciente a la más antigua. */
+  findByWorksheet(
+    actorId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    page: PageRequest,
+  ): Promise<WorksheetExport[]> {
+    return this.prisma.$queryRaw<WorksheetExport[]>(Prisma.sql`
+      SELECT ${EXPORT_COLUMNS}
+      FROM estadistica_forms.worksheet_exports x
+      WHERE x.worksheet_id = ${worksheetId}
+        AND x.organization_id = ${scope.organizationId}
+        AND x.project_id = ${scope.projectId}
+        AND ${isMember(actorId, Prisma.sql`x.organization_id`)}
+      ORDER BY x.created_at DESC, x.id DESC
+      LIMIT ${page.limit} OFFSET ${page.offset}
+    `);
   }
 
   async findFile(

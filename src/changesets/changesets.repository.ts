@@ -7,6 +7,7 @@ import {
 } from '../audit/audit-trail.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import type { PageRequest } from '../common/http/pagination.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { LONG_TRANSACTION } from '../database/transaction-timeouts.js';
 import { Prisma } from '../generated/prisma/client.js';
@@ -40,6 +41,7 @@ import {
   type ApplyResult,
   type Changeset,
   type ChangesetStatus,
+  type ChangesetSummary,
   type Decision,
   type RevisionPointer,
 } from './changesets.types.js';
@@ -66,6 +68,25 @@ const CHANGESET_COLUMNS = Prisma.sql`
   c.base_sequence AS "baseSequence",
   c.base_schema_version AS "baseSchemaVersion",
   c.operations,
+  c.content_hash AS "contentHash",
+  c.applied_revision_id AS "appliedRevisionId",
+  c.created_at AS "createdAt",
+  c.updated_at AS "updatedAt"
+`;
+
+/** Las de `CHANGESET_COLUMNS` sin `operations`, más cuántas hay. */
+const CHANGESET_SUMMARY_COLUMNS = Prisma.sql`
+  c.id,
+  c.worksheet_id AS "worksheetId",
+  c.author_id AS "authorId",
+  c.source,
+  c.title,
+  c.status,
+  c.draft_version AS "draftVersion",
+  c.base_revision_id AS "baseRevisionId",
+  c.base_sequence AS "baseSequence",
+  c.base_schema_version AS "baseSchemaVersion",
+  jsonb_array_length(c.operations) AS "operationCount",
   c.content_hash AS "contentHash",
   c.applied_revision_id AS "appliedRevisionId",
   c.created_at AS "createdAt",
@@ -140,6 +161,34 @@ export class ChangesetsRepository {
   }
 
   /** Revisión actual de una hoja del ámbito; `null` si no existe o es ajena. */
+  /**
+   * Borradores de una hoja (H2), del más reciente al más antiguo, opcionalmente
+   * de un estado. Usa el índice por organización, hoja y fecha.
+   */
+  findByWorksheet(
+    actorId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    page: PageRequest,
+    status?: ChangesetStatus,
+  ): Promise<ChangesetSummary[]> {
+    const onlyStatus = status
+      ? Prisma.sql`AND c.status = ${status}`
+      : Prisma.empty;
+    return this.prisma.$queryRaw<ChangesetSummary[]>(Prisma.sql`
+      SELECT ${CHANGESET_SUMMARY_COLUMNS}
+      FROM estadistica_forms.worksheet_changesets c
+      JOIN estadistica_forms.worksheets w ON w.id = c.worksheet_id
+      WHERE c.worksheet_id = ${worksheetId}
+        AND c.organization_id = ${scope.organizationId}
+        AND c.project_id = ${scope.projectId}
+        AND ${isMember(actorId)}
+        ${onlyStatus}
+      ORDER BY c.created_at DESC, c.id DESC
+      LIMIT ${page.limit} OFFSET ${page.offset}
+    `);
+  }
+
   async findHead(
     actorId: string,
     scope: ProjectScope,

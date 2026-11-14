@@ -6,6 +6,19 @@ import type { OrganizationRole } from '../organizations/organization-roles.js';
 import type { ProjectScope } from '../worksheets/worksheets.types.js';
 import type { WorksheetCatalogSnapshot } from './worksheet-catalog-snapshots.types.js';
 
+/** Un snapshot tal como sale de SQL: `headers` es `jsonb` y se comprueba al usarlo. */
+export type CatalogToOpen = Readonly<{
+  id: string;
+  status: string;
+  headers: unknown;
+  idColumn: string;
+}>;
+
+export type CatalogRowToOpen = Readonly<{
+  sourceRow: number;
+  originalValues: unknown;
+}>;
+
 /** Lo que decide si alguien puede llevar esta hoja al catálogo (D23). */
 export type CatalogSourceAccess = Readonly<{
   role: OrganizationRole;
@@ -133,5 +146,50 @@ export class WorksheetCatalogSnapshotsRepository {
       `,
     );
     return rows[0] ?? null;
+  }
+
+  // ── Del catálogo a una hoja nueva (plan 02 de cierre, H5) ──
+
+  /**
+   * Un snapshot de catálogo del proyecto, visto por un miembro de su
+   * organización. `null` si no existe, es de otro proyecto o quien pregunta no
+   * es miembro: lo ajeno no se distingue de lo inexistente.
+   */
+  async findCatalogToOpen(
+    actorId: string,
+    scope: ProjectScope,
+    snapshotId: string,
+  ): Promise<CatalogToOpen | null> {
+    const rows = await this.prisma.$queryRaw<CatalogToOpen[]>(Prisma.sql`
+      SELECT
+        s.id,
+        s.status,
+        s.headers,
+        s.id_column AS "idColumn"
+      FROM estadistica_forms.catalog_snapshots s
+      JOIN estadistica_forms.projects p ON p.id = s.project_id
+      WHERE s.id = ${snapshotId}
+        AND s.project_id = ${scope.projectId}
+        AND p.organization_id = ${scope.organizationId}
+        AND EXISTS (
+          SELECT 1
+          FROM estadistica_forms.organization_members m
+          WHERE m.organization_id = p.organization_id
+            AND m.user_id = ${actorId}
+        )
+    `);
+    return rows[0] ?? null;
+  }
+
+  /** Las filas del catálogo en su orden: como mucho 5.000 (`IMPORT_LIMITS.rows`). */
+  findCatalogRows(snapshotId: string): Promise<CatalogRowToOpen[]> {
+    return this.prisma.$queryRaw<CatalogRowToOpen[]>(Prisma.sql`
+      SELECT
+        source_row AS "sourceRow",
+        original_values AS "originalValues"
+      FROM estadistica_forms.catalog_rows
+      WHERE snapshot_id = ${snapshotId}
+      ORDER BY source_row
+    `);
   }
 }

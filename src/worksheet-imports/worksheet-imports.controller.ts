@@ -5,6 +5,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -16,6 +17,7 @@ import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import { PaginationQueryDto } from '../common/http/pagination.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
 import {
   WorksheetUploadInterceptor,
@@ -58,12 +60,17 @@ export class WorksheetImportsController {
         delimiter: body.delimiter,
         sheet: body.sheet,
         headerRow: body.headerRow,
+        mappingId: body.mappingId,
       },
     );
     return { preview };
   }
 
-  /** Campo `options`: JSON con el mapeo, el modo y las exclusiones (D3–D6). */
+  /**
+   * Campo `options`: JSON con el mapeo, el modo y las exclusiones (D3–D6).
+   * Con `mappingId` (H3), el mapeo sale de la plantilla y `options` solo lleva
+   * lo que depende del archivo: título, exclusiones, separador u hoja.
+   */
   @Post('worksheets/:worksheetId/imports')
   @UseInterceptors(WorksheetUploadInterceptor)
   async create(
@@ -82,9 +89,29 @@ export class WorksheetImportsController {
       worksheetId,
       fileOf(request),
       body.options,
+      body.mappingId,
     );
     response.setHeader('ETag', `"${created.changeset.draftVersion}"`);
     return created;
+  }
+
+  /** Historial (H2): `{ imports: [resumen sin filas excluidas], page }`. */
+  @Get('worksheets/:worksheetId/imports')
+  async findByWorksheet(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('worksheetId', uuidParamPipe('worksheetId')) worksheetId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    const { items, page } = await this.imports.findByWorksheet(
+      identity,
+      { organizationId, projectId },
+      worksheetId,
+      query,
+    );
+    return { imports: items, page };
   }
 
   @Get('worksheet-imports/:importId')
