@@ -153,6 +153,10 @@ E6.2 añade seis rutas de conversaciones y mensajes con equivalente GraphQL. Cob
 | `conversations` | `GET …/org/proyecto/conversations/:conversationId` | Miembro autor | `conversation` | Nuxt | Existe | Detalle privado |
 | `conversations` | `POST …/org/proyecto/conversations/:conversationId/messages` | Editor autor | `appendConversationMessage` | Nuxt | Existe | `clientMessageId` idempotente |
 | `conversations` | `GET …/org/proyecto/conversations/:conversationId/messages` | Miembro autor | `Conversation.messages` | Nuxt | Existe | Historial privado con cursor |
+| `worksheet-tools` | `POST …/org/proyecto/worksheets/:worksheetId/selections` | Editor con `ai.use` | `createWorksheetSelection` | Ambos | Existe | H6: fija filas y columnas de una revisión |
+| `worksheet-tools` | `POST …/org/proyecto/worksheets/:worksheetId/transform-previews` | Editor con `ai.use` | `previewWorksheetTransform` | Ambos | Existe | H6: diff calculado sin escribir |
+| `worksheet-tools` | `GET …/org/proyecto/worksheets/:worksheetId/transform-previews/:previewId` | Editor con `ai.use` | `worksheetTransformPreview` | Ambos | Existe | H6: diff paginado |
+| `worksheet-tools` | `POST …/org/proyecto/worksheets/:worksheetId/change-proposals` | Editor con `ai.use` | `createWorksheetChangeProposal` | Ambos | Existe | H6: solo crea un borrador de origen `ai` |
 | `evaluations` | `POST …/proyecto/evaluations` | Editor | `requestEvaluation` | Ambos | Añadir |  |
 | `evaluations` | `POST …/proyecto/evaluations/preview` | Editor | `rulesPreview` (consulta) | Ambos | Añadir | No guarda nada: es una lectura |
 | `evaluations` | `GET …/proyecto/evaluations` | Miembro | `Project.evaluations` | Ambos | Añadir |  |

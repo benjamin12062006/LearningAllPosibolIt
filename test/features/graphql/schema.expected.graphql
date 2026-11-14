@@ -241,9 +241,21 @@ input CreateWorkbookInput {
   name: String!
 }
 
+input CreateWorksheetChangeProposalInput {
+  explanation: String!
+  idempotencyKey: String
+  previewId: ID!
+}
+
 input CreateWorksheetInput {
   columns: [ColumnDefinitionInput!]!
   name: String!
+}
+
+input CreateWorksheetSelectionInput {
+  columnIds: [ID!]!
+  revisionId: ID!
+  rows: JSONObject!
 }
 
 type CreatedFeed {
@@ -649,7 +661,9 @@ type Mutation {
   createWorkbook(input: CreateWorkbookInput!, organizationId: ID!, projectId: ID!): Workbook!
   createWorkbookConversation(input: CreateConversationInput!, organizationId: ID!, projectId: ID!, workbookId: ID!): Conversation!
   createWorksheet(input: CreateWorksheetInput!, organizationId: ID!, projectId: ID!, workbookId: ID!): Worksheet!
+  createWorksheetChangeProposal(input: CreateWorksheetChangeProposalInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): WorksheetChangeProposal!
   createWorksheetConversation(input: CreateConversationInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): Conversation!
+  createWorksheetSelection(input: CreateWorksheetSelectionInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): WorksheetSelection!
   decideChangeset(id: ID!, input: DecisionInput!, organizationId: ID!, projectId: ID!): ChangesetDecisionResult!
   deleteImport(id: ID!, projectId: ID!): Boolean!
   deleteImportMapping(id: ID!, organizationId: ID!, projectId: ID!): Boolean!
@@ -658,6 +672,7 @@ type Mutation {
   duplicateWorksheet(id: ID!, input: DuplicateWorksheetInput!, organizationId: ID!, projectId: ID!): Worksheet!
   exportWorksheet(input: ExportWorksheetInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): ExportedWorksheet!
   openCatalogAsWorksheet(input: OpenCatalogAsWorksheetInput!, organizationId: ID!, projectId: ID!, workbookId: ID!): Worksheet!
+  previewWorksheetTransform(input: PreviewWorksheetTransformInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): WorksheetTransformPreview!
   proposeRevert(organizationId: ID!, projectId: ID!, revisionId: ID!): Changeset!
   publishFeed(feedId: ID!, input: PublishFeedInput!, projectId: ID!): FeedPublication!
   rebaseChangeset(id: ID!, input: RebaseInput!, organizationId: ID!, projectId: ID!): Changeset!
@@ -699,6 +714,12 @@ type PageInfo {
   hasMore: Boolean!
   limit: Int!
   offset: Int!
+}
+
+input PreviewWorksheetTransformInput {
+  columnIds: [ID!]!
+  selectionId: ID!
+  transform: JSONObject!
 }
 
 type PreviewedOutcome {
@@ -823,6 +844,7 @@ type Query {
   worksheetCatalogSnapshot(id: ID!, organizationId: ID!, projectId: ID!): WorksheetCatalogSnapshot!
   worksheetExport(id: ID!, organizationId: ID!, projectId: ID!): WorksheetExport!
   worksheetImport(id: ID!, organizationId: ID!, projectId: ID!): WorksheetImport!
+  worksheetTransformPreview(limit: Int! = 20, offset: Int! = 0, organizationId: ID!, previewId: ID!, projectId: ID!, worksheetId: ID!): WorksheetTransformPreviewPage!
 }
 
 input RebaseInput {
@@ -1031,6 +1053,14 @@ type WorksheetCatalogSnapshot {
   worksheetId: ID!
 }
 
+type WorksheetChangeProposal {
+  baseRevisionId: ID!
+  draftVersion: Int!
+  id: ID!
+  status: String!
+  worksheetId: ID!
+}
+
 type WorksheetColumn {
   formula: JSON
   id: ID!
@@ -1135,6 +1165,13 @@ type WorksheetRowPage {
   schemaVersion: Int!
 }
 
+type WorksheetSelection {
+  expiresAt: String!
+  revisionId: ID!
+  rowCount: Int!
+  selectionId: ID!
+}
+
 type WorksheetSummary {
   archivedAt: String
   createdAt: String!
@@ -1153,4 +1190,37 @@ type WorksheetSummary {
 type WorksheetSummaryPage {
   items: [WorksheetSummary!]!
   page: PageInfo!
+}
+
+type WorksheetTransformChange {
+  after: JSON
+  before: JSON
+  columnId: ID!
+  rowId: ID!
+}
+
+type WorksheetTransformPreview {
+  affectedCells: Int!
+  affectedRows: Int!
+  canCreateProposal: Boolean!
+  expiresAt: String!
+  issueCount: Int!
+  previewId: ID!
+  revisionId: ID!
+  sample: [WorksheetTransformChange!]!
+  selectionId: ID!
+}
+
+type WorksheetTransformPreviewPage {
+  affectedCells: Int!
+  affectedRows: Int!
+  canCreateProposal: Boolean!
+  expiresAt: String!
+  issueCount: Int!
+  items: [WorksheetTransformChange!]!
+  page: PageInfo!
+  previewId: ID!
+  revisionId: ID!
+  sample: [WorksheetTransformChange!]!
+  selectionId: ID!
 }

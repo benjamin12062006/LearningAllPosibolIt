@@ -2,7 +2,7 @@
 
 Fecha de creación: 2026-11-14  
 Última actualización: 2026-11-14  
-Estado: En curso.  
+Estado: Implementado y verificado (2026-11-14), [bitácora 08](../../../../bitacora-construccion/feature/ai-assistant/08-conversaciones-y-mensajes.md).  
 Ámbito: Nest, E6.2 del Bloque C.  
 Relacionada con: [plan maestro de cierre](../cierre-backend/02-plan-terminar-hojas-visor-y-agente.md), [plan E6](01-plan-e6-ia-con-qdrant-y-llamaindex.md), [fuentes 05](../../../fonts/feature/ai-assistant/05-fuentes-de-conversaciones-y-mensajes.md), [bitácora 08](../../../../bitacora-construccion/feature/ai-assistant/08-conversaciones-y-mensajes.md).  
 Revisión de partida: Nest `7be788b`.

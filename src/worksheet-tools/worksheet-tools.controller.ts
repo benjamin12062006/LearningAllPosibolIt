@@ -20,7 +20,9 @@ import {
 } from './worksheet-tools.dto.js';
 import { WorksheetToolsService } from './worksheet-tools.service.js';
 
-@Controller('organizations/:organizationId/projects/:projectId/worksheets/:worksheetId')
+@Controller(
+  'organizations/:organizationId/projects/:projectId/worksheets/:worksheetId',
+)
 @UseGuards(DescopeSessionGuard)
 export class WorksheetToolsController {
   constructor(private readonly tools: WorksheetToolsService) {}

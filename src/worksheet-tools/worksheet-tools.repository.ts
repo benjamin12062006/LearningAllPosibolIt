@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import {
-  findReceipt,
-  saveReceipt,
-} from '../audit/audit-trail.js';
+import { findReceipt, saveReceipt } from '../audit/audit-trail.js';
 import { insertDraft } from '../changesets/changesets.repository.js';
 import type { SetCell } from '../changesets/changeset-operations.js';
 import type { RevisionPointer } from '../changesets/changesets.types.js';
@@ -16,7 +13,10 @@ import {
   assertNotArchived,
   lockOrganization,
 } from '../organizations/organization-lock.js';
-import { can, type OrganizationRole } from '../organizations/organization-roles.js';
+import {
+  can,
+  type OrganizationRole,
+} from '../organizations/organization-roles.js';
 import { orderSql } from '../worksheets/row-query-sql.js';
 import type {
   ReadableRevision,
@@ -44,6 +44,15 @@ const SELECTION_REVISION_COLUMNS = Prisma.sql`
   r.sequence AS "revisionSequence",
   r.schema_version AS "schemaVersion"
 `;
+/**
+ * La caducidad se lee como texto ISO en UTC. El adaptador de Prisma convierte
+ * `timestamptz` a `Date` sin la zona de la sesión y, fuera de UTC, la desplaza:
+ * todo nacía caducado en una máquina en UTC−5.
+ */
+function isoUtc(column: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+}
+
 const JOIN_SELECTION_REVISION = Prisma.sql`
   JOIN estadistica_forms.worksheet_revisions r
     ON r.worksheet_id = s.worksheet_id AND r.id = s.revision_id
@@ -334,21 +343,18 @@ async function findSelectionIn(
   selectionId: string,
   lock = false,
 ): Promise<WorksheetSelection | null> {
-  const rows = await client.$queryRaw<
-    (Omit<WorksheetSelection, 'expiresAt'> & { expiresAt: Date })[]
-  >`
+  const rows = await client.$queryRaw<WorksheetSelection[]>`
     SELECT
       s.id,
       ${SELECTION_REVISION_COLUMNS},
       s.row_ids AS "rowIds",
       s.column_ids AS "columnIds",
-      s.expires_at AS "expiresAt"
+      ${isoUtc(Prisma.sql`s.expires_at`)} AS "expiresAt"
     FROM estadistica_forms.worksheet_transform_selections s
     ${JOIN_SELECTION_REVISION}
     WHERE s.id = ${selectionId} AND ${selectionScope(scope)}
     ${lock ? Prisma.sql`FOR UPDATE OF s` : Prisma.empty}`;
-  const row = rows[0];
-  return row ? { ...row, expiresAt: row.expiresAt.toISOString() } : null;
+  return rows[0] ?? null;
 }
 
 async function findPreviewIn(
@@ -357,9 +363,7 @@ async function findPreviewIn(
   previewId: string,
   lock = false,
 ): Promise<WorksheetPreview | null> {
-  const rows = await client.$queryRaw<
-    (Omit<WorksheetPreview, 'expiresAt'> & { expiresAt: Date })[]
-  >`
+  const rows = await client.$queryRaw<WorksheetPreview[]>`
     SELECT
       p.id,
       p.selection_id AS "selectionId",
@@ -367,15 +371,14 @@ async function findPreviewIn(
       p.changes,
       p.issue_count AS "issueCount",
       p.hash,
-      p.expires_at AS "expiresAt",
+      ${isoUtc(Prisma.sql`p.expires_at`)} AS "expiresAt",
       p.changeset_id AS "changesetId"
     FROM estadistica_forms.worksheet_transform_previews p
     JOIN estadistica_forms.worksheet_transform_selections s ON s.id = p.selection_id
     ${JOIN_SELECTION_REVISION}
     WHERE p.id = ${previewId} AND ${selectionScope(scope)}
     ${lock ? Prisma.sql`FOR UPDATE OF p` : Prisma.empty}`;
-  const row = rows[0];
-  return row ? { ...row, expiresAt: row.expiresAt.toISOString() } : null;
+  return rows[0] ?? null;
 }
 
 async function requireCurrentHead(
@@ -459,11 +462,16 @@ function resultFromReceipt(value: unknown): WorksheetChangeProposal {
     throw apiError(ErrorCodes.INTERNAL_ERROR);
   }
   if (
-    'id' in value && typeof value.id === 'string' &&
-    'worksheetId' in value && typeof value.worksheetId === 'string' &&
-    'baseRevisionId' in value && typeof value.baseRevisionId === 'string' &&
-    'draftVersion' in value && value.draftVersion === 1 &&
-    'status' in value && value.status === 'draft'
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'worksheetId' in value &&
+    typeof value.worksheetId === 'string' &&
+    'baseRevisionId' in value &&
+    typeof value.baseRevisionId === 'string' &&
+    'draftVersion' in value &&
+    value.draftVersion === 1 &&
+    'status' in value &&
+    value.status === 'draft'
   ) {
     return {
       id: value.id,
@@ -480,7 +488,10 @@ function hasExpired(expiresAt: string, now: Date): boolean {
   return new Date(expiresAt) <= now;
 }
 
-function earlierExpiry(selectionExpiresAt: string, previewExpiresAt: string): string {
+function earlierExpiry(
+  selectionExpiresAt: string,
+  previewExpiresAt: string,
+): string {
   return new Date(
     Math.min(Date.parse(selectionExpiresAt), Date.parse(previewExpiresAt)),
   ).toISOString();
@@ -492,7 +503,10 @@ function transformHash(
   changes: readonly TransformChange[],
 ): string {
   const cells = changes.map(({ rowId, columnId, before, after }) => [
-    rowId, columnId, before, after,
+    rowId,
+    columnId,
+    before,
+    after,
   ]);
   return sha256([
     1,

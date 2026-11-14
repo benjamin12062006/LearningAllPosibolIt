@@ -2,7 +2,7 @@
 
 Fecha de creación: 2026-11-14  
 Última actualización: 2026-11-14  
-Estado: Plan.  
+Estado: Implementado y verificado (2026-11-14), [bitácora 09](../../../../bitacora-construccion/feature/ai-assistant/09-selecciones-y-vistas-previas-de-hoja.md). **Ajuste:** `propose_sheet_layout` es una operación de E6.3a cuya confirmación crea la hoja vacía con el servicio de siempre; no hay reserva ni revisión aparte (H6.3).  
 Ámbito: Nest. FastAPI consume las tres operaciones en E6.3a.  
 Relacionada con: [fuentes 06](../../../fonts/feature/ai-assistant/06-fuentes-de-herramientas-de-hoja.md), [plan maestro](../cierre-backend/02-plan-terminar-hojas-visor-y-agente.md), [plan E6](01-plan-e6-ia-con-qdrant-y-llamaindex.md), [conversaciones](03-plan-conversaciones-y-mensajes.md), [revisión de cambios de hoja](../changesets/01-plan-e4-borradores-y-revisiones.md).  
 Revisión de partida: Nest `7be788b`, FastAPI `d9f00fd`.
