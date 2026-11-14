@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import type { PageRequest } from '../common/http/pagination.js';
+import { recordAuditEvent } from '../audit/audit-trail.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
@@ -14,7 +15,8 @@ import {
   type OrganizationPermission,
   type OrganizationRole,
 } from '../organizations/organization-roles.js';
-import type { NewWorksheet } from './new-worksheet.js';
+import { buildNewWorksheet, type NewWorksheet } from './new-worksheet.js';
+import { copyColumns } from './worksheet-copy.js';
 import { normalizeName } from './worksheet-columns.js';
 import type {
   ProjectScope,
@@ -39,6 +41,10 @@ type WorksheetRow = Readonly<{
   schemaVersion: number;
   generation: number;
   createdAt: string;
+  archivedAt: string | null;
+  workbookArchivedAt: string | null;
+  sourceWorksheetId: string | null;
+  sourceRevisionId: string | null;
   headRevisionId: string;
   headSequence: number;
   headRowCount: number;
@@ -49,10 +55,11 @@ const WORKBOOK_COLUMNS = Prisma.sql`
   b.id,
   b.project_id AS "projectId",
   b.name,
-  b.created_at AS "createdAt"
+  b.created_at AS "createdAt",
+  b.archived_at AS "archivedAt"
 `;
 
-/** Columnas de `worksheets w JOIN worksheet_revisions r` (el head). */
+/** Columnas de `WORKSHEET_SOURCE`: la hoja, su head (`r`) y su libro (`b`). */
 const WORKSHEET_COLUMNS = Prisma.sql`
   w.id,
   w.workbook_id AS "workbookId",
@@ -61,10 +68,21 @@ const WORKSHEET_COLUMNS = Prisma.sql`
   w.schema_version AS "schemaVersion",
   w.generation,
   w.created_at AS "createdAt",
+  w.archived_at AS "archivedAt",
+  b.archived_at AS "workbookArchivedAt",
+  w.source_worksheet_id AS "sourceWorksheetId",
+  w.source_revision_id AS "sourceRevisionId",
   r.id AS "headRevisionId",
   r.sequence AS "headSequence",
   r.row_count AS "headRowCount",
   r.created_at AS "headCreatedAt"
+`;
+
+const WORKSHEET_SOURCE = Prisma.sql`
+  FROM estadistica_forms.worksheets w
+  JOIN estadistica_forms.worksheet_revisions r
+    ON r.worksheet_id = w.id AND r.id = w.head_revision_id
+  JOIN estadistica_forms.workbooks b ON b.id = w.workbook_id
 `;
 
 const COLUMN_COLUMNS = Prisma.sql`
@@ -117,6 +135,7 @@ export class WorksheetsRepository {
     actorId: string,
     scope: ProjectScope,
     page: PageRequest,
+    archived?: boolean,
   ): Promise<Workbook[]> {
     return this.prisma.$queryRaw<Workbook[]>(Prisma.sql`
       SELECT ${WORKBOOK_COLUMNS}
@@ -124,6 +143,7 @@ export class WorksheetsRepository {
       WHERE b.organization_id = ${scope.organizationId}
         AND b.project_id = ${scope.projectId}
         AND ${isMember(actorId, Prisma.sql`b.organization_id`)}
+        ${onlyArchived(Prisma.sql`b.archived_at`, archived)}
       ORDER BY b.created_at DESC, b.id DESC
       LIMIT ${page.limit} OFFSET ${page.offset}
     `);
@@ -150,16 +170,16 @@ export class WorksheetsRepository {
     scope: ProjectScope,
     workbookId: string,
     page: PageRequest,
+    archived?: boolean,
   ): Promise<WorksheetSummary[]> {
     const rows = await this.prisma.$queryRaw<WorksheetRow[]>(Prisma.sql`
       SELECT ${WORKSHEET_COLUMNS}
-      FROM estadistica_forms.worksheets w
-      JOIN estadistica_forms.worksheet_revisions r
-        ON r.worksheet_id = w.id AND r.id = w.head_revision_id
+      ${WORKSHEET_SOURCE}
       WHERE w.workbook_id = ${workbookId}
         AND w.organization_id = ${scope.organizationId}
         AND w.project_id = ${scope.projectId}
         AND ${isMember(actorId, Prisma.sql`w.organization_id`)}
+        ${onlyArchived(Prisma.sql`w.archived_at`, archived)}
       ORDER BY w.created_at DESC, w.id DESC
       LIMIT ${page.limit} OFFSET ${page.offset}
     `);
@@ -183,7 +203,7 @@ export class WorksheetsRepository {
   ): Promise<Workbook> {
     return this.prisma.$transaction(async (tx) => {
       await lockProjectFor(tx, actorId, scope, 'worksheet.write');
-      if (await workbookNameTaken(tx, scope, name)) {
+      if (await workbookNameTaken(tx, scope, name, null)) {
         throw apiError(ErrorCodes.WORKBOOK_NAME_TAKEN);
       }
 
@@ -224,10 +244,11 @@ export class WorksheetsRepository {
         scope,
         'worksheet.write',
       );
-      if (!(await workbookInScope(tx, scope, workbookId))) {
-        throw apiError(ErrorCodes.WORKBOOK_NOT_FOUND);
-      }
-      if (await worksheetNameTaken(tx, workbookId, worksheet.nameNormalized)) {
+      const workbook = await requireWorkbook(tx, scope, workbookId);
+      assertWorkbookActive(workbook);
+      if (
+        await worksheetNameTaken(tx, workbookId, worksheet.nameNormalized, null)
+      ) {
         throw apiError(ErrorCodes.WORKSHEET_NAME_TAKEN);
       }
 
@@ -246,6 +267,223 @@ export class WorksheetsRepository {
         throw apiError(ErrorCodes.INTERNAL_ERROR);
       }
       return { worksheet: created, access };
+    });
+  }
+
+  /**
+   * Copia una hoja tal como estaba en una revisión (plan 02 de cierre, P8):
+   * hoja, columnas, filas y revisión nuevas, todas con IDs nuevos, en una
+   * transacción. No copia borradores, importaciones ni el historial: la copia
+   * empieza en su revisión 1. El origen puede estar archivado (copiar es
+   * leerlo); el libro de destino, no.
+   */
+  async duplicateWorksheet(
+    actorId: string,
+    scope: ProjectScope,
+    sourceId: string,
+    target: Readonly<{
+      name: string;
+      workbookId?: string;
+      revisionId?: string;
+    }>,
+  ): Promise<{ worksheet: Worksheet; access: ProjectAccess }> {
+    const now = new Date().toISOString();
+
+    return this.prisma.$transaction(async (tx) => {
+      const access = await lockProjectFor(
+        tx,
+        actorId,
+        scope,
+        'worksheet.write',
+      );
+      const source = await requireWorksheet(tx, actorId, scope, sourceId);
+      const workbookId = target.workbookId ?? source.workbookId;
+      assertWorkbookActive(await requireWorkbook(tx, scope, workbookId));
+      const copiedFrom = await requireCopySource(
+        tx,
+        scope,
+        sourceId,
+        target.revisionId ?? source.headRevision.id,
+      );
+
+      const copy = copyColumns(
+        await findColumnsIn(tx, scope, sourceId, copiedFrom.schemaVersion),
+      );
+      const worksheet = withRowCount(
+        buildNewWorksheet(target.name, copy.columns),
+        copiedFrom.rowCount,
+      );
+      if (
+        await worksheetNameTaken(tx, workbookId, worksheet.nameNormalized, null)
+      ) {
+        throw apiError(ErrorCodes.WORKSHEET_NAME_TAKEN);
+      }
+
+      const insert = { actorId, scope, worksheet, now };
+      await insertWorksheet(tx, { ...insert, workbookId, copiedFrom });
+      await insertColumns(tx, scope, worksheet);
+      await insertInitialRevision(tx, { ...insert, source: 'duplicate' });
+      await copyRows(tx, scope, copiedFrom, worksheet, copy.newIdOf);
+      await pointHeadToInitialRevision(tx, worksheet);
+      await auditWorksheet(
+        tx,
+        scope,
+        actorId,
+        worksheet.worksheetId,
+        'worksheet.duplicated',
+        {
+          fromWorksheetId: copiedFrom.worksheetId,
+          fromRevisionId: copiedFrom.revisionId,
+        },
+      );
+      return {
+        worksheet: await requireWorksheet(
+          tx,
+          actorId,
+          scope,
+          worksheet.worksheetId,
+        ),
+        access,
+      };
+    });
+  }
+
+  // ── Renombrar y archivar (plan 02 de cierre, H1) ──
+
+  async renameWorkbook(
+    actorId: string,
+    scope: ProjectScope,
+    workbookId: string,
+    name: string,
+  ): Promise<Workbook> {
+    return this.prisma.$transaction(async (tx) => {
+      await lockProjectFor(tx, actorId, scope, 'worksheet.write');
+      const workbook = await requireWorkbook(tx, scope, workbookId);
+      assertWorkbookActive(workbook);
+      if (await workbookNameTaken(tx, scope, name, workbookId)) {
+        throw apiError(ErrorCodes.WORKBOOK_NAME_TAKEN);
+      }
+
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE estadistica_forms.workbooks
+        SET name = ${name},
+          name_normalized = ${normalizeName(name)}
+        WHERE id = ${workbookId}
+      `);
+      await auditWorkbook(tx, scope, actorId, workbookId, 'workbook.renamed', {
+        from: workbook.name,
+        to: name,
+      });
+      return requireWorkbook(tx, scope, workbookId);
+    });
+  }
+
+  /**
+   * Archivar o restaurar un libro: Manager o más. Repetirlo no cambia nada (ni
+   * la fecha ni la auditoría), para que un doble clic sea inofensivo.
+   */
+  async setWorkbookArchived(
+    actorId: string,
+    scope: ProjectScope,
+    workbookId: string,
+    archived: boolean,
+  ): Promise<Workbook> {
+    return this.prisma.$transaction(async (tx) => {
+      await lockProjectFor(tx, actorId, scope, 'changeset.approve');
+      const workbook = await requireWorkbook(tx, scope, workbookId);
+      if ((workbook.archivedAt !== null) === archived) {
+        return workbook;
+      }
+
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE estadistica_forms.workbooks
+        SET archived_at = ${archived ? new Date().toISOString() : null}
+        WHERE id = ${workbookId}
+      `);
+      const action = archived ? 'workbook.archived' : 'workbook.restored';
+      await auditWorkbook(tx, scope, actorId, workbookId, action, {});
+      return requireWorkbook(tx, scope, workbookId);
+    });
+  }
+
+  async renameWorksheet(
+    actorId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    name: string,
+  ): Promise<{ worksheet: Worksheet; access: ProjectAccess }> {
+    return this.prisma.$transaction(async (tx) => {
+      const access = await lockProjectFor(
+        tx,
+        actorId,
+        scope,
+        'worksheet.write',
+      );
+      const worksheet = await requireWorksheet(tx, actorId, scope, worksheetId);
+      assertWorksheetIsActive(worksheet);
+      const nameNormalized = normalizeName(name);
+      if (
+        await worksheetNameTaken(
+          tx,
+          worksheet.workbookId,
+          nameNormalized,
+          worksheetId,
+        )
+      ) {
+        throw apiError(ErrorCodes.WORKSHEET_NAME_TAKEN);
+      }
+
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE estadistica_forms.worksheets
+        SET name = ${name},
+          name_normalized = ${nameNormalized}
+        WHERE id = ${worksheetId}
+      `);
+      await auditWorksheet(
+        tx,
+        scope,
+        actorId,
+        worksheetId,
+        'worksheet.renamed',
+        { from: worksheet.name, to: name },
+      );
+      return {
+        worksheet: await requireWorksheet(tx, actorId, scope, worksheetId),
+        access,
+      };
+    });
+  }
+
+  /** Como en los libros: Manager o más, y repetirlo no cambia nada. */
+  async setWorksheetArchived(
+    actorId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    archived: boolean,
+  ): Promise<{ worksheet: Worksheet; access: ProjectAccess }> {
+    return this.prisma.$transaction(async (tx) => {
+      const access = await lockProjectFor(
+        tx,
+        actorId,
+        scope,
+        'changeset.approve',
+      );
+      const worksheet = await requireWorksheet(tx, actorId, scope, worksheetId);
+      if ((worksheet.archivedAt !== null) === archived) {
+        return { worksheet, access };
+      }
+
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE estadistica_forms.worksheets
+        SET archived_at = ${archived ? new Date().toISOString() : null}
+        WHERE id = ${worksheetId}
+      `);
+      const action = archived ? 'worksheet.archived' : 'worksheet.restored';
+      await auditWorksheet(tx, scope, actorId, worksheetId, action, {});
+      return {
+        worksheet: await requireWorksheet(tx, actorId, scope, worksheetId),
+        access,
+      };
     });
   }
 }
@@ -299,47 +537,264 @@ export async function lockProjectFor(
 // Son seguras sin más bloqueos: toda escritura de libros y hojas de la
 // organización espera a la fila de la organización bloqueada.
 
+/**
+ * ¿Usa ya ese nombre otro libro del proyecto? `exceptId` es el libro que se
+ * está renombrando: cambiar solo las mayúsculas de su nombre no es un choque.
+ * Los archivados también cuentan: su nombre sigue reservado.
+ */
 async function workbookNameTaken(
   tx: Prisma.TransactionClient,
   scope: ProjectScope,
   name: string,
+  exceptId: string | null,
 ) {
   const rows = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
     SELECT id
     FROM estadistica_forms.workbooks
     WHERE project_id = ${scope.projectId}
       AND name_normalized = ${normalizeName(name)}
+      AND id IS DISTINCT FROM ${exceptId}
   `);
   return rows.length > 0;
 }
 
-async function workbookInScope(
+/** El libro, o 404 si no es de este proyecto. */
+async function requireWorkbook(
   tx: Prisma.TransactionClient,
   scope: ProjectScope,
   workbookId: string,
-) {
-  const rows = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
-    SELECT id
-    FROM estadistica_forms.workbooks
-    WHERE id = ${workbookId}
-      AND organization_id = ${scope.organizationId}
-      AND project_id = ${scope.projectId}
+): Promise<Workbook> {
+  const rows = await tx.$queryRaw<Workbook[]>(Prisma.sql`
+    SELECT ${WORKBOOK_COLUMNS}
+    FROM estadistica_forms.workbooks b
+    WHERE b.id = ${workbookId}
+      AND b.organization_id = ${scope.organizationId}
+      AND b.project_id = ${scope.projectId}
   `);
-  return rows.length > 0;
+  if (!rows[0]) {
+    throw apiError(ErrorCodes.WORKBOOK_NOT_FOUND);
+  }
+  return rows[0];
 }
 
+function assertWorkbookActive(workbook: Workbook) {
+  if (workbook.archivedAt !== null) {
+    throw apiError(ErrorCodes.WORKBOOK_ARCHIVED);
+  }
+}
+
+async function requireWorksheet(
+  tx: Prisma.TransactionClient,
+  actorId: string,
+  scope: ProjectScope,
+  worksheetId: string,
+): Promise<Worksheet> {
+  const worksheet = await findWorksheetIn(tx, actorId, scope, worksheetId);
+  if (!worksheet) {
+    throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
+  }
+  return worksheet;
+}
+
+/** Una hoja está archivada si lo está ella o lo está su libro. */
+export function isArchivedWorksheet(
+  worksheet: Pick<WorksheetSummary, 'archivedAt' | 'workbookArchivedAt'>,
+) {
+  return worksheet.archivedAt !== null || worksheet.workbookArchivedAt !== null;
+}
+
+function assertWorksheetIsActive(
+  worksheet: Pick<WorksheetSummary, 'archivedAt' | 'workbookArchivedAt'>,
+) {
+  if (isArchivedWorksheet(worksheet)) {
+    throw apiError(ErrorCodes.WORKSHEET_ARCHIVED);
+  }
+}
+
+/**
+ * Para las escrituras de otros módulos sobre una hoja (borradores,
+ * importaciones, puente al catálogo): 404 si la hoja no es de este proyecto y
+ * 409 si ella o su libro están archivados. Quien llama ya bloqueó la
+ * organización con `lockProjectFor`, así que no puede archivarse a la vez.
+ */
+export async function assertWorksheetActive(
+  tx: Prisma.TransactionClient,
+  scope: ProjectScope,
+  worksheetId: string,
+) {
+  const rows = await tx.$queryRaw<
+    Pick<WorksheetSummary, 'archivedAt' | 'workbookArchivedAt'>[]
+  >(Prisma.sql`
+    SELECT
+      w.archived_at AS "archivedAt",
+      b.archived_at AS "workbookArchivedAt"
+    FROM estadistica_forms.worksheets w
+    JOIN estadistica_forms.workbooks b ON b.id = w.workbook_id
+    WHERE w.id = ${worksheetId}
+      AND w.organization_id = ${scope.organizationId}
+      AND w.project_id = ${scope.projectId}
+  `);
+  if (!rows[0]) {
+    throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
+  }
+  assertWorksheetIsActive(rows[0]);
+}
+
+/** Como `workbookNameTaken`, dentro de un libro. */
 async function worksheetNameTaken(
   tx: Prisma.TransactionClient,
   workbookId: string,
   nameNormalized: string,
+  exceptId: string | null,
 ) {
   const rows = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
     SELECT id
     FROM estadistica_forms.worksheets
     WHERE workbook_id = ${workbookId}
       AND name_normalized = ${nameNormalized}
+      AND id IS DISTINCT FROM ${exceptId}
   `);
   return rows.length > 0;
+}
+
+/** Sin filtro, activos y archivados; con él, solo unos u otros. */
+function onlyArchived(column: Prisma.Sql, archived: boolean | undefined) {
+  if (archived === undefined) {
+    return Prisma.empty;
+  }
+  return archived
+    ? Prisma.sql`AND ${column} IS NOT NULL`
+    : Prisma.sql`AND ${column} IS NULL`;
+}
+
+// ── Copia de una hoja ──
+
+/** La revisión pedida de esa hoja; una de otra hoja responde como una inexistente. */
+async function requireCopySource(
+  tx: Prisma.TransactionClient,
+  scope: ProjectScope,
+  worksheetId: string,
+  revisionId: string,
+): Promise<CopySource> {
+  const rows = await tx.$queryRaw<CopySource[]>(Prisma.sql`
+    SELECT
+      worksheet_id AS "worksheetId",
+      id AS "revisionId",
+      sequence,
+      schema_version AS "schemaVersion",
+      row_count AS "rowCount"
+    FROM estadistica_forms.worksheet_revisions
+    WHERE id = ${revisionId}
+      AND worksheet_id = ${worksheetId}
+      AND organization_id = ${scope.organizationId}
+  `);
+  if (!rows[0]) {
+    throw apiError(ErrorCodes.WORKSHEET_REVISION_NOT_FOUND);
+  }
+  return rows[0];
+}
+
+/** La copia nace con las filas del origen: su primera revisión no está vacía. */
+function withRowCount(worksheet: NewWorksheet, rowCount: number): NewWorksheet {
+  return {
+    ...worksheet,
+    initialRevision: { ...worksheet.initialRevision, rowCount },
+  };
+}
+
+/**
+ * Copia en una sentencia las filas vivas en la revisión de origen, con `row_id`
+ * nuevo y las celdas reescritas con los IDs de columna de la copia. Una hoja
+ * sin columnas no tiene nada que reescribir: sus filas quedan con `{}`.
+ */
+async function copyRows(
+  tx: Prisma.TransactionClient,
+  scope: ProjectScope,
+  source: CopySource,
+  worksheet: NewWorksheet,
+  newIdOf: ReadonlyMap<string, string>,
+) {
+  const sequence = worksheet.initialRevision.sequence;
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO estadistica_forms.worksheet_row_versions
+      (organization_id, worksheet_id, row_id, from_sequence, to_sequence,
+       sort_key, cell_values, is_deleted)
+    SELECT
+      ${scope.organizationId},
+      ${worksheet.worksheetId},
+      gen_random_uuid()::text,
+      ${sequence},
+      NULL,
+      v.sort_key,
+      ${copiedCellValues(newIdOf)},
+      false
+    FROM estadistica_forms.worksheet_row_versions v
+    WHERE v.worksheet_id = ${source.worksheetId}
+      AND v.organization_id = ${scope.organizationId}
+      AND v.from_sequence <= ${source.sequence}
+      AND (v.to_sequence IS NULL OR v.to_sequence > ${source.sequence})
+      AND NOT v.is_deleted
+  `);
+}
+
+function copiedCellValues(newIdOf: ReadonlyMap<string, string>) {
+  if (newIdOf.size === 0) {
+    return Prisma.sql`'{}'::jsonb`;
+  }
+  const pairs = [...newIdOf].map(
+    ([oldId, newId]) => Prisma.sql`(${oldId}, ${newId})`,
+  );
+  return Prisma.sql`
+    COALESCE(
+      (
+        SELECT jsonb_object_agg(ids.new_id, cell.value)
+        FROM jsonb_each(v.cell_values) AS cell
+        JOIN (VALUES ${Prisma.join(pairs)}) AS ids(old_id, new_id)
+          ON ids.old_id = cell.key
+      ),
+      '{}'::jsonb
+    )
+  `;
+}
+
+// ── Auditoría ──
+
+function auditWorkbook(
+  tx: Prisma.TransactionClient,
+  scope: ProjectScope,
+  actorId: string,
+  workbookId: string,
+  action: string,
+  details: Readonly<Record<string, unknown>>,
+) {
+  return recordAuditEvent(tx, {
+    organizationId: scope.organizationId,
+    actorId,
+    action,
+    resourceType: 'workbook',
+    resourceId: workbookId,
+    details,
+    now: new Date().toISOString(),
+  });
+}
+
+function auditWorksheet(
+  tx: Prisma.TransactionClient,
+  scope: ProjectScope,
+  actorId: string,
+  worksheetId: string,
+  action: string,
+  details: Readonly<Record<string, unknown>>,
+) {
+  return recordAuditEvent(tx, {
+    organizationId: scope.organizationId,
+    actorId,
+    action,
+    resourceType: 'worksheet',
+    resourceId: worksheetId,
+    details,
+    now: new Date().toISOString(),
+  });
 }
 
 // ── Inserciones de la hoja nueva ──
@@ -351,16 +806,27 @@ type WorksheetInsert = Readonly<{
   now: string;
 }>;
 
+/** La revisión de la que sale una copia, con lo necesario para leer sus filas. */
+type CopySource = Readonly<{
+  worksheetId: string;
+  revisionId: string;
+  sequence: number;
+  schemaVersion: number;
+  rowCount: number;
+}>;
+
 /** El head queda nulo hasta `pointHeadToInitialRevision`, en esta misma transacción. */
 async function insertWorksheet(
   tx: Prisma.TransactionClient,
-  input: WorksheetInsert & Readonly<{ workbookId: string }>,
+  input: WorksheetInsert &
+    Readonly<{ workbookId: string; copiedFrom?: CopySource }>,
 ) {
   const { worksheet, scope } = input;
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO estadistica_forms.worksheets
       (id, organization_id, project_id, workbook_id, name, name_normalized,
-       mode, schema_version, generation, head_revision_id, created_by, created_at)
+       mode, schema_version, generation, head_revision_id, created_by, created_at,
+       source_worksheet_id, source_revision_id)
     VALUES (
       ${worksheet.worksheetId},
       ${scope.organizationId},
@@ -373,7 +839,9 @@ async function insertWorksheet(
       ${worksheet.initialRevision.sequence},
       NULL,
       ${input.actorId},
-      ${input.now}
+      ${input.now},
+      ${input.copiedFrom?.worksheetId ?? null},
+      ${input.copiedFrom?.revisionId ?? null}
     )
   `);
 }
@@ -415,7 +883,7 @@ function jsonOrNull(value: unknown) {
 
 async function insertInitialRevision(
   tx: Prisma.TransactionClient,
-  input: WorksheetInsert,
+  input: WorksheetInsert & Readonly<{ source?: 'initialize' | 'duplicate' }>,
 ) {
   const { worksheet, scope } = input;
   const revision = worksheet.initialRevision;
@@ -429,7 +897,7 @@ async function insertInitialRevision(
       ${worksheet.worksheetId},
       ${revision.sequence},
       ${revision.schemaVersion},
-      'initialize',
+      ${input.source ?? 'initialize'},
       ${revision.rowCount},
       ${input.actorId},
       ${input.now}
@@ -458,9 +926,7 @@ async function findWorksheetIn(
 ): Promise<Worksheet | null> {
   const rows = await client.$queryRaw<WorksheetRow[]>(Prisma.sql`
     SELECT ${WORKSHEET_COLUMNS}
-    FROM estadistica_forms.worksheets w
-    JOIN estadistica_forms.worksheet_revisions r
-      ON r.worksheet_id = w.id AND r.id = w.head_revision_id
+    ${WORKSHEET_SOURCE}
     WHERE w.id = ${worksheetId}
       AND w.organization_id = ${scope.organizationId}
       AND w.project_id = ${scope.projectId}
@@ -526,5 +992,20 @@ function toSummary(row: WorksheetRow): WorksheetSummary {
       createdAt: row.headCreatedAt,
     },
     createdAt: row.createdAt,
+    archivedAt: row.archivedAt,
+    workbookArchivedAt: row.workbookArchivedAt,
+    duplicatedFrom: duplicatedFromOf(row),
+  };
+}
+
+function duplicatedFromOf(
+  row: WorksheetRow,
+): WorksheetSummary['duplicatedFrom'] {
+  if (row.sourceWorksheetId === null || row.sourceRevisionId === null) {
+    return null;
+  }
+  return {
+    worksheetId: row.sourceWorksheetId,
+    revisionId: row.sourceRevisionId,
   };
 }

@@ -2,9 +2,9 @@
 
 Fecha de creación: 2026-11-12  
 Última actualización: 2026-11-12  
-Estado: En curso. P1, V2, V3 y V4 hechas y verificadas (2026-11-12); sigue V5.  
-Ámbito: la API Nest (`claudeLearningAllPosibolIt`) y el servicio de IA (`claudeLearningAllPosibolIt-ai`). La web Nuxt (E7) la lleva otra sesión.  
-Relacionada con: [fuentes 04](../../../fonts/feature/cierre-backend/04-fuentes-de-terminar-hojas-visor-y-agente.md), [plan 01 de cierre](01-plan-cierre-de-pendientes.md) (C7 sigue ahí), [plan E6](../ai-assistant/01-plan-e6-ia-con-qdrant-y-llamaindex.md) (decisiones D1–D18, que este plan no cambia), [22](../../../../../docs-diagrams/22-visor-y-diagnostico-del-feed.md), [12](../../../../../docs-diagrams/12-hojas-modelo-editor-importacion-y-exportacion.md), [15](../../../../../docs-diagrams/15-chat-ia-herramientas-y-propuestas.md).  
+Estado: En curso. P1, el Bloque B (V2–V5) y la evaluación de C7 hechos y verificados (2026-11-13); sigue H1–H5.  
+Ámbito: la API Nest (`LearningAllPosibolIt`) y el servicio de IA (`LearningAllPosibolIt-ai`). La web Nuxt (E7) la lleva otra sesión.  
+Relacionada con: [fuentes 04](../../../fonts/feature/cierre-backend/04-fuentes-de-terminar-hojas-visor-y-agente.md), [plan 01 de cierre](01-plan-cierre-de-pendientes.md), [23, plan C7](../../../../../docs-diagrams/23-graphql-nest-para-fastapi-y-nuxt.md), [plan E6](../ai-assistant/01-plan-e6-ia-con-qdrant-y-llamaindex.md), [22](../../../../../docs-diagrams/22-visor-y-diagnostico-del-feed.md), [12](../../../../../docs-diagrams/12-hojas-modelo-editor-importacion-y-exportacion.md), [15](../../../../../docs-diagrams/15-chat-ia-herramientas-y-propuestas.md).  
 Revisión de partida: `feature/cierre-backend` `b219b30` más los cambios sin commit de los días 9–11.
 
 ## Objetivo
@@ -35,12 +35,12 @@ Regla del reparto (plan E6): **Nest decide y calcula; FastAPI razona.** Todo lo 
 
 | ID | Decisión | Respaldo |
 | --- | --- | --- |
-| P1 | **Orden: cerrar lo empezado → Bloque B → Bloque A → Bloque C.** B y A van antes del agente porque el catálogo de operaciones y el índice tienen que incluirlos; hacerlos después obligaría a tocar el agente dos veces. B antes que A porque son lecturas sin migración sobre archivos que ya existen. | Fuentes 04: E1, E4 |
+| P1 | **Orden vigente:** Evaluación C7 → V5 → H1–H5 → implementación y verificación de C7 → Bloque C desde E6.1b.2. El piloto de C7 parte del código actual. Su alcance final incluye las operaciones reales de V5 y H1–H5 antes de retomar el agente. | Fuentes 04: E1, E4 |
 | P2 | **Ficha de producto por ID** leyendo el mismo TSV: `GET …/exports/:exportId/product?id=…` y `GET …/feeds/:feedId/versions/:versionId/product?id=…`. Devuelve columnas, valores, línea y procedencia (exportación o versión, evaluación de origen y fecha). 404 `PRODUCT_NOT_FOUND` si no está en ese archivo. *Ajustado en V2:* el `id` va en la consulta y no en la ruta, porque un SKU puede llevar barras y otros signos. | H3; E4 |
 | P3 | **Estado de la entrega:** `GET …/feeds/:feedId/delivery` responde si la URL pública entrega y, si no, el motivo (`no_published_version`, `delivery_disabled`, `file_unavailable`). No expone el token. *Ajustado en V2:* el tercer motivo es `file_unavailable` (falta el archivo de la versión publicada); la retención nunca retira el de la versión vigente, así que «retirado» no puede ocurrir aquí. | H7; E4 |
 | P4 | **«Requiere atención»:** `GET …/evaluations/:evaluationId/attention` agrupa en SQL por problema y atributo, cuenta productos distintos por grupo, da el total de afectados sin repetir y las exclusiones por regla aparte. `GET …/evaluations/:id/rows` gana filtros `problem`, `field` y `rule` para abrir un grupo. | H4; E4 |
 | P5 | **Comparar con el feed vigente:** `GET …/feeds/:feedId/comparison?exportId=…` compara por `id` el TSV candidato con el de la versión publicada: recuentos de añadidos, retirados, modificados e iguales y una página de cambios con los campos que cambiaron. Se leen los dos archivos en memoria (límite ya existente de filas por catálogo). *Ajustado en V4:* sin versión publicada, 409 `FEED_NOT_PUBLISHED`; si falta un archivo, el 503 que ya daba el visor. | H5 |
-| P6 | **Probar reglas sin publicar:** `POST …/rulesets/preview` recibe un catálogo y unas reglas propuestas, pasa el **mismo motor** por las filas sin guardar nada y lo compara con la revisión vigente: problemas que aparecen, se resuelven o siguen, valores que cambian por atributo y productos afectados. Síncrono y acotado. | H6 |
+| P6 | **Probar reglas sin publicar:** `POST …/rulesets/preview` recibe un catálogo y unas reglas propuestas, pasa el **mismo motor** por las filas sin guardar nada y lo compara con la revisión vigente: problemas que aparecen, se resuelven o siguen, valores que cambian por atributo y productos afectados. Síncrono y acotado.  *Ajustado en V5:* la ruta es `POST …/evaluations/preview` (es una evaluación que no se guarda y ese módulo es el dueño del motor); pide Editor aunque no escribe. | H6 |
 | P7 | **Archivar y renombrar** libros y hojas con `PATCH` y `POST …/archive` / `…/restore`; una hoja archivada se lee pero no admite borradores, importaciones ni puente (409 `WORKSHEET_ARCHIVED`). Columna `archived_at`: migración. | H8; E2 |
 | P8 | **Duplicar una hoja** fija la revisión de origen, crea hoja, columnas y filas con IDs nuevos y guarda la procedencia; no copia borradores. | H8 |
 | P9 | **Historial:** listados paginados de revisiones, borradores, importaciones y exportaciones de una hoja. Solo lectura, sin migración. | E2 |
@@ -48,7 +48,7 @@ Regla del reparto (plan E6): **Nest decide y calcula; FastAPI razona.** Todo lo 
 | P11 | **Catálogo → hoja:** `POST …/workbooks/:workbookId/worksheets/from-catalog` crea una hoja nueva con las columnas y filas de un snapshot terminado, por el mismo camino que una importación (límite de 5.000 filas). | 12, vínculo inverso |
 | P12 | **Herramientas de hoja para el agente en Nest:** `preview_transform` (operación cerrada: limpiar espacios, reemplazo exacto, porcentaje, mapa de valores), `create_change_proposal` (crea el changeset desde una vista previa vigente) y `propose_sheet_layout`. Son rutas normales con DTO; el catálogo las declara como cualquier otra. | H2; 15 |
 | P13 | **Cobertura comprobada del catálogo:** una prueba recorre las rutas reales de la aplicación y falla si alguna no está declarada en el catálogo ni en la lista de exclusiones con motivo. Así «casi toda la API» no depende de la memoria de nadie. | H1; E1 |
-| P14 | **C7 (GraphQL) queda después de este plan**, como estaba. Si el usuario lo quiere antes, se intercala. | Plan 01, P7 |
+| P14 | **C7 se evalúa primero y se implementa antes del Bloque C.** Inventario y piloto REST/GraphQL. El 70–85 % orienta la evaluación. Construir las operaciones justificadas para FastAPI y Nuxt, verificar el cliente Python con Nest y retomar E6.1b.2. | [23, plan C7](../../../../../docs-diagrams/23-graphql-nest-para-fastapi-y-nuxt.md) |
 
 ## Etapas
 
@@ -67,7 +67,7 @@ Cada etapa sigue el flujo: ficha de fuentes si hay un mecanismo nuevo, bitácora
 | ✅ **V2** | Ficha de producto y estado de la entrega (P2, P3), [bitácora 03](../../../../bitacora-construccion/feature/ai-assistant/03-ficha-de-producto-y-estado-de-la-entrega.md) | Hecho el 2026-11-12: 40 pruebas del visor, 14 de 14 defectos |
 | ✅ **V3** | «Requiere atención» y filtros de filas (P4), [bitácora 04](../../../../bitacora-construccion/feature/ai-assistant/04-requiere-atencion.md) | Hecho el 2026-11-12: 16 pruebas nuevas; 15 defectos (13 por pruebas, 1 por el compilador, 1 equivalente) |
 | ✅ **V4** | Comparar candidato y vigente (P5), [bitácora 05](../../../../bitacora-construccion/feature/ai-assistant/05-comparar-con-la-version-vigente.md) | Hecho el 2026-11-12: 16 pruebas nuevas, 13 de 13 defectos |
-| **V5** | Probar reglas (P6) | Un valor modificado, un problema resuelto y otro nuevo; nada guardado |
+| ✅ **V5** | Probar reglas (P6), [bitácora 06](../../../../bitacora-construccion/feature/ai-assistant/06-probar-reglas-sin-publicar.md) | Hecho el 2026-11-13: 30 pruebas, 20 de 20 defectos (19 por pruebas, 1 por el compilador) |
 
 ### Bloque A — Antes del CSV: hojas (Nest)
 
@@ -79,6 +79,10 @@ Cada etapa sigue el flujo: ficha de fuentes si hay un mecanismo nuevo, bitácora
 | **H4** | Vistas guardadas (P10). Migración | Personal no visible para otro; del equipo sí; filtro inválido 400 |
 | **H5** | Catálogo → hoja (P11) | La hoja nueva exportada equivale al catálogo de origen |
 
+### C7 — GraphQL de Nest para FastAPI y Nuxt
+
+Evaluar primero toda la API con el inventario y el piloto del [23, plan C7](../../../../../docs-diagrams/23-graphql-nest-para-fastapi-y-nuxt.md). Tras V5 y H1–H5, implementar el alcance justificado y completar la verificación del cliente Python contra Nest antes de retomar E6.1b.2.
+
 ### Bloque C — Agente (FastAPI + Nest)
 
 | Etapa | Repositorio | Qué | Comprobación |
@@ -86,7 +90,7 @@ Cada etapa sigue el flujo: ficha de fuentes si hay un mecanismo nuevo, bitácora
 | **E6.1b.2** | Nest | Fuentes de hojas y organización en el índice | Las cinco fuentes nuevas; sin correos |
 | **E6.2** | Nest | Conversaciones y mensajes. Migración | Privadas; `clientMessageId` idempotente |
 | **H6** | Nest | Herramientas de hoja para el agente (P12) | 5 % exacto sobre la selección; solo crea un borrador (T20) |
-| **E6.3a** | Nest | Catálogo de operaciones, ruta interna con token por ejecución, ejecuciones y confirmaciones (P13) | Cobertura de rutas; nada prohibido declarado; ajeno 404 |
+| **E6.3a** | Nest | Catálogo de operaciones, autorización del cliente GraphQL con token por ejecución y ruta interna para las demás operaciones autorizadas, ejecuciones y confirmaciones (P13) | Cobertura de rutas; nada prohibido declarado; ajeno 404 |
 | **E6.3b** | FastAPI | `FunctionAgent` con LLM simulado, herramientas por búsqueda y espera de confirmación | T18, T19 |
 | **E6.4** | Los dos | Streaming, SSE con `after=<seq>`, cancelar y cuotas | T21, T22 |
 | **E6.5** | FastAPI | Gemini por Vertex AI con evaluación | Dataset de 15; coste medido |
@@ -95,7 +99,9 @@ Cada etapa sigue el flujo: ficha de fuentes si hay un mecanismo nuevo, bitácora
 
 ## Orden de ejecución
 
-P1 → V2 → V3 → V4 → V5 → H1 → H2 → H3 → H4 → H5 → E6.1b.2 → E6.2 → H6 → E6.3a → E6.3b → E6.4 → E6.5 → E6.6. Después, C7.
+Completados: P1, V2, V3, V4, V5 y la **evaluación de C7** (2026-11-13): matriz de 88 rutas, alcance recomendado de 64 (72,7 %) y piloto medido, en la [ficha 05](../../../fonts/feature/graphql&rulesets-evaluations-exports/05-inventario-y-alcance-de-c7.md) y la [bitácora del piloto](../../../../bitacora-construccion/feature/graphql&rulesets-evaluations-exports/01-piloto-de-c7-y-mediciones.md).
+
+Pendientes: H1–H5 → implementación y verificación de C7 → Bloque C desde E6.1b.2 → E6.2 → H6 → E6.3a → E6.3b → E6.4 → E6.5 → E6.6.
 
 ## Comprobación al cerrar el plan
 
@@ -113,4 +119,4 @@ Recorrido completo con dos organizaciones y los dos servicios arrancados: crear 
 
 - Si las vistas guardadas del equipo las puede crear un Editor o solo un Manager (por defecto: Editor).
 - Flash o Pro para el chat (E6.5) y cuándo activar el envío de datos reales a Google.
-- Si quiere el servidor MCP (E6.7) y si C7 se intercala antes del agente.
+- Si quiere el servidor MCP (E6.7).

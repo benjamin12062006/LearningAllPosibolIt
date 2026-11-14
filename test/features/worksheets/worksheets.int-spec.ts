@@ -116,6 +116,9 @@ describe('Libros y hojas vacías con PostgreSQL temporal', () => {
         createdAt: expect.any(String),
       },
       createdAt: expect.any(String),
+      archivedAt: null,
+      workbookArchivedAt: null,
+      duplicatedFrom: null,
       columns: [
         {
           id: expect.any(String),

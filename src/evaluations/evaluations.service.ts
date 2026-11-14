@@ -3,29 +3,52 @@ import { randomUUID } from 'node:crypto';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import type { ImportRow } from '../catalog-import/import.types.js';
 import {
   fetchWindow,
   resolvePage,
   toPage,
+  type PageRequest,
   type PaginationQueryDto,
 } from '../common/http/pagination.js';
 import { ProjectsService } from '../projects/projects.service.js';
+import {
+  assertRulesetIsConsistent,
+  toRuleset,
+} from '../rulesets/rulesets.service.js';
 import { UsersService } from '../users/users.service.js';
+import { evaluateRow } from './engine/evaluate-row.js';
 import { buildErrorsCsv } from './errors-csv.js';
 import type {
   CreateEvaluationDto,
   EvaluationRowsQueryDto,
+  PreviewRulesDto,
 } from './evaluations.dto.js';
-import { EvaluationsRepository } from './evaluations.repository.js';
+import {
+  assertColumnsExist,
+  EvaluationsRepository,
+} from './evaluations.repository.js';
 import type { RowProblem } from './engine/google-merchant.profile.js';
 import {
+  EVALUATION_LIMITS,
   SAMPLE_ROWS,
   type AttentionView,
   type EvaluationView,
+  type PreviewedOutcomeView,
+  type ProblemGroupView,
+  type ProductPreviewView,
   type RowFilter,
+  type RulesPreviewView,
 } from './evaluations.types.js';
 import { EvaluationWorker } from './evaluations.worker.js';
 import { describeProblem, type Language } from './problem-messages.js';
+import {
+  compareOutcomes,
+  type PreviewedOutcome,
+  type ProblemCount,
+  type ProductPreview,
+  type RulesComparison,
+} from './rules-preview.js';
 
 @Injectable()
 export class EvaluationsService {
@@ -96,6 +119,18 @@ export class EvaluationsService {
     return { evaluation, sample };
   }
 
+  /**
+   * La evaluación sin la muestra de filas: GraphQL la pide así porque las
+   * filas son un campo aparte que el cliente elige.
+   */
+  findSummary(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    evaluationId: string,
+  ): Promise<EvaluationView> {
+    return this.findOwned(identity, projectId, evaluationId);
+  }
+
   /** Informe paginado (D10): las filas en orden, opcionalmente de un resultado. */
   async findRows(
     identity: AuthenticatedIdentity,
@@ -113,6 +148,68 @@ export class EvaluationsService {
       rowFilterOf(query),
     );
     return toPage(rows, page);
+  }
+
+  /**
+   * Prueba unas reglas sin guardarlas (plan 02 de cierre, P6): evalúa el
+   * catálogo con la revisión guardada y con las propuestas, con el mismo motor
+   * que una evaluación real, y dice qué cambia. No escribe nada, pero pide el
+   * permiso de quien edita reglas: es parte de prepararlas.
+   */
+  async previewRules(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    input: PreviewRulesDto,
+    query: PaginationQueryDto,
+  ): Promise<RulesPreviewView> {
+    await this.projectsService.requireAccess(
+      identity,
+      projectId,
+      'worksheet.write',
+    );
+    const proposed = toRuleset(input);
+    assertRulesetIsConsistent(proposed);
+
+    const source = await this.repository.findPreviewSource(
+      projectId,
+      input.snapshotId,
+      input.baseRevision,
+    );
+    assertColumnsExist(source.base.ruleset.mapping, source.headers);
+    assertColumnsExist(proposed.mapping, source.headers);
+
+    const rows = await this.readCatalog(input.snapshotId);
+    const context = { currency: source.currency };
+    const comparison = compareOutcomes(
+      rows.map((row) => evaluateRow(row, source.base.ruleset, context)),
+      rows.map((row) => evaluateRow(row, proposed, context)),
+    );
+    return toPreviewView(comparison, {
+      snapshotId: input.snapshotId,
+      baseRevision: source.base.revision,
+      page: resolvePage(query),
+    });
+  }
+
+  /**
+   * El catálogo entero, leído por lotes como hace el worker. Cabe en memoria:
+   * una importación tiene como mucho 5.000 filas (`IMPORT_LIMITS.rows`).
+   */
+  private async readCatalog(snapshotId: string): Promise<ImportRow[]> {
+    const rows: ImportRow[] = [];
+    let lastRow = 0;
+    for (;;) {
+      const batch = await this.repository.readCatalogRows(
+        snapshotId,
+        lastRow,
+        EVALUATION_LIMITS.batchRows,
+      );
+      rows.push(...batch);
+      if (batch.length < EVALUATION_LIMITS.batchRows) {
+        return rows;
+      }
+      lastRow = batch[batch.length - 1].sourceRow;
+    }
   }
 
   /**
@@ -192,6 +289,58 @@ export class EvaluationsService {
     }
     return evaluation;
   }
+}
+
+/** La vista previa con los problemas descritos y solo la página pedida de productos. */
+function toPreviewView(
+  comparison: RulesComparison,
+  request: Readonly<{
+    snapshotId: string;
+    baseRevision: number;
+    page: PageRequest;
+  }>,
+): RulesPreviewView {
+  const { page } = request;
+  // Una fila de más, como en los repositorios, para saber si hay otra página.
+  const window = comparison.products.slice(
+    page.offset,
+    page.offset + page.limit + 1,
+  );
+  const { items, page: pageInfo } = toPage(window, page);
+  return {
+    snapshotId: request.snapshotId,
+    baseRevision: request.baseRevision,
+    counts: comparison.counts,
+    problems: {
+      appeared: comparison.problems.appeared.map(describeProblemCount),
+      resolved: comparison.problems.resolved.map(describeProblemCount),
+      persisting: comparison.problems.persisting.map(describeProblemCount),
+    },
+    outcomeChanges: comparison.outcomeChanges,
+    changedValues: comparison.changedValues,
+    changedProducts: comparison.products.length,
+    products: items.map(describeProductPreview),
+    page: pageInfo,
+  };
+}
+
+function describeProblemCount({
+  productCount,
+  ...problem
+}: ProblemCount): ProblemGroupView {
+  return { ...describeProblem(problem), productCount };
+}
+
+function describeProductPreview(product: ProductPreview): ProductPreviewView {
+  return {
+    ...product,
+    current: describeOutcome(product.current),
+    proposed: describeOutcome(product.proposed),
+  };
+}
+
+function describeOutcome(outcome: PreviewedOutcome): PreviewedOutcomeView {
+  return { ...outcome, problems: outcome.problems.map(describeProblem) };
 }
 
 /** El filtro del informe a partir de la consulta ya validada. */

@@ -941,4 +941,14 @@ export const API_MESSAGES = {
     'El feed todavía no tiene una versión publicada con la que comparar.',
     'The feed has no published version to compare with yet.',
   ),
+  [ErrorCodes.WORKBOOK_ARCHIVED]: entry(
+    409,
+    'El libro está archivado: se puede consultar, pero no cambiar. Restáuralo primero.',
+    'The workbook is archived: it can be read but not changed. Restore it first.',
+  ),
+  [ErrorCodes.WORKSHEET_ARCHIVED]: entry(
+    409,
+    'La hoja o su libro están archivados: se puede consultar, pero no cambiar. Restáurala primero.',
+    'The worksheet or its workbook is archived: it can be read but not changed. Restore it first.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

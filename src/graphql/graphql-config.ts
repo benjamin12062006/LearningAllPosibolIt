@@ -27,6 +27,11 @@ export const graphqlRootModule = GraphQLModule.forRootAsync<ApolloDriverConfig>(
         includeStacktraceInErrorResponses: false,
         allowBatchedHttpRequests: false,
         validationRules: [maxQueryDepth(GRAPHQL_MAX_DEPTH)],
+        // Nest no aplica los filtros a los campos (`@ResolveField`) si no se
+        // pide: sin esto, un 404 o un 409 lanzado desde un campo saldría como
+        // `INTERNAL_ERROR`. Los guards no se repiten por campo a propósito: la
+        // consulta raíz ya validó la sesión y cada campo volvería a hacerlo.
+        fieldResolverEnhancers: ['filters'],
         context: ({ req }: { req: unknown }) => ({ req }),
         formatError: normalizeApolloError,
       };

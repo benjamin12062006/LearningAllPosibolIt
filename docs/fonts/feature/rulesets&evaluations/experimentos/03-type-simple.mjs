@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-const require = createRequire('/Users/benji/Documents/KSuT/claudeLearningAllPosibolIt/package.json');
+const require = createRequire('/Users/benji/Documents/KSuT/LearningAllPosibolIt/package.json');
 const load = async (n) => import(pathToFileURL(require.resolve(n)).href);
 await load('reflect-metadata');
 const { Type } = await load('class-transformer');

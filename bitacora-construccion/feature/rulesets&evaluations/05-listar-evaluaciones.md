@@ -3,12 +3,12 @@
 Fecha de creación: 2026-11-04
 Estado: Implementado y verificado
 Ámbito: [plan 02](../../../docs/plans/feature/rulesets&evaluations/02-plan-listar-evaluaciones.md)
-Relacionada con: [04 informe de la evaluación](04-informe-de-la-evaluacion.md), [plan de la web](../../../../claudeLearningAllPosibolIt-web/docs/plans/feature/rulesets&evaluations/01-plan-paginas-reglas-y-evaluaciones.md) (incremento 5)
+Relacionada con: [04 informe de la evaluación](04-informe-de-la-evaluacion.md), [plan de la web](../../../../LearningAllPosibolIt-web/docs/plans/feature/rulesets&evaluations/01-plan-paginas-reglas-y-evaluaciones.md) (incremento 5)
 Revisión de partida: `f6b4bf9`, con cambios sin commit de otras features en el árbol (feeds, organizaciones). En `evaluations.service.ts` ya estaba `acceptPlanned` de feeds; no se tocó ni entra en este commit.
 
 ## Necesidad y punto de partida
 
-La web `claudeLearningAllPosibolIt-web` solo podía abrir una evaluación por su id: la API no tenía un listado. El usuario pidió añadirlo en la API para desbloquear el historial.
+La web `LearningAllPosibolIt-web` solo podía abrir una evaluación por su id: la API no tenía un listado. El usuario pidió añadirlo en la API para desbloquear el historial.
 
 ## Evidencia y decisiones
 

@@ -3,7 +3,7 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
-const project = '/Users/benji/Documents/KSuT/claudeLearningAllPosibolIt/';
+const project = '/Users/benji/Documents/KSuT/LearningAllPosibolIt/';
 const require = createRequire(project + 'package.json');
 const load = async (name) => import(pathToFileURL(require.resolve(name)).href);
 

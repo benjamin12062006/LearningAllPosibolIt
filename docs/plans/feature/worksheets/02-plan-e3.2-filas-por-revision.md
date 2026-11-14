@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-04  
 Última actualización: 2026-11-04 (implementado)  
 Estado: Implementado y verificado en local ([bitácora 02](../../../../bitacora-construccion/feature/worksheets/02-filas-por-revision.md)); confirmado en `feature/worksheets`; migración sin aplicar en Neon.  
-Ámbito: `claudeLearningAllPosibolIt`, solo backend y REST. Segunda microentrega de E3 ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)).  
+Ámbito: `LearningAllPosibolIt`, solo backend y REST. Segunda microentrega de E3 ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)).  
 Relacionada con: [fuentes 02](../../../fonts/feature/worksheets/02-fuentes-de-filas-por-revision.md), [plan 01](01-plan-e3.1-hoja-vacia.md), [bitácora 01](../../../../bitacora-construccion/feature/worksheets/01-libro-y-hoja-vacia.md).  
 Revisión de referencia: `8a32dfb` en `feature/organizations-access`, con E3.1 sin commit.
 

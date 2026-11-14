@@ -385,6 +385,8 @@ model Workbook {
   nameNormalized String      @map("name_normalized")
   createdBy      String      @map("created_by")
   createdAt      String      @map("created_at")
+  /// Nulo es «activo». Archivado se lee, pero no admite escrituras (H1).
+  archivedAt     String?     @map("archived_at")
   project        Project     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
   creator        AppUser     @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
   worksheets     Worksheet[]
@@ -412,6 +414,12 @@ model Worksheet {
   headRevisionId String?                  @map("head_revision_id")
   createdBy      String                   @map("created_by")
   createdAt      String                   @map("created_at")
+  /// Nulo es «activa». También cuenta como archivada si lo está su libro (H1).
+  archivedAt     String?                  @map("archived_at")
+  /// Solo en una copia: la hoja y la revisión de las que salió. Sin relación:
+  /// es procedencia, no una dependencia.
+  sourceWorksheetId String?               @map("source_worksheet_id")
+  sourceRevisionId  String?               @map("source_revision_id")
   workbook       Workbook                 @relation(fields: [organizationId, projectId, workbookId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
   headRevision   WorksheetRevision?       @relation("WorksheetHead", fields: [id, headRevisionId], references: [worksheetId, id], onDelete: NoAction, onUpdate: NoAction)
   creator        AppUser                  @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)

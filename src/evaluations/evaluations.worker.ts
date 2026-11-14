@@ -15,6 +15,7 @@ import { EvaluationSummary } from './engine/evaluation-summary.js';
 import { isRuleset, type Ruleset } from './engine/ruleset.js';
 import { EvaluationsRepository } from './evaluations.repository.js';
 import {
+  CURRENCY_PATTERN,
   EVALUATION_JOB_DEFAULTS,
   EVALUATION_LIMITS,
   EVALUATION_OPTIONS,
@@ -25,9 +26,6 @@ import {
 
 /** Solo códigos técnicos cortos (`ECONNRESET`, `P2002`…); nunca mensajes con datos. */
 const DIAGNOSTIC_CODE_PATTERN = /^[A-Z0-9_]{1,40}$/;
-
-/** Código ISO 4217, como lo guarda la configuración del proyecto. */
-const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 
 /**
  * Procesa la cola de evaluaciones de una en una: reclama una, recorre las filas

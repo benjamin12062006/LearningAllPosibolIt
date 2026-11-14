@@ -47,7 +47,7 @@ Las personas trabajan con Excel. Hasta ahora solo se podía importar CSV, lo que
 
 ## Comprobaciones realmente ejecutadas
 
-Ejecutado el 2026-11-07 sobre el árbol de trabajo (sin commit), en `/Users/benji/Documents/Proyect-Learning/claudeLearningAllPosibolIt`:
+Ejecutado el 2026-11-07 sobre el árbol de trabajo (sin commit), en `/Users/benji/Documents/Proyect-Learning/LearningAllPosibolIt`:
 
 - **Spike** (ficha 02): tres lectores contra 12 fixtures escritos a mano, con tiempo, memoria y bloqueo del bucle de eventos.
 - **Pruebas nuevas:**

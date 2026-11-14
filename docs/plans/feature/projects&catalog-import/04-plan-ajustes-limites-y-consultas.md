@@ -4,7 +4,7 @@ Fecha de creación: 2026-10-30
 Estado: Ejecutado el 2026-10-30 (incrementos 1, 2, 3, 5 y 6; el 4 se descarta). Ver la [bitácora 14](../../../../bitacora-construccion/settings/14-ajustar-limites-y-consultas.md).  
 Ámbito: API de `projects` y `catalog-import`; sin interfaz web.  
 Relacionada con: [plan general](01-plan-projects-y-catalog-import.md), [projects](02-plan-projects.md), [catalog-import](03-plan-catalog-import.md), [fuente 06: paginación y límites](../../../fonts/feature/projects&catalog-import/06-paginacion-y-limites.md), [plan de eliminación](../../db/03-plan-eliminacion-de-datos.md).  
-Revisión de referencia: `78e99f3` en `claudeLearningAllPosibolIt` (copia de `estadistica-forms-api`).
+Revisión de referencia: `78e99f3` en `LearningAllPosibolIt` (copia de `estadistica-forms-api`).
 
 ## Objetivo
 

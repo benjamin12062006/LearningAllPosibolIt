@@ -15,6 +15,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { PaginationQueryDto } from '../common/http/pagination.js';
 import { ROW_QUERY_LIMITS } from './row-query.js';
 import {
   COLUMN_TYPES,
@@ -35,6 +36,51 @@ export class CreateWorkbookDto {
   @IsNotEmpty()
   @MaxLength(WORKSHEET_LIMITS.nameLength)
   name!: string;
+}
+
+/** `PATCH …/workbooks/:id` y `PATCH …/worksheets/:id`: el nombre nuevo. */
+export class RenameDto {
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(WORKSHEET_LIMITS.nameLength)
+  name!: string;
+}
+
+/**
+ * `POST …/worksheets/:id/duplicate`. Sin `workbookId`, la copia va al mismo
+ * libro; sin `revisionId`, se copia la revisión actual.
+ */
+export class DuplicateWorksheetDto extends RenameDto {
+  @IsOptional()
+  @IsUUID()
+  workbookId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  revisionId?: string;
+}
+
+/** En la consulta todo llega como texto: solo `true` y `false` son booleanos. */
+function toBoolean({ value }: { value: unknown }) {
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  return value;
+}
+
+/**
+ * `GET …/workbooks?archived=false`. Sin `archived`, activos y archivados (como
+ * antes de que existiera archivar); con él, solo unos u otros.
+ */
+export class ArchivableListQueryDto extends PaginationQueryDto {
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  archived?: boolean;
 }
 
 export class SelectionOptionDto {

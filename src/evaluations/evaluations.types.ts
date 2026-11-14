@@ -2,12 +2,18 @@ import {
   ApplicationFailure,
   type PublicError,
 } from '../common/http/public-error.js';
+import type { PageInfo } from '../common/http/pagination.js';
 import type { RetryOptions } from '../jobs/retry-delay.js';
 import type {
   ProductValues,
   RowProblem,
 } from './engine/google-merchant.profile.js';
 import type { ProblemView } from './problem-messages.js';
+import type {
+  ChangedAttribute,
+  OutcomeChange,
+  ValueChange,
+} from './rules-preview.js';
 
 export const EVALUATION_LIMITS = {
   /** Filas del catálogo que se leen, evalúan y guardan en cada lote. */
@@ -64,6 +70,50 @@ export type AttentionView = Readonly<{
   problemGroups: readonly ProblemGroupView[];
   excludedProducts: number;
   exclusionGroups: readonly ExclusionGroupView[];
+}>;
+
+/** Código de moneda ISO 4217, como lo congela el snapshot del catálogo. */
+export const CURRENCY_PATTERN = /^[A-Z]{3}$/;
+
+/** Cómo queda un producto con unas reglas, con los problemas ya descritos. */
+export type PreviewedOutcomeView = Readonly<{
+  outcome: RowOutcomeKind;
+  problems: readonly ProblemView[];
+  excludedByRule: number | null;
+}>;
+
+export type ProductPreviewView = Readonly<{
+  sourceRow: number;
+  externalId: string;
+  current: PreviewedOutcomeView;
+  proposed: PreviewedOutcomeView;
+  values: readonly ValueChange[];
+}>;
+
+/**
+ * Lo que devuelve `POST …/evaluations/preview` (plan 02 de cierre, P6): qué
+ * cambiaría en un catálogo con unas reglas que todavía no se han guardado.
+ * Todo menos `products` es del catálogo entero; `products` es la página pedida
+ * de los productos a los que les cambia algo.
+ */
+export type RulesPreviewView = Readonly<{
+  snapshotId: string;
+  /** La revisión guardada con la que se compara. */
+  baseRevision: number;
+  counts: Readonly<{
+    current: EvaluationCountsView;
+    proposed: EvaluationCountsView;
+  }>;
+  problems: Readonly<{
+    appeared: readonly ProblemGroupView[];
+    resolved: readonly ProblemGroupView[];
+    persisting: readonly ProblemGroupView[];
+  }>;
+  outcomeChanges: readonly OutcomeChange[];
+  changedValues: readonly ChangedAttribute[];
+  changedProducts: number;
+  products: readonly ProductPreviewView[];
+  page: PageInfo;
 }>;
 
 /** Datos que la aceptación necesita; los IDs se generan antes de la transacción. */

@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-04  
 Última actualización: 2026-11-05 (fracciones simplificadas por MCD y verificación de la integración)  
 Estado: Plan cerrado en `feature/integracion-ampliacion`. Implementado y verificado en local ([bitácora 03](../../../../bitacora-construccion/feature/worksheets/03-validadores-y-calculos.md)).  
-Ámbito: `claudeLearningAllPosibolIt`, solo backend y REST. Tercera microentrega de E3 ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)).  
+Ámbito: `LearningAllPosibolIt`, solo backend y REST. Tercera microentrega de E3 ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)).  
 Relacionada con: [fuentes 03](../../../fonts/feature/worksheets/03-fuentes-de-validadores-y-calculos.md), [plan 02](02-plan-e3.2-filas-por-revision.md), [bitácora 02](../../../../bitacora-construccion/feature/worksheets/02-filas-por-revision.md).  
 Revisión de referencia: `23fd7ef` en `feature/worksheets`.
 

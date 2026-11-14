@@ -12,6 +12,8 @@ export type Workbook = Readonly<{
   projectId: string;
   name: string;
   createdAt: string;
+  /** Nulo si está activo. */
+  archivedAt: string | null;
 }>;
 
 /**
@@ -45,6 +47,12 @@ export type WorksheetSummary = Readonly<{
   generation: number;
   headRevision: WorksheetRevisionSummary;
   createdAt: string;
+  /** Nulo si la hoja está activa. */
+  archivedAt: string | null;
+  /** No nulo si su libro está archivado: entonces la hoja tampoco admite cambios. */
+  workbookArchivedAt: string | null;
+  /** Solo en una copia: de qué hoja y de qué revisión salió. */
+  duplicatedFrom: Readonly<{ worksheetId: string; revisionId: string }> | null;
 }>;
 
 export type Worksheet = WorksheetSummary &

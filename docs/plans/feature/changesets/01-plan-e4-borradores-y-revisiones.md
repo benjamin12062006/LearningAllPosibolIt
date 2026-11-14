@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-05  
 Última actualización: 2026-11-06 (batería de E4, E4.7 y cierre)  
 Estado: **Plan cerrado** el 2026-11-06, salvo la concurrencia en PostgreSQL real (ver «Límites y continuidad»).
-Ámbito: `claudeLearningAllPosibolIt`, solo backend y REST. E4 de la ampliación ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)), con la parte de E2 que E4 necesita.  
+Ámbito: `LearningAllPosibolIt`, solo backend y REST. E4 de la ampliación ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)), con la parte de E2 que E4 necesita.  
 Relacionada con: [fuentes 01](../../../fonts/feature/changesets/01-fuentes-de-borradores-y-revisiones.md), [plan de hojas 03](../worksheets/03-plan-e3.3-validadores-y-calculos.md), [bitácora de hojas 03](../../../../bitacora-construccion/feature/worksheets/03-validadores-y-calculos.md).  
 Revisión de referencia: `23fd7ef` en `feature/worksheets`, con E3.3 sin commit.
 

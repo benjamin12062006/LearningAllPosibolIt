@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-06  
 Última actualización: 2026-11-07  
 Estado: Cerrado. E5.1 hecha y verificada (2026-11-06), con el límite de filas por hoja (2026-11-07); E5.2, E5.3 y E5.4 hechas y verificadas (2026-11-07).  
-Ámbito: `claudeLearningAllPosibolIt`, solo backend y REST. E5 de la ampliación ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)).  
+Ámbito: `LearningAllPosibolIt`, solo backend y REST. E5 de la ampliación ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)).  
 Relacionada con: [fuentes 01](../../../fonts/feature/imports&exports/01-fuentes-de-importar-y-exportar-hojas.md), [fuentes 02, spike XLSX](../../../fonts/feature/imports&exports/02-spike-de-librerias-xlsx.md), [fuentes 03, exportar](../../../fonts/feature/imports&exports/03-fuentes-de-exportar-hojas.md), [fuentes 04, puente al catálogo](../../../fonts/feature/imports&exports/04-fuentes-del-puente-a-catalogo.md), [plan de E4](../changesets/01-plan-e4-borradores-y-revisiones.md).  
 Revisión de referencia: `main` `7921f00` más E4 cerrada sin commit (2026-11-06).
 

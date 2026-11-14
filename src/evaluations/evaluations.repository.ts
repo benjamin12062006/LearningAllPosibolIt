@@ -35,9 +35,14 @@ import {
   type ProductValues,
   type RowProblem,
 } from './engine/google-merchant.profile.js';
-import { isRuleset, type AttributeMapping } from './engine/ruleset.js';
+import {
+  isRuleset,
+  type AttributeMapping,
+  type Ruleset,
+} from './engine/ruleset.js';
 import type { InvalidRow } from './errors-csv.js';
 import {
+  CURRENCY_PATTERN,
   EVALUATION_JOB_DEFAULTS,
   EvaluationFailure,
   type ClaimedEvaluation,
@@ -52,6 +57,21 @@ import {
 } from './evaluations.types.js';
 
 type IdRow = { id: string };
+
+type PreviewSnapshotRow = {
+  status: string;
+  headers: unknown;
+  currency: unknown;
+};
+
+type BaseRulesetRow = RulesetForEvaluationRow & { revision: number };
+
+/** El catálogo listo y la revisión con la que se compara una vista previa. */
+export type PreviewSource = Readonly<{
+  headers: readonly string[];
+  currency: string;
+  base: Readonly<{ revision: number; ruleset: Ruleset }>;
+}>;
 
 /** Un grupo de problemas tal como sale de la base, sin textos. */
 export type ProblemGroupRow = RowProblem & { productCount: number };
@@ -342,6 +362,72 @@ export class EvaluationsRepository {
     });
   }
 
+  /**
+   * Lo que necesita una vista previa de reglas (plan 02 de cierre, P6): las
+   * cabeceras y la moneda del catálogo y la revisión con la que se compara.
+   * Mismos errores que al pedir una evaluación. No bloquea nada: la vista
+   * previa no guarda, así que no compite con un borrado.
+   */
+  async findPreviewSource(
+    projectId: string,
+    snapshotId: string,
+    baseRevision?: number,
+  ): Promise<PreviewSource> {
+    const snapshots = await this.prisma.$queryRaw<PreviewSnapshotRow[]>`
+      SELECT
+        status,
+        headers,
+        project_configuration ->> 'currency' AS currency
+      FROM estadistica_forms.catalog_snapshots
+      WHERE id = ${snapshotId}
+        AND project_id = ${projectId}`;
+    const snapshot = snapshots[0];
+    if (!snapshot) {
+      throw apiError(ErrorCodes.IMPORT_NOT_FOUND);
+    }
+    if (!isReadyForPreview(snapshot)) {
+      throw apiError(ErrorCodes.EVALUATION_SNAPSHOT_NOT_READY);
+    }
+    return {
+      headers: snapshot.headers,
+      currency: snapshot.currency,
+      base: await this.findBaseRuleset(projectId, baseRevision),
+    };
+  }
+
+  /** La revisión pedida o, sin pedir ninguna, la última del proyecto. */
+  private async findBaseRuleset(
+    projectId: string,
+    revision?: number,
+  ): Promise<PreviewSource['base']> {
+    const onlyRevision =
+      revision === undefined
+        ? Prisma.empty
+        : Prisma.sql`AND revision = ${revision}`;
+    const rows = await this.prisma.$queryRaw<BaseRulesetRow[]>`
+      SELECT
+        id,
+        revision,
+        mapping,
+        rules
+      FROM estadistica_forms.ruleset_versions
+      WHERE project_id = ${projectId}
+        ${onlyRevision}
+      ORDER BY revision DESC
+      LIMIT 1`;
+    const row = rows[0];
+    if (!row) {
+      throw apiError(ErrorCodes.RULESET_NOT_FOUND);
+    }
+    const ruleset = { mapping: row.mapping, rules: row.rules };
+    if (!isRuleset(ruleset)) {
+      throw new Error(
+        `La versión de reglas ${row.id} tiene una forma inválida.`,
+      );
+    }
+    return { revision: row.revision, ruleset };
+  }
+
   /** Lee el siguiente lote por `source_row`, sin repetir ni saltar filas. */
   readCatalogRows(
     snapshotId: string,
@@ -542,7 +628,7 @@ async function readRuleset(
  * Una revisión es del proyecto y puede aplicarse a importaciones con columnas
  * distintas: aquí se comprueba contra las cabeceras de este snapshot (D2).
  */
-function assertColumnsExist(
+export function assertColumnsExist(
   mapping: readonly AttributeMapping[],
   headers: readonly string[],
 ) {
@@ -705,6 +791,18 @@ function asAlreadyActive(error: unknown) {
   return isUniqueViolation
     ? apiError(ErrorCodes.EVALUATION_ALREADY_ACTIVE)
     : error;
+}
+
+/** Un catálogo terminado, con sus cabeceras y su moneda bien guardadas. */
+function isReadyForPreview(
+  snapshot: PreviewSnapshotRow,
+): snapshot is { status: 'ready'; headers: string[]; currency: string } {
+  return (
+    snapshot.status === 'ready' &&
+    isTextList(snapshot.headers) &&
+    typeof snapshot.currency === 'string' &&
+    CURRENCY_PATTERN.test(snapshot.currency)
+  );
 }
 
 function isTextList(value: unknown): value is string[] {

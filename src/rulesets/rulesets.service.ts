@@ -93,9 +93,10 @@ export class RulesetsService {
 
 /**
  * Copia el body a objetos de dominio: la base guarda datos simples, nunca
- * instancias de los DTO.
+ * instancias de los DTO. La usa también la vista previa de reglas de
+ * evaluaciones, que recibe el mismo body sin guardarlo.
  */
-function toRuleset(input: CreateRulesetDto): Ruleset {
+export function toRuleset(input: CreateRulesetDto): Ruleset {
   return {
     mapping: input.mapping.map(({ attribute, column }) => ({
       attribute,
@@ -128,7 +129,7 @@ function toRule(dto: RuleDto): Rule {
  * Responde como cualquier otro error de validación (`VALIDATION_FAILED` con un
  * issue por problema), para que el cliente los trate igual.
  */
-function assertRulesetIsConsistent(ruleset: Ruleset) {
+export function assertRulesetIsConsistent(ruleset: Ruleset) {
   const issues = findRulesetIssues(ruleset);
   if (issues.length > 0) {
     throw apiError(ErrorCodes.VALIDATION_FAILED, issues.map(toValidationIssue));

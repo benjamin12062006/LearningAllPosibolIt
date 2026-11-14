@@ -19,6 +19,7 @@ import {
   normalizeName,
 } from '../worksheets/worksheet-columns.js';
 import {
+  assertWorksheetActive,
   findColumnsIn,
   lockProjectFor,
 } from '../worksheets/worksheets.repository.js';
@@ -96,6 +97,7 @@ export async function insertDraft(
 ): Promise<string> {
   const now = new Date().toISOString();
   const changesetId = randomUUID();
+  await assertWorksheetActive(tx, scope, draft.worksheetId);
   await assertHead(tx, scope, draft.worksheetId, draft.base.id);
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO estadistica_forms.worksheet_changesets
@@ -291,6 +293,7 @@ export class ChangesetsRepository {
     return this.prisma.$transaction(async (tx) => {
       await lockProjectFor(tx, actorId, scope, 'worksheet.write');
       const changeset = await lockChangeset(tx, actorId, scope, changesetId);
+      await assertWorksheetActive(tx, scope, changeset.worksheetId);
       assertAuthor(changeset, actorId);
       assertStatus(changeset, ['draft']);
       assertVersion(
@@ -324,6 +327,7 @@ export class ChangesetsRepository {
     return this.prisma.$transaction(async (tx) => {
       await lockProjectFor(tx, actorId, scope, 'worksheet.write');
       const changeset = await lockChangeset(tx, actorId, scope, changesetId);
+      await assertWorksheetActive(tx, scope, changeset.worksheetId);
       assertAuthor(changeset, actorId);
       assertStatus(changeset, ['draft']);
       assertVersion(changeset, expectedVersion, ErrorCodes.CHANGESET_STALE);
@@ -359,6 +363,7 @@ export class ChangesetsRepository {
     return this.prisma.$transaction(async (tx) => {
       await lockProjectFor(tx, actorId, scope, 'worksheet.write');
       const changeset = await lockChangeset(tx, actorId, scope, changesetId);
+      await assertWorksheetActive(tx, scope, changeset.worksheetId);
       assertAuthor(changeset, actorId);
       assertStatus(changeset, ['pending_review', 'rejected', 'conflicted']);
       assertVersion(changeset, expectedVersion, ErrorCodes.CHANGESET_STALE);
@@ -436,6 +441,7 @@ export class ChangesetsRepository {
     return this.prisma.$transaction(async (tx) => {
       await lockProjectFor(tx, actorId, scope, 'worksheet.write');
       const changeset = await lockChangeset(tx, actorId, scope, changesetId);
+      await assertWorksheetActive(tx, scope, changeset.worksheetId);
       assertAuthor(changeset, actorId);
       assertStatus(changeset, ['draft', 'conflicted']);
       assertVersion(
@@ -486,6 +492,7 @@ export class ChangesetsRepository {
     return this.prisma.$transaction(async (tx) => {
       await lockProjectFor(tx, actorId, scope, 'changeset.approve');
       const changeset = await lockChangeset(tx, actorId, scope, changesetId);
+      await assertWorksheetActive(tx, scope, changeset.worksheetId);
       assertStatus(changeset, ['pending_review']);
       const isWhatWasReviewed =
         changeset.contentHash === request.contentHash &&
@@ -562,6 +569,7 @@ export class ChangesetsRepository {
       }
 
       const changeset = await lockChangeset(tx, actorId, scope, changesetId);
+      await assertWorksheetActive(tx, scope, changeset.worksheetId);
       assertStatus(changeset, ['approved']);
       await assertApprovedContent(tx, changeset, request.contentHash);
       await lockHeadOrThrow(tx, changeset, request.expectedHeadRevisionId);

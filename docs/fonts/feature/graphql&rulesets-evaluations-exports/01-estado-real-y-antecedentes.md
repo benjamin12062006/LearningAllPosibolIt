@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-02  
 Estado: Investigación; feature sin plan ni código.  
 Tipo de fuente: código local, planes y bitácoras del proyecto, y `docs-diagrams`.  
-Origen: API `claudeLearningAllPosibolIt` y `docs-diagrams`.  
+Origen: API `LearningAllPosibolIt` y `docs-diagrams`.  
 Fecha de consulta: 2026-11-02  
 Revisión inspeccionada: `f6b4bf9` («feat: revisar y exportar el TSV de una evaluación aprobada») en `feature/reviews-exports`, con la revisión de legibilidad de la [bitácora 08 de reviews&exports](../../../../bitacora-construccion/feature/reviews&exports/08-revision-de-legibilidad.md) sin commit.  
 Relacionada con: [fuentes técnicas](02-fuentes-tecnicas.md), [cursos y reconstrucciones](03-cursos-y-reconstrucciones.md), [mapa para el plan](04-mapa-de-necesidades-para-el-plan.md), [plan de GraphQL](../../../plans/db/05-plan-implementar-graphql.md), [plan de rulesets y evaluations](../../../plans/feature/rulesets&evaluations/01-plan-rulesets-y-evaluations.md) (D12).

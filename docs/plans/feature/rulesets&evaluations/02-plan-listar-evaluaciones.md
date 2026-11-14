@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-04
 Estado: Plan
 Ámbito: módulo `evaluations` de la API
-Relacionada con: [plan 01](01-plan-rulesets-y-evaluations.md) (D10, consultas), [bitácora 04](../../../../bitacora-construccion/feature/rulesets&evaluations/04-informe-de-la-evaluacion.md), [plan de la web](../../../../../claudeLearningAllPosibolIt-web/docs/plans/feature/rulesets&evaluations/01-plan-paginas-reglas-y-evaluaciones.md) (incremento 5, bloqueado por esta ruta)
+Relacionada con: [plan 01](01-plan-rulesets-y-evaluations.md) (D10, consultas), [bitácora 04](../../../../bitacora-construccion/feature/rulesets&evaluations/04-informe-de-la-evaluacion.md), [plan de la web](../../../../../LearningAllPosibolIt-web/docs/plans/feature/rulesets&evaluations/01-plan-paginas-reglas-y-evaluaciones.md) (incremento 5, bloqueado por esta ruta)
 Revisión de referencia: `f6b4bf9`, con cambios sin commit de otras features (feeds, organizaciones) que no se tocan; en `evaluations.service.ts` ya hay un `acceptPlanned` pendiente de feeds.
 
 ## Objetivo

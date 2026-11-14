@@ -235,8 +235,8 @@ export class WorksheetCatalogSnapshotsService {
 }
 
 /**
- * D23, en este orden: miembro de esa hoja (404), organización activa (409) y
- * permiso de escritura (403). *Ajustado en C6:* ya no hace falta ser el
+ * D23, en este orden: miembro de esa hoja (404), organización activa (409),
+ * permiso de escritura (403) y hoja activa (409, H1). *Ajustado en C6:* ya no hace falta ser el
  * propietario del proyecto; el catálogo y el feed son de la organización.
  */
 function assertCanSendToCatalog(
@@ -250,6 +250,9 @@ function assertCanSendToCatalog(
   }
   if (!can(access.role, 'worksheet.write')) {
     throw apiError(ErrorCodes.FORBIDDEN);
+  }
+  if (access.isWorksheetArchived) {
+    throw apiError(ErrorCodes.WORKSHEET_ARCHIVED);
   }
 }
 

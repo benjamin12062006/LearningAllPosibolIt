@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-01  
 Estado: Investigación; feature sin plan ni código.  
 Tipo de fuente: código local, bitácoras del proyecto y requisitos de `docs-diagrams`.  
-Origen: API `claudeLearningAllPosibolIt` (copia de aprendizaje de `estadistica-forms-api`) y `docs-diagrams`.  
+Origen: API `LearningAllPosibolIt` (copia de aprendizaje de `estadistica-forms-api`) y `docs-diagrams`.  
 Fecha de consulta: 2026-11-01  
 Revisión inspeccionada: `d5e8f54` («docs: registrar migraciones de rulesets y evaluaciones aplicadas en Neon») en `main`; árbol limpio salvo `.idea/dataSources.xml`, que no forma parte de esta feature. La raíz KSuT no es un repositorio Git.  
 Relacionada con: [fuentes técnicas](02-fuentes-tecnicas.md), [cursos y reconstrucciones](03-cursos-y-reconstrucciones.md), [mapa para el plan](04-mapa-de-necesidades-para-el-plan.md), [plan anterior](../../../plans/feature/rulesets&evaluations/01-plan-rulesets-y-evaluations.md), [bitácora 04 de evaluaciones](../../../../bitacora-construccion/feature/rulesets&evaluations/04-informe-de-la-evaluacion.md).

@@ -1,7 +1,7 @@
 // Alternativa: @Transform elige la subclase a mano; los no-objetos pasan tal cual.
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-const project = '/Users/benji/Documents/KSuT/claudeLearningAllPosibolIt/';
+const project = '/Users/benji/Documents/KSuT/LearningAllPosibolIt/';
 const require = createRequire(project + 'package.json');
 const load = async (n) => import(pathToFileURL(require.resolve(n)).href);
 await load('reflect-metadata');

@@ -113,6 +113,7 @@ describe('Hojas vacías por HTTP, con guard y persistencia reales', () => {
       projectId: expect.any(String),
       name: 'Libro',
       createdAt: expect.any(String),
+      archivedAt: null,
     });
 
     const created = await call(

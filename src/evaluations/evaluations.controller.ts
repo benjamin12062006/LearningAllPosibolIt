@@ -18,6 +18,7 @@ import {
   CreateEvaluationDto,
   ErrorsCsvQueryDto,
   EvaluationRowsQueryDto,
+  PreviewRulesDto,
 } from './evaluations.dto.js';
 import { EvaluationsService } from './evaluations.service.js';
 
@@ -41,6 +42,29 @@ export class EvaluationsController {
   }
 
   /** Historial del proyecto: `{ evaluations, page }`, sin muestra (plan 02). */
+  /**
+   * Prueba unas reglas sobre un catálogo sin guardar nada: `{ preview: {
+   * counts, problems, outcomeChanges, changedValues, changedProducts,
+   * products, page } }`. `200` y no `201`: no crea ningún recurso.
+   */
+  @Post('preview')
+  @HttpCode(200)
+  async previewRules(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Body() body: PreviewRulesDto,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return {
+      preview: await this.evaluations.previewRules(
+        identity,
+        projectId,
+        body,
+        query,
+      ),
+    };
+  }
+
   @Get()
   async findAll(
     @CurrentIdentity() identity: AuthenticatedIdentity,

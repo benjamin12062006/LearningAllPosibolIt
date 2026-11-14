@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-03  
 Última actualización: 2026-11-03 (implementado)  
 Estado: Implementado y verificado en local ([bitácora 01](../../../../bitacora-construccion/feature/worksheets/01-libro-y-hoja-vacia.md)); confirmado en `feature/worksheets`; migración sin aplicar en Neon.  
-Ámbito: `claudeLearningAllPosibolIt`, solo backend y REST. Primera microentrega de E3 de la ampliación ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)).  
+Ámbito: `LearningAllPosibolIt`, solo backend y REST. Primera microentrega de E3 de la ampliación ([18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md)).  
 Relacionada con: [fuentes 01](../../../fonts/feature/worksheets/01-fuentes-de-la-hoja-vacia.md), [plan de organizaciones](../organizations&access/01-plan-organizaciones-y-acceso.md), [hojas tipadas](../../../../../docs-diagrams/12-hojas-modelo-editor-importacion-y-exportacion.md), [contratos](../../../../../docs-diagrams/16-nuxt-tabla-central-chat-y-contratos.md).  
 Revisión de referencia: `8a32dfb` en `feature/organizations-access` (E1.1, E1.3 y E1.4).
 

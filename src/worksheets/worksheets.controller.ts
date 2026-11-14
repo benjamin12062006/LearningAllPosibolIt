@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -11,13 +12,15 @@ import {
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
-import { PaginationQueryDto } from '../common/http/pagination.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
 import { WorksheetRowsService } from './worksheet-rows.service.js';
 import {
+  ArchivableListQueryDto,
   CreateWorkbookDto,
   CreateWorksheetDto,
+  DuplicateWorksheetDto,
   QueryRowsDto,
+  RenameDto,
 } from './worksheets.dto.js';
 import { WorksheetsService } from './worksheets.service.js';
 import type { ProjectScope } from './worksheets.types.js';
@@ -58,7 +61,7 @@ export class WorksheetsController {
     @Param('organizationId', uuidParamPipe('organizationId'))
     organizationId: string,
     @Param('projectId', uuidParamPipe('projectId')) projectId: string,
-    @Query() query: PaginationQueryDto,
+    @Query() query: ArchivableListQueryDto,
   ) {
     const scope: ProjectScope = { organizationId, projectId };
     const { items, page } = await this.worksheetsService.findWorkbooks(
@@ -67,6 +70,59 @@ export class WorksheetsController {
       query,
     );
     return { workbooks: items, page };
+  }
+
+  @Patch('workbooks/:workbookId')
+  async renameWorkbook(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('workbookId', uuidParamPipe('workbookId')) workbookId: string,
+    @Body() body: RenameDto,
+  ) {
+    const workbook = await this.worksheetsService.renameWorkbook(
+      identity,
+      { organizationId, projectId },
+      workbookId,
+      body.name,
+    );
+    return { workbook };
+  }
+
+  /** `200` con el libro: archivar el que ya lo está no cambia nada. */
+  @Post('workbooks/:workbookId/archive')
+  @HttpCode(200)
+  async archiveWorkbook(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('workbookId', uuidParamPipe('workbookId')) workbookId: string,
+  ) {
+    const workbook = await this.worksheetsService.archiveWorkbook(
+      identity,
+      { organizationId, projectId },
+      workbookId,
+    );
+    return { workbook };
+  }
+
+  @Post('workbooks/:workbookId/restore')
+  @HttpCode(200)
+  async restoreWorkbook(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('workbookId', uuidParamPipe('workbookId')) workbookId: string,
+  ) {
+    const workbook = await this.worksheetsService.restoreWorkbook(
+      identity,
+      { organizationId, projectId },
+      workbookId,
+    );
+    return { workbook };
   }
 
   @Post('workbooks/:workbookId/worksheets')
@@ -93,7 +149,7 @@ export class WorksheetsController {
     organizationId: string,
     @Param('projectId', uuidParamPipe('projectId')) projectId: string,
     @Param('workbookId', uuidParamPipe('workbookId')) workbookId: string,
-    @Query() query: PaginationQueryDto,
+    @Query() query: ArchivableListQueryDto,
   ) {
     const { items, page } = await this.worksheetsService.findWorksheets(
       identity,
@@ -113,6 +169,74 @@ export class WorksheetsController {
     @Param('worksheetId', uuidParamPipe('worksheetId')) worksheetId: string,
   ) {
     return this.worksheetsService.findWorksheet(
+      identity,
+      { organizationId, projectId },
+      worksheetId,
+    );
+  }
+
+  /** `{ worksheet, capabilities }`, como al leerla. */
+  @Patch('worksheets/:worksheetId')
+  renameWorksheet(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('worksheetId', uuidParamPipe('worksheetId')) worksheetId: string,
+    @Body() body: RenameDto,
+  ) {
+    return this.worksheetsService.renameWorksheet(
+      identity,
+      { organizationId, projectId },
+      worksheetId,
+      body.name,
+    );
+  }
+
+  /** `201` con la copia: `{ worksheet, capabilities }`. */
+  @Post('worksheets/:worksheetId/duplicate')
+  duplicateWorksheet(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('worksheetId', uuidParamPipe('worksheetId')) worksheetId: string,
+    @Body() body: DuplicateWorksheetDto,
+  ) {
+    return this.worksheetsService.duplicateWorksheet(
+      identity,
+      { organizationId, projectId },
+      worksheetId,
+      body,
+    );
+  }
+
+  @Post('worksheets/:worksheetId/archive')
+  @HttpCode(200)
+  archiveWorksheet(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('worksheetId', uuidParamPipe('worksheetId')) worksheetId: string,
+  ) {
+    return this.worksheetsService.archiveWorksheet(
+      identity,
+      { organizationId, projectId },
+      worksheetId,
+    );
+  }
+
+  @Post('worksheets/:worksheetId/restore')
+  @HttpCode(200)
+  restoreWorksheet(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('worksheetId', uuidParamPipe('worksheetId')) worksheetId: string,
+  ) {
+    return this.worksheetsService.restoreWorksheet(
       identity,
       { organizationId, projectId },
       worksheetId,

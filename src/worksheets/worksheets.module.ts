@@ -24,6 +24,12 @@ import { WorksheetsService } from './worksheets.service.js';
     WorksheetRowsRepository,
     WorksheetRowsService,
   ],
-  exports: [WorksheetsRepository, WorksheetRowsRepository],
+  exports: [
+    WorksheetsRepository,
+    WorksheetRowsRepository,
+    // Los usa la capa GraphQL, igual que los controladores REST.
+    WorksheetsService,
+    WorksheetRowsService,
+  ],
 })
 export class WorksheetsModule {}

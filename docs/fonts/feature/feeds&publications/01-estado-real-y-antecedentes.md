@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-02  
 Estado: Investigación; feature sin plan ni código.  
 Tipo de fuente: código local, planes del proyecto y requisitos de `docs-diagrams`.  
-Origen: API `claudeLearningAllPosibolIt` y `docs-diagrams`.  
+Origen: API `LearningAllPosibolIt` y `docs-diagrams`.  
 Fecha de consulta: 2026-11-02  
 Revisión inspeccionada: `f6b4bf9` («feat: revisar y exportar el TSV de una evaluación aprobada») en `feature/reviews-exports`, con cambios sin commit: la revisión de legibilidad ([bitácora 08 de reviews&exports](../../../../bitacora-construccion/feature/reviews&exports/08-revision-de-legibilidad.md)) y la investigación aplazada de GraphQL. Línea base: `pnpm test:features`, 31 suites y 585 pruebas en verde.  
 Relacionada con: [fuentes técnicas](02-fuentes-tecnicas.md), [cursos y reconstrucciones](03-cursos-y-reconstrucciones.md), [mapa para el plan](04-mapa-de-necesidades-para-el-plan.md), [plan reviews&exports](../../../plans/feature/reviews&exports/01-plan-reviews-y-exports.md), [GraphQL aplazado](../../../plans/feature/graphql&rulesets-evaluations-exports/01-plan-aplazado-sincronizacion-graphql.md).

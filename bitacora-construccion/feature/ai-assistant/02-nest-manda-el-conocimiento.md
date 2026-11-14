@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-09  
 Última actualización: 2026-11-12  
 Estado: Implementado y verificado el 2026-11-12. Migración 31 aplicada en Cloud SQL y confirmada por Prisma.  
-Relacionada con: [plan E6](../../../docs/plans/feature/ai-assistant/01-plan-e6-ia-con-qdrant-y-llamaindex.md) (D14–D18), [ficha 03](../../../docs/fonts/feature/ai-assistant/03-fuentes-de-indexar-el-conocimiento.md), [bitácora 02 del servicio de IA](../../../../claudeLearningAllPosibolIt-ai/bitacora-construccion/feature/base-del-servicio/02-indexar-el-conocimiento.md).
+Relacionada con: [plan E6](../../../docs/plans/feature/ai-assistant/01-plan-e6-ia-con-qdrant-y-llamaindex.md) (D14–D18), [ficha 03](../../../docs/fonts/feature/ai-assistant/03-fuentes-de-indexar-el-conocimiento.md), [bitácora 02 del servicio de IA](../../../../LearningAllPosibolIt-ai/bitacora-construccion/feature/base-del-servicio/02-indexar-el-conocimiento.md).
 
 ## Necesidad
 

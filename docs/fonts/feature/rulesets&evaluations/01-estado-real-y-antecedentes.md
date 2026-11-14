@@ -2,7 +2,7 @@
 
 Fecha de creación: 2026-10-31  
 Tipo de fuente: código local, bitácora del proyecto y requisitos de `docs-diagrams`.  
-Origen: API `claudeLearningAllPosibolIt` (copia de `estadistica-forms-api`) y `docs-diagrams`.  
+Origen: API `LearningAllPosibolIt` (copia de `estadistica-forms-api`) y `docs-diagrams`.  
 Fecha de consulta: 2026-10-31  
 Revisión inspeccionada: `1f0be2d` («feat: migrar a Neon, añadir GraphQL y límites de consultas») con 53 archivos modificados sin commit. La raíz KSuT no es un repositorio Git.  
 Relacionada con: [fuentes técnicas](02-fuentes-tecnicas.md), [cursos y reconstrucciones](03-cursos-y-reconstrucciones.md), [mapa para el plan](04-mapa-de-necesidades-para-el-plan.md), [feature anterior](../projects&catalog-import/05-implementacion-catalog-import.md), [bitácora de borrado](../../../../bitacora-construccion/feature/projects&catalog-import/05-eliminar-proyectos-e-importaciones.md).

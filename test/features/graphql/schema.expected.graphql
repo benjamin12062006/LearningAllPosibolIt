@@ -6,6 +6,18 @@ type ApiError {
   sourceRow: Int
 }
 
+type ChangeCounts {
+  added: Int!
+  modified: Int!
+  removed: Int!
+  unchanged: Int!
+}
+
+type ChangedField {
+  field: String!
+  productCount: Int!
+}
+
 enum ChannelProfile {
   google_merchant
 }
@@ -20,6 +32,81 @@ input CreateProjectInput {
   country: String!
   currency: String!
   name: String!
+}
+
+type Evaluation {
+  attention: EvaluationAttention!
+  counts: EvaluationCounts
+  createdAt: String!
+  finishedAt: String
+  id: ID!
+  resultChecksum: String
+  rulesetRevision: Int!
+  snapshotId: ID!
+  status: String!
+}
+
+type EvaluationAttention {
+  affectedProducts: Int!
+  excludedProducts: Int!
+  exclusionGroups: [ExclusionGroup!]!
+  problemGroups: [ProblemGroup!]!
+}
+
+type EvaluationCounts {
+  excluded: Int!
+  invalid: Int!
+  total: Int!
+  valid: Int!
+}
+
+type ExclusionGroup {
+  productCount: Int!
+  rule: JSON
+  rulePosition: Int!
+}
+
+type ExportSummary {
+  createdAt: String!
+  evaluationId: ID!
+  id: ID!
+  rowCount: Int!
+}
+
+type Feed {
+  comparison(change: ProductChangeKind, exportId: ID!, limit: Int! = 20, offset: Int! = 0): FeedComparison!
+  createdAt: String!
+  delivery: FeedDelivery!
+  deliveryEnabled: Boolean!
+  generation: Int!
+  id: ID!
+  publishedVersion: FeedPublishedVersion
+  updatedAt: String!
+}
+
+type FeedComparison {
+  candidate: ExportSummary!
+  changedFields: [ChangedField!]!
+  changes: [ProductChange!]!
+  counts: ChangeCounts!
+  page: PageInfo!
+}
+
+type FeedDelivery {
+  delivering: Boolean!
+  deliveryEnabled: Boolean!
+  reason: String
+}
+
+type FeedPublishedVersion {
+  byteSize: Int!
+  evaluationId: ID
+  exportId: ID
+  id: ID!
+  publishedAt: String!
+  publishedBy: String!
+  rowCount: Int!
+  tsvChecksum: String!
 }
 
 enum ImportDelimiter {
@@ -84,12 +171,49 @@ type LocalizedMessage {
   es: String!
 }
 
+type LocalizedText {
+  en: String!
+  es: String!
+}
+
 type Mutation {
   createProject(input: CreateProjectInput!): Project!
   deleteImport(id: ID!, projectId: ID!): Boolean!
   deleteProject(id: ID!): Boolean!
   updateMe(input: UpdateMeInput!): User!
   updateProject(id: ID!, input: UpdateProjectInput!): Project!
+}
+
+type PageInfo {
+  hasMore: Boolean!
+  limit: Int!
+  offset: Int!
+}
+
+type ProblemGroup {
+  attribute: String!
+  code: String!
+  problem: LocalizedText!
+  productCount: Int!
+  suggestion: LocalizedText!
+}
+
+type ProductChange {
+  change: ProductChangeKind!
+  fields: [ProductFieldChange!]!
+  id: ID!
+}
+
+enum ProductChangeKind {
+  added
+  modified
+  removed
+}
+
+type ProductFieldChange {
+  after: String
+  before: String
+  field: String!
 }
 
 type Project {
@@ -103,11 +227,14 @@ type Project {
 }
 
 type Query {
+  evaluation(id: ID!, projectId: ID!): Evaluation!
+  feed(id: ID!, projectId: ID!): Feed!
   importJob(id: ID!, projectId: ID!): ImportJob!
   importSnapshot(id: ID!, projectId: ID!): ImportSnapshot!
   me: User!
   project(id: ID!): Project!
   projects(limit: Int! = 20, offset: Int! = 0): [Project!]!
+  worksheet(id: ID!, organizationId: ID!, projectId: ID!): Worksheet!
 }
 
 input UpdateMeInput {
@@ -127,4 +254,41 @@ type User {
   email: String
   id: ID!
   updatedAt: String!
+}
+
+type Worksheet {
+  columns: [WorksheetColumn!]!
+  createdAt: String!
+  generation: Int!
+  headRevision: WorksheetRevision!
+  id: ID!
+  mode: String!
+  name: String!
+  rows(cursor: String, limit: Int, revisionId: ID): WorksheetRowPage!
+  schemaVersion: Int!
+  workbookId: ID!
+}
+
+type WorksheetColumn {
+  formula: JSON
+  id: ID!
+  name: String!
+  options: JSON
+  position: Int!
+  required: Boolean!
+  type: String!
+}
+
+type WorksheetRevision {
+  createdAt: String!
+  id: ID!
+  rowCount: Int!
+  sequence: Int!
+}
+
+type WorksheetRowPage {
+  items: [JSON!]!
+  nextCursor: String
+  revisionId: ID!
+  schemaVersion: Int!
 }

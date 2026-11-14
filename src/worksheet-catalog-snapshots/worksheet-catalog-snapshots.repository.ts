@@ -10,6 +10,8 @@ import type { WorksheetCatalogSnapshot } from './worksheet-catalog-snapshots.typ
 export type CatalogSourceAccess = Readonly<{
   role: OrganizationRole;
   isArchived: boolean;
+  /** La hoja o su libro están archivados (plan 02 de cierre, H1). */
+  isWorksheetArchived: boolean;
   worksheetName: string;
 }>;
 
@@ -51,8 +53,11 @@ export class WorksheetCatalogSnapshotsRepository {
       SELECT
         m.role,
         o.archived_at IS NOT NULL AS "isArchived",
+        (w.archived_at IS NOT NULL OR b.archived_at IS NOT NULL)
+          AS "isWorksheetArchived",
         w.name AS "worksheetName"
       FROM estadistica_forms.worksheets w
+      JOIN estadistica_forms.workbooks b ON b.id = w.workbook_id
       JOIN estadistica_forms.projects p
         ON p.id = w.project_id AND p.organization_id = w.organization_id
       JOIN estadistica_forms.organizations o ON o.id = w.organization_id

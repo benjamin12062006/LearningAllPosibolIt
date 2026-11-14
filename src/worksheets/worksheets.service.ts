@@ -17,14 +17,19 @@ import {
   type PlannedColumn,
 } from './column-plan.js';
 import { buildNewWorksheet } from './new-worksheet.js';
-import type { CreateWorksheetDto } from './worksheets.dto.js';
+import type {
+  CreateWorksheetDto,
+  DuplicateWorksheetDto,
+} from './worksheets.dto.js';
 import {
+  isArchivedWorksheet,
   WorksheetsRepository,
   type ProjectAccess,
 } from './worksheets.repository.js';
 import type {
   ProjectScope,
   WorksheetCapabilities,
+  WorksheetSummary,
 } from './worksheets.types.js';
 
 /**
@@ -50,7 +55,7 @@ export class WorksheetsService {
   async findWorkbooks(
     identity: AuthenticatedIdentity,
     scope: ProjectScope,
-    query?: Partial<PageRequest>,
+    query: ArchivableListQuery = {},
   ) {
     const user = await this.usersService.findCurrent(identity);
     await this.requireAccess(user.id, scope);
@@ -60,8 +65,48 @@ export class WorksheetsService {
       user.id,
       scope,
       fetchWindow(page),
+      query.archived,
     );
     return toPage(rows, page);
+  }
+
+  async renameWorkbook(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    workbookId: string,
+    name: string,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    return this.repository.renameWorkbook(user.id, scope, workbookId, name);
+  }
+
+  /** Archivado se sigue leyendo; no admite hojas nuevas ni cambios en las suyas. */
+  async archiveWorkbook(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    workbookId: string,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    return this.repository.setWorkbookArchived(
+      user.id,
+      scope,
+      workbookId,
+      true,
+    );
+  }
+
+  async restoreWorkbook(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    workbookId: string,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    return this.repository.setWorkbookArchived(
+      user.id,
+      scope,
+      workbookId,
+      false,
+    );
   }
 
   async createWorksheet(
@@ -87,14 +132,14 @@ export class WorksheetsService {
       workbookId,
       buildNewWorksheet(input.name, columns),
     );
-    return { worksheet, capabilities: capabilitiesOf(access) };
+    return { worksheet, capabilities: capabilitiesOf(access, worksheet) };
   }
 
   async findWorksheets(
     identity: AuthenticatedIdentity,
     scope: ProjectScope,
     workbookId: string,
-    query?: Partial<PageRequest>,
+    query: ArchivableListQuery = {},
   ) {
     const user = await this.usersService.findCurrent(identity);
     await this.requireAccess(user.id, scope);
@@ -108,6 +153,7 @@ export class WorksheetsService {
       scope,
       workbookId,
       fetchWindow(page),
+      query.archived,
     );
     return toPage(rows, page);
   }
@@ -127,7 +173,80 @@ export class WorksheetsService {
     if (!worksheet) {
       throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
     }
-    return { worksheet, capabilities: capabilitiesOf(access) };
+    return { worksheet, capabilities: capabilitiesOf(access, worksheet) };
+  }
+
+  async renameWorksheet(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    name: string,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    const { worksheet, access } = await this.repository.renameWorksheet(
+      user.id,
+      scope,
+      worksheetId,
+      name,
+    );
+    return { worksheet, capabilities: capabilitiesOf(access, worksheet) };
+  }
+
+  /** Una copia independiente de la hoja, con IDs nuevos y su procedencia. */
+  async duplicateWorksheet(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    input: DuplicateWorksheetDto,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    const { worksheet, access } = await this.repository.duplicateWorksheet(
+      user.id,
+      scope,
+      worksheetId,
+      {
+        name: input.name,
+        workbookId: input.workbookId,
+        revisionId: input.revisionId,
+      },
+    );
+    return { worksheet, capabilities: capabilitiesOf(access, worksheet) };
+  }
+
+  /**
+   * Archivada se sigue leyendo y exportando; no admite borradores,
+   * importaciones ni llevarla al catálogo hasta que se restaure.
+   */
+  async archiveWorksheet(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+  ) {
+    return this.setWorksheetArchived(identity, scope, worksheetId, true);
+  }
+
+  async restoreWorksheet(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+  ) {
+    return this.setWorksheetArchived(identity, scope, worksheetId, false);
+  }
+
+  private async setWorksheetArchived(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    archived: boolean,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    const { worksheet, access } = await this.repository.setWorksheetArchived(
+      user.id,
+      scope,
+      worksheetId,
+      archived,
+    );
+    return { worksheet, capabilities: capabilitiesOf(access, worksheet) };
   }
 
   /**
@@ -146,9 +265,19 @@ export class WorksheetsService {
   }
 }
 
-/** Con la organización archivada nadie escribe, aunque su rol lo permita. */
-function capabilitiesOf(access: ProjectAccess): WorksheetCapabilities {
-  const isActive = !access.isArchived;
+/** Lo que acepta un listado: la página y, si se quiere, solo activos o solo archivados. */
+type ArchivableListQuery = Partial<PageRequest> &
+  Readonly<{ archived?: boolean }>;
+
+/**
+ * Con la organización, la hoja o su libro archivados nadie escribe, aunque su
+ * rol lo permita.
+ */
+function capabilitiesOf(
+  access: ProjectAccess,
+  worksheet: WorksheetSummary,
+): WorksheetCapabilities {
+  const isActive = !access.isArchived && !isArchivedWorksheet(worksheet);
   return {
     write: isActive && can(access.role, 'worksheet.write'),
     approve: isActive && can(access.role, 'changeset.approve'),

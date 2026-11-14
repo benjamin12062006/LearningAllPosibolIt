@@ -21,6 +21,9 @@ import { CATALOG_IMPORT_OPTIONS } from '../../../src/catalog-import/import.types
 import { configureHttp } from '../../../src/configure-http.js';
 import { POSTGRESQL_CONNECTION } from '../../../src/database/postgresql.connection.js';
 import { PrismaService } from '../../../src/database/prisma.service.js';
+import { EVALUATION_OPTIONS } from '../../../src/evaluations/evaluations.types.js';
+import { EXPORT_OPTIONS } from '../../../src/exports/exports.types.js';
+import { FEED_OPTIONS } from '../../../src/feeds/feeds.types.js';
 import { GraphqlApiModule } from '../../../src/graphql/graphql-api.module.js';
 import { UsersService } from '../../../src/users/users.service.js';
 import { alice, bob, projectInput } from '../support/project-fixtures.js';
@@ -79,6 +82,13 @@ describe('GraphQL sobre los servicios, el guard y la persistencia reales', () =>
         pollMs: 1000,
         shutdownMs: 1000,
       })
+      // Los módulos que GraphQL usa traen sus procesos de fondo: aquí no arrancan.
+      .overrideProvider(EVALUATION_OPTIONS)
+      .useValue({ autoStart: false, pollMs: 1000, shutdownMs: 1000 })
+      .overrideProvider(EXPORT_OPTIONS)
+      .useValue({ autoStart: false })
+      .overrideProvider(FEED_OPTIONS)
+      .useValue({ autoStart: false, retainedFiles: 3 })
       .overrideProvider(DescopeService)
       .useValue({
         validateSession: async (session: string) => {

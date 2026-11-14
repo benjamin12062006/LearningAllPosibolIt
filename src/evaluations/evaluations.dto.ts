@@ -9,6 +9,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { PaginationQueryDto } from '../common/http/pagination.js';
+import { CreateRulesetDto } from '../rulesets/rulesets.dto.js';
 import type {
   ProblemAttribute,
   ProblemCode,
@@ -36,6 +37,22 @@ export class CreateEvaluationDto {
   @Min(1)
   @Max(MAX_REVISION)
   rulesetRevision!: number;
+}
+
+/**
+ * Body de `POST …/evaluations/preview`: las reglas que se quieren probar (el
+ * mismo body que al guardarlas) y sobre qué catálogo. Sin `baseRevision` se
+ * comparan con la última revisión guardada.
+ */
+export class PreviewRulesDto extends CreateRulesetDto {
+  @IsUUID()
+  snapshotId!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MAX_REVISION)
+  baseRevision?: number;
 }
 
 /**

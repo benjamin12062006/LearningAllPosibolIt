@@ -3,7 +3,7 @@
 Fecha de creación: 2026-11-09  
 Última actualización: 2026-11-09  
 Estado: Cerrada. *Ajustada el 2026-11-09:* modelos de la API de Google (Vertex AI), sin descargas ni modelos propios.  
-Relacionada con: [plan E6](../../../plans/feature/ai-assistant/01-plan-e6-ia-con-qdrant-y-llamaindex.md) (D4, D5, D7), [revisión 02](02-revision-de-llamaindex-para-la-api.md), [plan del servicio de IA](../../../../../claudeLearningAllPosibolIt-ai/docs/plans/feature/base-del-servicio/01-plan-servicio-de-ia.md).
+Relacionada con: [plan E6](../../../plans/feature/ai-assistant/01-plan-e6-ia-con-qdrant-y-llamaindex.md) (D4, D5, D7), [revisión 02](02-revision-de-llamaindex-para-la-api.md), [plan del servicio de IA](../../../../../LearningAllPosibolIt-ai/docs/plans/feature/base-del-servicio/01-plan-servicio-de-ia.md).
 
 ## La pregunta del usuario
 

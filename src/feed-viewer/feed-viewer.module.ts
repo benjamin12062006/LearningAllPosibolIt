@@ -13,5 +13,7 @@ import { FeedViewerService } from './feed-viewer.service.js';
   imports: [AuthModule, ExportsModule, FeedsModule],
   controllers: [FeedViewerController],
   providers: [FeedViewerService],
+  // Lo usa la capa GraphQL, igual que el controlador REST.
+  exports: [FeedViewerService],
 })
 export class FeedViewerModule {}
