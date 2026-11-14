@@ -1,3 +1,48 @@
+type AgentProposal {
+  createdAt: String!
+  decidedAt: String
+  expiresAt: String!
+  hash: String!
+  id: ID!
+  operation: String!
+  result: JSON
+  status: String!
+  summary: String!
+  target: JSON
+}
+
+input AgentProposalDecisionInput {
+  proposalHash: String!
+}
+
+type AgentRun {
+  answer: String
+  answerMessageId: ID
+  context: AgentRunContext!
+  conversationId: ID!
+  createdAt: String!
+  error: ApiError
+  finishedAt: String
+  id: ID!
+  outcome: String
+  proposal: AgentProposal
+  startedAt: String
+  status: String!
+  userMessageId: ID!
+}
+
+type AgentRunContext {
+  revisionId: ID
+  selectionId: ID
+  workbookId: ID!
+  worksheetId: ID
+}
+
+input AgentRunContextInput {
+  revisionId: ID
+  selectionId: ID
+}
+
 type ApiError {
   code: String!
   field: String
@@ -652,7 +697,9 @@ type Mutation {
   approveFeedPolicy(feedId: ID!, input: FeedPolicyInput!, projectId: ID!): Feed!
   archiveWorkbook(id: ID!, organizationId: ID!, projectId: ID!): Workbook!
   archiveWorksheet(id: ID!, organizationId: ID!, projectId: ID!): Worksheet!
+  cancelAgentRun(id: ID!, organizationId: ID!, projectId: ID!): AgentRun!
   cancelChangeset(id: ID!, organizationId: ID!, projectId: ID!): Changeset!
+  confirmAgentProposal(input: AgentProposalDecisionInput!, organizationId: ID!, projectId: ID!, proposalId: ID!, runId: ID!): AgentProposal!
   createChangeset(input: CreateChangesetInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): Changeset!
   createFeed(projectId: ID!): CreatedFeed!
   createImportMapping(input: CreateImportMappingInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): ImportMapping!
@@ -677,6 +724,7 @@ type Mutation {
   publishFeed(feedId: ID!, input: PublishFeedInput!, projectId: ID!): FeedPublication!
   rebaseChangeset(id: ID!, input: RebaseInput!, organizationId: ID!, projectId: ID!): Changeset!
   reindexKnowledge(projectId: ID!): KnowledgeReindex!
+  rejectAgentProposal(input: AgentProposalDecisionInput!, organizationId: ID!, projectId: ID!, proposalId: ID!, runId: ID!): AgentProposal!
   renameWorkbook(id: ID!, input: NameInput!, organizationId: ID!, projectId: ID!): Workbook!
   renameWorksheet(id: ID!, input: NameInput!, organizationId: ID!, projectId: ID!): Worksheet!
   reopenChangeset(id: ID!, input: DraftVersionInput!, organizationId: ID!, projectId: ID!): Changeset!
@@ -690,6 +738,7 @@ type Mutation {
   sendWorksheetToCatalog(input: SendWorksheetToCatalogInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): WorksheetCatalogAcceptance!
   setFeedSchedule(feedId: ID!, input: FeedScheduleInput!, projectId: ID!): Feed!
   setFeedSource(feedId: ID!, input: FeedSourceInput!, projectId: ID!): Feed!
+  startAgentRun(conversationId: ID!, input: StartAgentRunInput!, organizationId: ID!, projectId: ID!): AgentRun!
   submitChangeset(id: ID!, input: DraftVersionInput!, organizationId: ID!, projectId: ID!): Changeset!
   updateMe(input: UpdateMeInput!): User!
   updateProject(id: ID!, input: UpdateProjectInput!): Project!
@@ -824,6 +873,7 @@ input PublishFeedInput {
 }
 
 type Query {
+  agentRun(id: ID!, organizationId: ID!, projectId: ID!): AgentRun!
   changeset(id: ID!, organizationId: ID!, projectId: ID!): Changeset!
   conversation(id: ID!, organizationId: ID!, projectId: ID!): Conversation!
   evaluation(id: ID!, projectId: ID!): Evaluation!
@@ -955,6 +1005,11 @@ input SendWorksheetToCatalogInput {
 input SortTermInput {
   columnId: ID!
   direction: String!
+}
+
+input StartAgentRunInput {
+  context: AgentRunContextInput
+  messageId: ID!
 }
 
 type TsvProduct {

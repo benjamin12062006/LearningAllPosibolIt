@@ -2,7 +2,7 @@
 
 Fecha de creación: 2026-11-14  
 Última actualización: 2026-11-14  
-Estado: Plan.  
+Estado: Implementado (2026-11-14). Resultado y ajustes en la [bitácora 10](../../../../bitacora-construccion/feature/ai-assistant/10-ejecuciones-pasarela-y-confirmacion.md).  
 Ámbito: E6.3a, Nest y adaptación del contrato interno de FastAPI.  
 Relacionada con: [fuentes 07](../../../fonts/feature/ai-assistant/07-fuentes-de-catalogo-ejecuciones-y-confirmaciones.md), [plan maestro](../cierre-backend/02-plan-terminar-hojas-visor-y-agente.md), [plan E6](01-plan-e6-ia-con-qdrant-y-llamaindex.md), [E6.2](03-plan-conversaciones-y-mensajes.md), [H6](04-plan-herramientas-de-hoja-del-agente.md), [E6.3b y contrato A11](../../../../../LearningAllPosibolIt-ai/docs/plans/feature/agente/01-plan-agente-con-llm-simulado.md).  
 Revisión de partida: Nest `7be788b`, FastAPI `d9f00fd`.

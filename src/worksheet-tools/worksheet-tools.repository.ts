@@ -9,10 +9,7 @@ import { ErrorCodes } from '../common/http/error-codes.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { LONG_TRANSACTION } from '../database/transaction-timeouts.js';
 import { Prisma } from '../generated/prisma/client.js';
-import {
-  assertNotArchived,
-  lockOrganization,
-} from '../organizations/organization-lock.js';
+import { lockOrganization } from '../organizations/organization-lock.js';
 import {
   can,
   type OrganizationRole,

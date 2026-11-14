@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AgentRunsModule } from '../agent-runs/agent-runs.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { CatalogImportModule } from '../catalog-import/catalog-import.module.js';
 import { ChangesetsModule } from '../changesets/changesets.module.js';
@@ -17,6 +18,7 @@ import { WorksheetExportsModule } from '../worksheet-exports/worksheet-exports.m
 import { WorksheetImportsModule } from '../worksheet-imports/worksheet-imports.module.js';
 import { WorksheetToolsModule } from '../worksheet-tools/worksheet-tools.module.js';
 import { WorksheetsModule } from '../worksheets/worksheets.module.js';
+import { AgentRunsResolver } from './agent-runs/agent-runs.resolver.js';
 import { CatalogImportResolver } from './catalog-import/catalog-import.resolver.js';
 import { ChangesetsResolver } from './changesets/changesets.resolver.js';
 import { ConversationsResolver } from './conversations/conversations.resolver.js';
@@ -64,6 +66,7 @@ import { WorksheetsResolver } from './worksheets/worksheets.resolver.js';
     KnowledgeModule,
     ConversationsModule,
     WorksheetToolsModule,
+    AgentRunsModule,
   ],
   providers: [
     UsersResolver,
@@ -86,6 +89,7 @@ import { WorksheetsResolver } from './worksheets/worksheets.resolver.js';
     KnowledgeResolver,
     ConversationsResolver,
     WorksheetToolsResolver,
+    AgentRunsResolver,
   ],
 })
 export class GraphqlApiModule {}

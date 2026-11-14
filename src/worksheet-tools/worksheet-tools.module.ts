@@ -11,6 +11,7 @@ import { WorksheetToolsService } from './worksheet-tools.service.js';
   imports: [AuthModule, PrismaModule, UsersModule, WorksheetsModule],
   controllers: [WorksheetToolsController],
   providers: [WorksheetToolsRepository, WorksheetToolsService],
-  exports: [WorksheetToolsService],
+  // El repositorio lo usa el worker del agente para limpiar lo caducado.
+  exports: [WorksheetToolsService, WorksheetToolsRepository],
 })
 export class WorksheetToolsModule {}

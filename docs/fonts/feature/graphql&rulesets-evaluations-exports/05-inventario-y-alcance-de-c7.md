@@ -157,6 +157,13 @@ E6.2 añade seis rutas de conversaciones y mensajes con equivalente GraphQL. Cob
 | `worksheet-tools` | `POST …/org/proyecto/worksheets/:worksheetId/transform-previews` | Editor con `ai.use` | `previewWorksheetTransform` | Ambos | Existe | H6: diff calculado sin escribir |
 | `worksheet-tools` | `GET …/org/proyecto/worksheets/:worksheetId/transform-previews/:previewId` | Editor con `ai.use` | `worksheetTransformPreview` | Ambos | Existe | H6: diff paginado |
 | `worksheet-tools` | `POST …/org/proyecto/worksheets/:worksheetId/change-proposals` | Editor con `ai.use` | `createWorksheetChangeProposal` | Ambos | Existe | H6: solo crea un borrador de origen `ai` |
+| `agent-runs` | `POST …/org/proyecto/conversations/:conversationId/runs` | Editor autor | `startAgentRun` | Nuxt | Existe | E6.3a: 202, ejecución en cola |
+| `agent-runs` | `GET …/org/proyecto/ai-runs/:runId` | Miembro autor | `agentRun` | Nuxt | Existe | E6.3a: estado, respuesta y propuesta |
+| `agent-runs` | `POST …/org/proyecto/ai-runs/:runId/proposals/:proposalId/confirm` | Editor autor | `confirmAgentProposal` | Nuxt | Existe | E6.3a: solo la persona; prohibido al agente |
+| `agent-runs` | `POST …/org/proyecto/ai-runs/:runId/proposals/:proposalId/reject` | Editor autor | `rejectAgentProposal` | Nuxt | Existe | E6.3a: solo la persona |
+| `agent-runs` | `POST /internal/v1/agent-runs/:runId/operations/:name` | Credencial de la ejecución | — | Servicio de IA | HTTP | Pasarela interna del agente (A11) |
+| `agent-runs` | `POST …/org/proyecto/ai-runs/:runId/cancel` | Editor autor | `cancelAgentRun` | Nuxt | Existe | E6.4: la credencial deja de valer al momento |
+| `agent-runs` | `GET …/org/proyecto/ai-runs/:runId/events` | Miembro autor | — | Nuxt | HTTP | E6.4: SSE con `after` o `Last-Event-ID` |
 | `evaluations` | `POST …/proyecto/evaluations` | Editor | `requestEvaluation` | Ambos | Añadir |  |
 | `evaluations` | `POST …/proyecto/evaluations/preview` | Editor | `rulesPreview` (consulta) | Ambos | Añadir | No guarda nada: es una lectura |
 | `evaluations` | `GET …/proyecto/evaluations` | Miembro | `Project.evaluations` | Ambos | Añadir |  |

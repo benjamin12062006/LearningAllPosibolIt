@@ -21,7 +21,10 @@ function mountedRoutes(): string[] {
   for (const file of controllerFiles(resolve('src'))) {
     const source = readFileSync(file, 'utf8');
     const prefix =
-      /@Controller\((?:'([^']*)'|\{\s*path:\s*'([^']*)'[^)]*)?\)/.exec(source);
+      // Admite el prefijo en otra línea, como lo deja Prettier si es largo.
+      /@Controller\(\s*(?:'([^']*)'|\{\s*path:\s*'([^']*)'[^)]*)?\s*,?\s*\)/.exec(
+        source,
+      );
     const base = prefix?.[1] ?? prefix?.[2] ?? '';
     const decorator = new RegExp(
       `@(${METHODS.join('|')})\\((?:'([^']*)')?\\)`,
@@ -111,7 +114,7 @@ describe('cobertura GraphQL de la API REST (C7)', () => {
     expect(missing).toEqual([]);
   });
 
-  it('95 de 119 rutas tienen equivalente (79,8 %); 10 son solo HTTP y 14 se quedan en REST', () => {
+  it('100 de 126 rutas tienen equivalente (79,4 %); 12 son solo HTTP y 14 se quedan en REST', () => {
     const count = (predicate: (row: MatrixRow) => boolean) =>
       rows.filter(predicate).length;
     expect({
@@ -119,6 +122,6 @@ describe('cobertura GraphQL de la API REST (C7)', () => {
       withEquivalent: count(hasEquivalent),
       httpOnly: count((row) => row.decision === 'HTTP'),
       restOnly: count((row) => row.decision === 'REST'),
-    }).toEqual({ total: 119, withEquivalent: 95, httpOnly: 10, restOnly: 14 });
+    }).toEqual({ total: 126, withEquivalent: 100, httpOnly: 12, restOnly: 14 });
   });
 });

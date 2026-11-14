@@ -92,6 +92,26 @@ export class WorksheetToolsService {
     };
   }
 
+  /**
+   * Que una selección exista, sea de esta persona y de esta hoja y no haya
+   * caducado. La usa el agente al fijar el contexto de una ejecución.
+   */
+  async requireSelection(
+    identity: AuthenticatedIdentity,
+    project: ProjectScope,
+    worksheetId: string,
+    selectionId: string,
+  ): Promise<void> {
+    const scope = await this.authorizedScope(identity, project, worksheetId);
+    const selection = await this.tools.findSelection(scope, selectionId);
+    if (!selection) {
+      throw apiError(ErrorCodes.AI_SHEET_SELECTION_NOT_FOUND);
+    }
+    if (isExpired(selection.expiresAt)) {
+      throw apiError(ErrorCodes.AI_SHEET_SELECTION_EXPIRED);
+    }
+  }
+
   async previewTransform(
     identity: AuthenticatedIdentity,
     project: ProjectScope,
@@ -167,7 +187,8 @@ export class WorksheetToolsService {
     const scope = await this.authorizedScope(identity, project, worksheetId);
     const idempotencyKey = parseIdempotencyKey(key);
     return this.tools.createProposal(scope, {
-      ...input,
+      previewId: input.previewId,
+      explanation: input.explanation,
       idempotencyKey,
       now: new Date(),
     });

@@ -2,7 +2,7 @@
 
 Fecha de creación: 2026-11-14  
 Última actualización: 2026-11-14  
-Estado: Plan.  
+Estado: Implementado en su versión reducida (2026-11-14): sin texto letra a letra ni cuota por coste. Resultado y ajustes en la [bitácora 11](../../../../bitacora-construccion/feature/ai-assistant/11-eventos-cancelacion-cuotas-y-contrato-del-chat.md).  
 Ámbito: E6.4 y E6.6, Nest y FastAPI.  
 Relacionada con: [fuentes 08](../../../fonts/feature/ai-assistant/08-fuentes-de-eventos-cuotas-y-contrato-del-chat.md), [plan E6](01-plan-e6-ia-con-qdrant-y-llamaindex.md), [plan de conversaciones](03-plan-conversaciones-y-mensajes.md), [plan E6.3a](05-plan-catalogo-ejecuciones-y-confirmaciones.md), [diseño 15](../../../../../docs-diagrams/15-chat-ia-herramientas-y-propuestas.md), [contrato de Nuxt](../../../../../docs-diagrams/16-nuxt-tabla-central-chat-y-contratos.md).  
 Revisión de partida: Nest `7be788b`, FastAPI `d9f00fd`. Al implementar, comprobar el contrato construido en E6.3a y anotar los ajustes.

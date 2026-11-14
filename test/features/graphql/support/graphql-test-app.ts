@@ -1,7 +1,7 @@
 import { expect } from '@jest/globals';
 import { type INestApplication } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,11 +40,16 @@ const IDENTITIES: Record<string, AuthenticatedIdentity> = {
  * La API GraphQL con sus módulos (que traen también sus rutas REST, para
  * comparar) sobre PGlite, con los procesos de fondo parados.
  */
-export async function startGraphqlApp(extraImports: any[] = []) {
+export async function startGraphqlApp(
+  extraImports: any[] = [],
+  configure: (builder: TestingModuleBuilder) => TestingModuleBuilder = (
+    builder,
+  ) => builder,
+) {
   const database = await createTestDatabase();
   const root = await mkdtemp(join(tmpdir(), 'graphql-c7-'));
   const idle = { autoStart: false, pollMs: 1000, shutdownMs: 1000 };
-  const module = await Test.createTestingModule({
+  const builder = Test.createTestingModule({
     imports: [
       ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
       GraphqlApiModule,
@@ -89,8 +94,8 @@ export async function startGraphqlApp(extraImports: any[] = []) {
           },
         };
       },
-    })
-    .compile();
+    });
+  const module = await configure(builder).compile();
   const app = module.createNestApplication();
   configureHttp(app);
   await app.init();
