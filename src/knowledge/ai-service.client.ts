@@ -1,3 +1,4 @@
+import { fetchIdentityToken } from './google-identity-token.js';
 import type {
   KnowledgeDocument,
   SourceKey,
@@ -9,6 +10,11 @@ export type AiServiceConfig = Readonly<{
   url: string;
   token: string;
   timeoutMs: number;
+  /**
+   * Solo en Cloud Run, con FastAPI privado: audiencia del ID token de Google
+   * que se manda además del token de servicio (deploys, plan 06, D9).
+   */
+  identityAudience?: string;
 }>;
 
 /** El cliente, o `null` si el conocimiento está desactivado (sin `AI_SERVICE_URL`). */
@@ -121,11 +127,7 @@ export class AiServiceClient {
     try {
       return await fetch(new URL(path, this.config.url), {
         method,
-        headers: {
-          Authorization: `Bearer ${this.config.token}`,
-          'Content-Type': 'application/json',
-          'X-Request-Id': requestId,
-        },
+        headers: await this.headersFor(requestId),
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(this.config.timeoutMs),
       });
@@ -134,6 +136,31 @@ export class AiServiceClient {
         `No se pudo hablar con el servicio de IA: ${errorName(error)}.`,
       );
     }
+  }
+
+  /**
+   * El token de servicio va siempre en `Authorization`. Con FastAPI privado en
+   * Cloud Run, el ID token de Google va en `X-Serverless-Authorization`: lo
+   * comprueba el IAM de Cloud Run, que deja `Authorization` para la aplicación
+   * (deploys, fuentes 03, F13). Si no se obtiene, es como si el servicio no
+   * respondiera.
+   */
+  private async headersFor(requestId: string): Promise<Record<string, string>> {
+    const headers = {
+      Authorization: `Bearer ${this.config.token}`,
+      'Content-Type': 'application/json',
+      'X-Request-Id': requestId,
+    };
+    if (!this.config.identityAudience) {
+      return headers;
+    }
+    const identityToken = await fetchIdentityToken(
+      this.config.identityAudience,
+    );
+    return {
+      ...headers,
+      'X-Serverless-Authorization': `Bearer ${identityToken}`,
+    };
   }
 }
 

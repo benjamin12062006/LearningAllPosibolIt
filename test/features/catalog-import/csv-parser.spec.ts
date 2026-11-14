@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { Readable } from 'node:stream';
+import { ArtifactNotFoundError } from '../../../src/artifacts/artifacts.types.js';
 import { parseCatalogCsv } from '../../../src/catalog-import/csv-parser.js';
 import { IMPORT_LIMITS } from '../../../src/catalog-import/import.types.js';
 
@@ -142,5 +143,29 @@ describe('Parser CSV real', () => {
     await expect(
       events(`id,title\n1,${'é'.repeat(600_000)}`),
     ).rejects.toMatchObject({ detail: { code: 'CSV_INVALID' } });
+  });
+});
+
+describe('Parser CSV: archivo ausente según dónde se guarda', () => {
+  async function failureOf(error: Error) {
+    async function* failing(): AsyncGenerator<Buffer> {
+      yield await Promise.reject(error);
+    }
+    const parsing = parseCatalogCsv(failing(), {
+      idColumn: 'id',
+      delimiter: 'comma',
+    });
+    return parsing.next().catch((caught: unknown) => caught);
+  }
+
+  it('ENOENT en disco y ArtifactNotFoundError en el bucket son IMPORT_ARTIFACT_MISSING', async () => {
+    const missingOnDisk = Object.assign(new Error('falta'), { code: 'ENOENT' });
+
+    expect(await failureOf(missingOnDisk)).toMatchObject({
+      detail: { code: 'IMPORT_ARTIFACT_MISSING' },
+    });
+    expect(await failureOf(new ArtifactNotFoundError())).toMatchObject({
+      detail: { code: 'IMPORT_ARTIFACT_MISSING' },
+    });
   });
 });

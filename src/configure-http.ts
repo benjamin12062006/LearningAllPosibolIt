@@ -11,6 +11,14 @@ import {
 import { validationException } from './common/http/validation-errors.js';
 import { transportErrors } from './common/http/transport-errors.js';
 
+/** Orígenes de la web en desarrollo (Astro y Nuxt). */
+const LOCAL_WEB_ORIGINS = [
+  'http://localhost:4321',
+  'http://127.0.0.1:4321',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
 /** Misma configuración para el servidor y las pruebas HTTP de las features. */
 export function configureHttp(app: INestApplication) {
   // El `requestId` va primero: también un cuerpo mal formado lo lleva (jobs&files, D12).
@@ -33,12 +41,7 @@ export function configureHttp(app: INestApplication) {
   app.setGlobalPrefix('api', { exclude: ['feeds/:file'] });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.enableCors({
-    origin: [
-      'http://localhost:4321',
-      'http://127.0.0.1:4321',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-    ],
+    origin: allowedOrigins(process.env.CORS_ALLOWED_ORIGINS),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     // `If-Match` y `Idempotency-Key` los usan los borradores de hojas (E4):
     // guardar sin perder cambios y aplicar sin repetirlo. `ETag` lleva la
@@ -53,4 +56,36 @@ export function configureHttp(app: INestApplication) {
     ],
     exposedHeaders: ['ETag', REQUEST_ID_HEADER],
   });
+}
+
+/**
+ * Los orígenes locales más los de `CORS_ALLOWED_ORIGINS`, separados por comas:
+ * en Cloud Run, la URL `run.app` de la web (deploys, plan 06, D8). Solo se
+ * admiten orígenes `https://` exactos, sin ruta ni comodines; si hay otra cosa,
+ * la API no arranca en lugar de abrirse a quien no debe.
+ */
+export function allowedOrigins(configured: string | undefined): string[] {
+  const extraOrigins = (configured ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  for (const origin of extraOrigins) {
+    if (!isExactHttpsOrigin(origin)) {
+      throw new Error(
+        `CORS_ALLOWED_ORIGINS solo admite orígenes https:// exactos: ${origin}`,
+      );
+    }
+  }
+  return [...LOCAL_WEB_ORIGINS, ...extraOrigins];
+}
+
+/** `https://web.example` sí; `https://web.example/`, `http://…` o `*` no. */
+function isExactHttpsOrigin(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.origin === value;
+  } catch {
+    return false;
+  }
 }

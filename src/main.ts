@@ -8,6 +8,9 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
-  await app.listen(process.env.PORT ?? 8080, '127.0.0.1');
+  // En local solo escucha en loopback. En el contenedor, `HOST=0.0.0.0`: Cloud
+  // Run entrega las peticiones por la red del contenedor (deploys, plan 06, D8).
+  const host = process.env.HOST?.trim() || '127.0.0.1';
+  await app.listen(process.env.PORT ?? 8080, host);
 }
 await bootstrap();

@@ -157,3 +157,88 @@ describe('aiServiceConfigFrom', () => {
     });
   });
 });
+
+describe('AiServiceClient con FastAPI privado en Cloud Run', () => {
+  const AUDIENCE = 'https://ktsu-ai-example.a.run.app';
+  const IDENTITY_TOKEN = 'id-token-de-google';
+
+  function privateClient() {
+    return new AiServiceClient({
+      url: AUDIENCE,
+      token: TOKEN,
+      timeoutMs: 1_000,
+      identityAudience: AUDIENCE,
+    });
+  }
+
+  /** El servidor de metadatos responde con `metadata`; FastAPI, con 204. */
+  function respondAsCloudRun(metadata: Response) {
+    return jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'metadata.google.internal') {
+        return Promise.resolve(metadata);
+      }
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+  }
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('pide el ID token para la audiencia y lo manda aparte del token de servicio', async () => {
+    const fetch = respondAsCloudRun(new Response(`${IDENTITY_TOKEN}\n`));
+
+    await privateClient().removeSource(KEY, 'r1');
+
+    const [metadataUrl, metadataInit] = fetch.mock.calls[0];
+    expect(String(metadataUrl)).toBe(
+      `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(AUDIENCE)}`,
+    );
+    expect(metadataInit?.headers).toEqual({ 'Metadata-Flavor': 'Google' });
+    const [, serviceInit] = fetch.mock.calls[1];
+    expect(serviceInit?.headers).toMatchObject({
+      Authorization: `Bearer ${TOKEN}`,
+      'X-Serverless-Authorization': `Bearer ${IDENTITY_TOKEN}`,
+    });
+  });
+
+  it('sin ID token no llama a FastAPI: es «no disponible» y se reintenta', async () => {
+    const fetch = respondAsCloudRun(new Response('no', { status: 500 }));
+
+    await expect(privateClient().removeSource(KEY, 'r1')).rejects.toBeInstanceOf(
+      AiServiceUnavailableError,
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('sin audiencia no pide ningún ID token (local y pruebas)', async () => {
+    const fetch = respondAsCloudRun(new Response(IDENTITY_TOKEN));
+
+    await client().removeSource(KEY, 'r1');
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1]?.headers).not.toHaveProperty(
+      'X-Serverless-Authorization',
+    );
+  });
+
+  it('aiServiceConfigFrom lee la audiencia y exige una URL http(s)', () => {
+    const base = { AI_SERVICE_URL: AUDIENCE, AI_SERVICE_TOKEN: TOKEN };
+
+    expect(
+      aiServiceConfigFrom({
+        ...base,
+        AI_SERVICE_ID_TOKEN_AUDIENCE: ` ${AUDIENCE} `,
+      }),
+    ).toEqual({
+      url: AUDIENCE,
+      token: TOKEN,
+      timeoutMs: 180_000,
+      identityAudience: AUDIENCE,
+    });
+    expect(() =>
+      aiServiceConfigFrom({ ...base, AI_SERVICE_ID_TOKEN_AUDIENCE: 'ktsu-ai' }),
+    ).toThrow('AI_SERVICE_ID_TOKEN_AUDIENCE');
+  });
+});

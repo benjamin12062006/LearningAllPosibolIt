@@ -7,6 +7,11 @@ for (const key of [
   'DATABASE_URL',
   'DESCOPE_PROJECT_ID',
   'DESCOPE_MANAGEMENT_KEY',
+  // Despliegue en Cloud Run (deploys, plan 06): nada de bucket, identidad de
+  // Google ni orígenes reales en las pruebas.
+  'ARTIFACT_BUCKET',
+  'AI_SERVICE_ID_TOKEN_AUDIENCE',
+  'CORS_ALLOWED_ORIGINS',
 ]) {
   delete process.env[key];
 }

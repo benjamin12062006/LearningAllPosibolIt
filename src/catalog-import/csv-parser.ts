@@ -2,6 +2,7 @@ import { parse, type Parser } from 'csv-parse';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { isMissingFile } from '../artifacts/artifacts.types.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import {
   IMPORT_LIMITS,
@@ -219,10 +220,11 @@ function toImportFailure(
     return new ImportFailure(ErrorCodes.IMPORT_INTERRUPTED);
   }
 
-  const code = (error as NodeJS.ErrnoException).code;
-  if (code === 'ENOENT') {
+  // En disco es `ENOENT`; en el bucket, `ArtifactNotFoundError`.
+  if (isMissingFile(error)) {
     return new ImportFailure(ErrorCodes.IMPORT_ARTIFACT_MISSING);
   }
+  const code = (error as NodeJS.ErrnoException).code;
   if (UNREADABLE_FILE_CODES.includes(code ?? '')) {
     return new ImportFailure(ErrorCodes.IMPORT_ARTIFACT_UNAVAILABLE);
   }

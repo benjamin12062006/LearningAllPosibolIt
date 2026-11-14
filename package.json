@@ -39,6 +39,7 @@
     "@apollo/server": "5.5.1",
     "@as-integrations/express5": "1.1.2",
     "@descope/node-sdk": "^2.17.0",
+    "@google-cloud/storage": "8.4.0",
     "@nestjs/apollo": "14.1.1",
     "@nestjs/common": "12.0.3",
     "@nestjs/config": "^12.0.1",

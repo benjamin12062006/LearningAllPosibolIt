@@ -25,15 +25,21 @@ import {
   ARTIFACT_STORE_OPTIONS,
   type ArtifactStoreOptions,
   type ByteSink,
+  isMissingFile,
 } from './artifacts.types.js';
 
-type Folder = 'tmp' | 'artifacts' | 'exports' | 'feeds' | 'worksheet-exports';
+export type Folder =
+  | 'tmp'
+  | 'artifacts'
+  | 'exports'
+  | 'feeds'
+  | 'worksheet-exports';
 
 /** Extensión de una exportación de hoja (E5.3). */
 export type WorksheetExportExtension = 'csv' | 'xlsx';
 
 /** Carpetas donde un archivo queda guardado (no temporal). */
-type StoredFolder = Exclude<Folder, 'tmp'>;
+export type StoredFolder = Exclude<Folder, 'tmp'>;
 
 /**
  * Las carpetas guardadas cuyos archivos puede borrar el outbox (plan
@@ -482,22 +488,21 @@ export class ArtifactStore implements OnModuleInit {
   }
 }
 
-function isValidKey(folder: Folder, key: string) {
+/** Las mismas claves valen en disco y en el bucket (`CloudStorageArtifactStore`). */
+export function isValidKey(folder: Folder, key: string) {
   return KEY_PATTERNS[folder].some((pattern) => pattern.test(key));
 }
 
-function sha256(content: Buffer) {
+export function sha256(content: Buffer) {
   return createHash('sha256').update(content).digest('hex');
 }
 
 /** Mismo tamaño y misma suma SHA-256 que lo que se generó. */
-function isSameContent(stored: Buffer, written: WrittenArtifact) {
+export function isSameContent(stored: Buffer, written: WrittenArtifact) {
   return (
     stored.length === written.byteSize && sha256(stored) === written.checksum
   );
 }
 
-/** El archivo no existe (`ENOENT`). */
-export function isMissingFile(error: unknown) {
-  return (error as NodeJS.ErrnoException).code === 'ENOENT';
-}
+// Las features lo importan de aquí desde antes de que hubiera bucket.
+export { isMissingFile };

@@ -10,6 +10,9 @@ const MIN_TOKEN_LENGTH = 32;
  * Lee `AI_SERVICE_URL` y `AI_SERVICE_TOKEN` (D14). Sin URL, el conocimiento
  * está desactivado (`null`). Con URL pero sin un token válido, la API no
  * arranca: sería un despliegue a medias que nunca indexaría nada.
+ *
+ * `AI_SERVICE_ID_TOKEN_AUDIENCE` es opcional: en Cloud Run, la URL del FastAPI
+ * privado, para pedir su ID token de Google (deploys, plan 06, D9).
  */
 export function aiServiceConfigFrom(
   env: Readonly<Record<string, string | undefined>>,
@@ -27,7 +30,20 @@ export function aiServiceConfigFrom(
   if (!isHttpUrl(url)) {
     throw new Error('AI_SERVICE_URL debe ser una URL http(s).');
   }
-  return { url, token, timeoutMs: AI_SERVICE_TIMEOUT_MS };
+
+  const config: AiServiceConfig = {
+    url,
+    token,
+    timeoutMs: AI_SERVICE_TIMEOUT_MS,
+  };
+  const audience = env.AI_SERVICE_ID_TOKEN_AUDIENCE?.trim();
+  if (!audience) {
+    return config;
+  }
+  if (!isHttpUrl(audience)) {
+    throw new Error('AI_SERVICE_ID_TOKEN_AUDIENCE debe ser una URL http(s).');
+  }
+  return { ...config, identityAudience: audience };
 }
 
 function isHttpUrl(value: string) {
