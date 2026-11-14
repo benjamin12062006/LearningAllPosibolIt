@@ -50,6 +50,8 @@ test('Prisma despliega las migraciones PostgreSQL y no las repite', async () => 
         '20261114100000_create_worksheet_import_mappings',
         '20261114110000_create_worksheet_saved_views',
         '20261114120000_open_catalog_as_worksheet',
+        '20261114130000_create_ai_conversations',
+        '20261114140000_create_worksheet_transform_previews',
       ],
     );
     assert.ok(migrations.every((migration) => migration.finished_at));

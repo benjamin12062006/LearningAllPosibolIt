@@ -108,7 +108,7 @@ H1–H5 ya existen y están en la matriz (2026-11-14). Quedan fuera hasta que ex
 
 | Etapa | Operaciones previstas | Equivalente previsto | Consumidor |
 | --- | --- | --- | --- |
-| E6.2–E6.4 | Conversaciones, mensajes, ejecuciones, confirmaciones; eventos por SSE | Consultas y mutaciones; SSE sigue en HTTP | Nuxt |
+| E6.3a–E6.4 | Ejecuciones, confirmaciones y eventos por SSE | Consultas y mutaciones; SSE sigue en HTTP | Nuxt |
 | H6 | Herramientas de hoja para el agente (`preview_transform`, `create_change_proposal`, `propose_sheet_layout`) | Mutaciones | FastAPI |
 
 ## Lo que falta de la evaluación
@@ -124,6 +124,8 @@ H1–H5 ya existen y están en la matriz (2026-11-14). Quedan fuera hasta que ex
 *Nota del 2026-11-14, al cerrar C7:* las 68 filas «Añadir» están construidas. La prueba [`coverage.spec.ts`](../../../../test/features/graphql/coverage.spec.ts) lee esta tabla, la compara con las rutas montadas en los controladores y comprueba que cada equivalente existe en el esquema esperado: 109 rutas, 85 con equivalente, 10 solo HTTP y 14 en REST. Las decisiones se dejan como se tomaron. La consulta de filas ya admite filtro, orden, columnas y vista guardada. El experimento de `isOneOf` está hecho (bitácora 03 de C7).
 
 `…/proyecto` es `/api/v1/projects/:projectId` y `…/org/proyecto` es `/api/v1/organizations/:organizationId/projects/:projectId`. Decisión: **Existe** (ya estaba en el esquema), **Existe (piloto)** (añadida el 2026-11-13), **Añadir** (C7), **REST** (elegible, pero se queda como está) y **HTTP** (no elegible por contrato).
+
+E6.2 añade seis rutas de conversaciones y mensajes con equivalente GraphQL. Cobertura resultante: 91 de 115 rutas, 10 solo HTTP y 14 en REST.
 
 | Módulo | Ruta | Permiso | Equivalente GraphQL | Consumidor | Decisión | Motivo |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -145,6 +147,12 @@ H1–H5 ya existen y están en la matriz (2026-11-14). Quedan fuera hasta que ex
 | `changesets` | `POST …/org/proyecto/changesets/:changesetId/apply` | Manager | `applyChangeset` | Nuxt | Añadir | Prohibido al agente (aplicar); conserva la idempotencia |
 | `changesets` | `POST …/org/proyecto/changesets/:changesetId/rebase` | Editor | `rebaseChangeset` | Ambos | Añadir |  |
 | `changesets` | `POST …/org/proyecto/revisions/:revisionId/revert-proposal` | Editor | `proposeRevert` | Ambos | Añadir | Crea un borrador, no aplica |
+| `conversations` | `POST …/org/proyecto/workbooks/:workbookId/conversations` | Editor | `createWorkbookConversation` | Nuxt | Existe | Conversación privada |
+| `conversations` | `POST …/org/proyecto/worksheets/:worksheetId/conversations` | Editor | `createWorksheetConversation` | Nuxt | Existe | Conversación privada |
+| `conversations` | `GET …/org/proyecto/conversations` | Miembro autor | `Project.conversations` | Nuxt | Existe | Lista privada por proyecto |
+| `conversations` | `GET …/org/proyecto/conversations/:conversationId` | Miembro autor | `conversation` | Nuxt | Existe | Detalle privado |
+| `conversations` | `POST …/org/proyecto/conversations/:conversationId/messages` | Editor autor | `appendConversationMessage` | Nuxt | Existe | `clientMessageId` idempotente |
+| `conversations` | `GET …/org/proyecto/conversations/:conversationId/messages` | Miembro autor | `Conversation.messages` | Nuxt | Existe | Historial privado con cursor |
 | `evaluations` | `POST …/proyecto/evaluations` | Editor | `requestEvaluation` | Ambos | Añadir |  |
 | `evaluations` | `POST …/proyecto/evaluations/preview` | Editor | `rulesPreview` (consulta) | Ambos | Añadir | No guarda nada: es una lectura |
 | `evaluations` | `GET …/proyecto/evaluations` | Miembro | `Project.evaluations` | Ambos | Añadir |  |

@@ -1,14 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import {
   catalogDocuments,
+  changesetDocuments,
   evaluationDocuments,
   feedDocuments,
+  organizationDocuments,
   projectDocuments,
   rulesetDocuments,
   TOP_PROBLEMS,
+  workbookDocuments,
+  worksheetDocuments,
+  worksheetImportDocuments,
 } from './knowledge-documents.js';
 import { KnowledgeRepository } from './knowledge.repository.js';
-import type { CurrentSource, KnowledgeDocument } from './knowledge.types.js';
+import type {
+  CurrentSource,
+  KnowledgeDocument,
+  SourceKey,
+} from './knowledge.types.js';
 
 /**
  * Los documentos de una fuente tal como están ahora (D18). Si la fuente
@@ -21,8 +30,14 @@ export class SourceDocuments {
 
   async of(source: CurrentSource): Promise<KnowledgeDocument[]> {
     switch (source.sourceType) {
+      case 'organization':
+        return this.organization(source);
       case 'project':
         return this.project(source.projectId);
+      case 'workbook':
+        return this.workbook(source);
+      case 'worksheet':
+        return this.worksheet(source);
       case 'catalog':
         return this.catalog(source.projectId);
       case 'evaluation':
@@ -31,15 +46,39 @@ export class SourceDocuments {
         return this.ruleset(source.projectId);
       case 'feed':
         return this.feed(source.projectId);
-      default:
-        // Las demás fuentes llegan en E6.1b.2; la consulta de huellas aún no las da.
-        throw new Error(`Fuente sin documentos todavía: ${source.sourceType}.`);
+      case 'changeset':
+        return this.changeset(source);
+      case 'worksheet_import':
+        return this.worksheetImport(source);
     }
+  }
+
+  private async organization(source: SourceKey) {
+    const facts = await this.repository.findOrganizationFacts(source);
+    return facts ? organizationDocuments(facts) : [];
   }
 
   private async project(projectId: string) {
     const facts = await this.repository.findProjectFacts(projectId);
     return facts ? projectDocuments(facts) : [];
+  }
+
+  private async workbook(source: SourceKey) {
+    const facts = await this.repository.findWorkbookFacts(source);
+    return facts ? workbookDocuments(facts) : [];
+  }
+
+  private async worksheet(source: SourceKey) {
+    const facts = await this.repository.findWorksheetFacts(source);
+    if (!facts) {
+      return [];
+    }
+    const columns = await this.repository.findWorksheetColumns(
+      source,
+      facts.schemaVersion,
+    );
+    const rows = this.repository.worksheetRowsAt(source, facts.sequence);
+    return worksheetDocuments(facts, columns, rows);
   }
 
   private async catalog(projectId: string) {
@@ -72,5 +111,15 @@ export class SourceDocuments {
   private async feed(projectId: string) {
     const facts = await this.repository.findFeedFacts(projectId);
     return facts ? feedDocuments(facts) : [];
+  }
+
+  private async changeset(source: SourceKey) {
+    const facts = await this.repository.findChangesetFacts(source);
+    return facts ? changesetDocuments(facts) : [];
+  }
+
+  private async worksheetImport(source: SourceKey) {
+    const facts = await this.repository.findWorksheetImportFacts(source);
+    return facts ? worksheetImportDocuments(facts) : [];
   }
 }

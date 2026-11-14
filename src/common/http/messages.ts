@@ -981,4 +981,64 @@ export const API_MESSAGES = {
     'La consulta pide demasiado de una vez: reduce los límites o divídela.',
     'The query asks for too much at once: lower the limits or split it.',
   ),
+  [ErrorCodes.CONVERSATION_NOT_FOUND]: entry(
+    404,
+    'No se encontró la conversación.',
+    'The conversation was not found.',
+  ),
+  [ErrorCodes.CONVERSATION_CURSOR_INVALID]: entry(
+    400,
+    'El cursor no corresponde a esta consulta de conversación.',
+    'The cursor does not belong to this conversation query.',
+  ),
+  [ErrorCodes.AI_SHEET_SELECTION_NOT_FOUND]: entry(
+    404,
+    'No se encontró la selección de esta hoja.',
+    'The selection was not found for this worksheet.',
+  ),
+  [ErrorCodes.AI_SHEET_SELECTION_EXPIRED]: entry(
+    409,
+    'La selección caducó. Selecciona las filas de nuevo.',
+    'The selection expired. Select the rows again.',
+  ),
+  [ErrorCodes.AI_SHEET_SELECTION_ROW_NOT_FOUND]: entry(
+    404,
+    'No se encontró una fila de la selección en esta revisión.',
+    'A selected row was not found in this revision.',
+  ),
+  [ErrorCodes.AI_SHEET_SELECTION_COLUMN_NOT_FOUND]: entry(
+    404,
+    'No se encontró una columna entre las admitidas para la selección.',
+    'A column was not found among those allowed for the selection.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_NOT_FOUND]: entry(
+    404,
+    'No se encontró la vista previa de esta hoja.',
+    'The transform preview was not found for this worksheet.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_EXPIRED]: entry(
+    409,
+    'La vista previa caducó. Calcula una nueva.',
+    'The transform preview expired. Calculate a new one.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_STALE]: entry(
+    409,
+    'La revisión de la hoja cambió. Calcula una nueva vista previa.',
+    'The worksheet revision changed. Calculate a new transform preview.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_ALREADY_USED]: entry(
+    409,
+    'La vista previa ya produjo un borrador.',
+    'The transform preview already produced a draft.',
+  ),
+  [ErrorCodes.AI_SHEET_TRANSFORM_LIMIT]: entry(
+    422,
+    'La transformación supera los límites de la hoja. Reduce la selección.',
+    'The transform exceeds the worksheet limits. Reduce the selection.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_INVALID]: entry(
+    422,
+    'La vista previa debe contener cambios válidos para crear un borrador.',
+    'The transform preview must contain valid changes to create a draft.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

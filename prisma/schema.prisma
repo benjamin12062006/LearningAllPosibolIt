@@ -35,6 +35,9 @@ model AppUser {
 
   importMappings       WorksheetImportMapping[]
   savedViews           WorksheetSavedView[]
+  aiConversations      AiConversation[]
+  aiMessages           AiMessage[]
+  transformSelections  WorksheetTransformSelection[]
   @@unique([identityIssuer, identitySubject])
   @@map("app_users")
   @@schema("estadistica_forms")
@@ -392,6 +395,7 @@ model Workbook {
   project        Project     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
   creator        AppUser     @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
   worksheets     Worksheet[]
+  aiConversations AiConversation[]
 
   @@unique([projectId, nameNormalized])
   @@unique([organizationId, projectId, id])
@@ -435,11 +439,56 @@ model Worksheet {
   snapshots      WorksheetSnapshot[]
   importMappings WorksheetImportMapping[]
   savedViews     WorksheetSavedView[]
+  aiConversations AiConversation[]
+  transformSelections WorksheetTransformSelection[]
 
   @@unique([workbookId, nameNormalized])
+  @@unique([workbookId, id])
   @@unique([organizationId, id])
+  @@unique([organizationId, projectId, id])
   @@index([organizationId, workbookId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_worksheets_workbook_created")
   @@map("worksheets")
+  @@schema("estadistica_forms")
+}
+
+/// Conversación privada de un libro o de una hoja en ese mismo libro.
+model AiConversation {
+  id             String     @id
+  organizationId String     @map("organization_id")
+  projectId      String     @map("project_id")
+  workbookId     String     @map("workbook_id")
+  worksheetId    String?    @map("worksheet_id")
+  createdBy      String     @map("created_by")
+  title          String
+  visibility     String     @default("private")
+  status         String     @default("active")
+  createdAt      String     @map("created_at")
+  updatedAt      String     @map("updated_at")
+  workbook       Workbook   @relation(fields: [organizationId, projectId, workbookId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  worksheet      Worksheet? @relation(fields: [workbookId, worksheetId], references: [workbookId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator        AppUser    @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  messages       AiMessage[]
+
+  @@index([organizationId, projectId, createdBy, createdAt(sort: Desc), id(sort: Desc)], map: "idx_ai_conversations_project_author")
+  @@map("ai_conversations")
+  @@schema("estadistica_forms")
+}
+
+model AiMessage {
+  id              String         @id
+  conversationId  String         @map("conversation_id")
+  authorId        String?        @map("author_id")
+  clientMessageId String?        @map("client_message_id")
+  role            String
+  content         String
+  sequence        Int
+  createdAt       String         @map("created_at")
+  conversation    AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  author          AppUser?       @relation(fields: [authorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([conversationId, sequence])
+  @@unique([conversationId, authorId, clientMessageId])
+  @@map("ai_messages")
   @@schema("estadistica_forms")
 }
 
@@ -490,6 +539,7 @@ model WorksheetRevision {
   baseOf         WorksheetChangeset[]  @relation("ChangesetBase")
   exports        WorksheetExport[]
   snapshots      WorksheetSnapshot[]
+  transformSelections WorksheetTransformSelection[]
 
   @@unique([worksheetId, sequence])
   @@unique([worksheetId, id])
@@ -547,6 +597,7 @@ model WorksheetChangeset {
   revisions         WorksheetRevision[]          @relation("ChangesetRevision")
   /// Como mucho una: la importación que creó este borrador (E5.1).
   imports           WorksheetImport[]
+  transformPreview  WorksheetTransformPreview?
 
   @@unique([organizationId, id])
   @@index([organizationId, worksheetId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_worksheet_changesets_worksheet_created")
@@ -783,5 +834,45 @@ model WorksheetSavedView {
   @@unique([worksheetId, ownerId, nameNormalized])
   @@index([organizationId, worksheetId, createdAt(sort: Desc)], map: "idx_worksheet_saved_views_worksheet_created")
   @@map("worksheet_saved_views")
+  @@schema("estadistica_forms")
+}
+
+/// Selección materializada para H6. El ámbito y la revisión no se pueden
+/// cambiar al guardar una vista previa que referencia esta selección.
+model WorksheetTransformSelection {
+  id               String                      @id
+  organizationId   String                      @map("organization_id")
+  projectId        String                      @map("project_id")
+  worksheetId      String                      @map("worksheet_id")
+  actorId          String                      @map("actor_id")
+  revisionId       String                      @map("revision_id")
+  rowIds           Json                        @map("row_ids")
+  columnIds        Json                        @map("column_ids")
+  expiresAt        DateTime                    @map("expires_at") @db.Timestamptz(3)
+  worksheet        Worksheet                   @relation(fields: [organizationId, projectId, worksheetId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  actor            AppUser                     @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  revision         WorksheetRevision           @relation(fields: [worksheetId, revisionId], references: [worksheetId, id], onDelete: Restrict, onUpdate: NoAction)
+  previews         WorksheetTransformPreview[]
+
+  @@index([expiresAt], map: "idx_worksheet_transform_selections_expires")
+  @@map("worksheet_transform_selections")
+  @@schema("estadistica_forms")
+}
+
+/// Diff canónico temporal. La selección conserva el autor, el ámbito y la
+/// revisión. `changesetId` se fija en la transacción que consume el preview.
+model WorksheetTransformPreview {
+  id          String                      @id
+  selectionId String                      @map("selection_id")
+  changes     Json
+  issueCount  Int                         @map("issue_count")
+  hash        String
+  expiresAt   DateTime                    @map("expires_at") @db.Timestamptz(3)
+  changesetId String?                     @unique @map("changeset_id")
+  selection   WorksheetTransformSelection @relation(fields: [selectionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  changeset   WorksheetChangeset?         @relation(fields: [changesetId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([expiresAt], map: "idx_worksheet_transform_previews_expires")
+  @@map("worksheet_transform_previews")
   @@schema("estadistica_forms")
 }

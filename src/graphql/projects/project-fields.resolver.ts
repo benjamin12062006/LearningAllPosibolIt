@@ -4,6 +4,7 @@ import type { AuthenticatedIdentity } from '../../auth/authenticated-request.js'
 import { CurrentIdentity } from '../../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../../auth/descope-session.guard.js';
 import { CatalogImportService } from '../../catalog-import/catalog-import.service.js';
+import { ConversationsService } from '../../conversations/conversations.service.js';
 import { EvaluationsService } from '../../evaluations/evaluations.service.js';
 import { FeedsService } from '../../feeds/feeds.service.js';
 import { KnowledgeService } from '../../knowledge/knowledge.service.js';
@@ -13,6 +14,10 @@ import { RulesetsService } from '../../rulesets/rulesets.service.js';
 import { WorksheetsService } from '../../worksheets/worksheets.service.js';
 import { ImportPageType } from '../catalog-import/catalog-import.graphql.js';
 import { PaginationArgs } from '../common/pagination.args.js';
+import {
+  ConversationListArgs,
+  ConversationPageType,
+} from '../conversations/conversations.graphql.js';
 import { EvaluationPageType } from '../evaluations/evaluations.graphql.js';
 import { FeedType } from '../feeds/feeds.graphql.js';
 import { KnowledgeStatusType } from '../knowledge/knowledge.graphql.js';
@@ -40,6 +45,7 @@ export class ProjectFieldsResolver {
     private readonly feeds: FeedsService,
     private readonly knowledge: KnowledgeService,
     private readonly worksheets: WorksheetsService,
+    private readonly conversations: ConversationsService,
   ) {}
 
   @ResolveField(() => ProjectAccessType, { name: 'access' })
@@ -125,5 +131,22 @@ export class ProjectFieldsResolver {
       query,
     );
     return { items: items.map((workbook) => ({ ...workbook, scope })), page };
+  }
+
+  @ResolveField(() => ConversationPageType, { name: 'conversations' })
+  async conversationList(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Parent() project: Project,
+    @Args() query: ConversationListArgs,
+  ) {
+    const { organizationId } = await this.membership.resolveAccess(
+      identity,
+      project.id,
+    );
+    return this.conversations.findByProject(
+      identity,
+      { organizationId, projectId: project.id },
+      query,
+    );
   }
 }

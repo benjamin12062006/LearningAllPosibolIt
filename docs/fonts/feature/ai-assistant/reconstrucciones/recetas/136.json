@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 15 Backend - Asistentes de OpenAI/136. Crear Mensaje - Caso de Uso.md",
+  "previous": [
+    "Sección 15 Backend - Asistentes de OpenAI/134. Crear módulo - Assistant.md",
+    "Sección 15 Backend - Asistentes de OpenAI/135. Crear Thread - Caso de Uso.md"
+  ],
+  "objective": "Crear un mensaje de usuario dentro de un hilo existente y comprobar que aparece como parte de su historial.",
+  "initial": "Sam Assistant ya tiene un controlador, un servicio, QuestionDto y un caso de uso de creación de hilos. La ruta de creación devuelve el id del hilo. En esta lección se sustituye el eco de la pregunta.",
+  "certainty": "La transcripción muestra la creación del mensaje con threadId, role user y content. Se reconstruye la forma de los imports, el cliente OpenAI que el servicio hereda con configuración del entorno y el retorno vacío observable en la ruta de preguntas. Se conserva la API beta de la lección como evidencia histórica.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "la creación de un mensaje no lo ejecuta",
+      "change": "Guardar un mensaje y ejecutar un run son pasos independientes.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E2",
+      "line": 17,
+      "phrase": "el caso de uso tiene que ser como más independiente",
+      "change": "Options con threadId y question mantiene al caso de uso separado del DTO HTTP.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E3",
+      "line": 21,
+      "phrase": "el rol del user",
+      "change": "Crear un mensaje con role user y content tomado de la pregunta.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E4",
+      "line": 23,
+      "phrase": "nuestro archivo de barril",
+      "change": "Exportar createMessageUseCase e invocarlo desde userQuestion.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E5",
+      "line": 25,
+      "phrase": "vamos a imprimir en consola ese mensaje",
+      "change": "El servicio registra la respuesta del SDK durante la demostración.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E6",
+      "line": 27,
+      "phrase": "User question, paréntesis y mandamos nuestro question dto",
+      "change": "El controlador delega en el servicio en lugar de devolver el DTO.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E7",
+      "line": 29,
+      "phrase": "no hay ninguna respuesta",
+      "change": "La ruta de mensaje todavía no devuelve el objeto del SDK al cliente.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E8",
+      "line": 29,
+      "phrase": "regresemos el ID",
+      "change": "La creación de hilo devuelve { id }.",
+      "certainty": "Explícito",
+      "source": "Sección 15 Backend - Asistentes de OpenAI/135. Crear Thread - Caso de Uso.md"
+    },
+    {
+      "id": "E9",
+      "line": 25,
+      "phrase": "También necesito importar OpenAI de OpenAI",
+      "change": "El servicio dispone de un cliente OpenAI configurado.",
+      "certainty": "El constructor queda inferido",
+      "source": "Sección 15 Backend - Asistentes de OpenAI/135. Crear Thread - Caso de Uso.md"
+    },
+    {
+      "id": "E10",
+      "line": 23,
+      "phrase": "Ambos deberían de ser readonly",
+      "change": "Se conserva QuestionDto del módulo inicial.",
+      "certainty": "Explícito",
+      "source": "Sección 15 Backend - Asistentes de OpenAI/134. Crear módulo - Assistant.md"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Crear un mensaje dentro del hilo",
+      "objective": "Apuntar al hilo y guardar la pregunta como mensaje de usuario.",
+      "code": "import OpenAI from 'openai';\n\ninterface Options {\n  threadId: string;\n  question: string;\n}\n\nexport const createMessageUseCase = async (openai: OpenAI, options: Options) => {\n  const { threadId, question } = options;\n\n  const message = await openai.beta.threads.messages.create(threadId, {\n    role: 'user',\n    content: question,\n  });\n\n  return message;\n};",
+      "why": "El threadId indica a qué historial se añade el contenido. El caso de uso recibe sus dos datos mediante Options y asigna el rol.",
+      "check": "Localizar la llamada en la edición del SDK mostrada por la lección y comprobar los dos argumentos, threadId y cuerpo.",
+      "evidence": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "language": "typescript"
+    },
+    {
+      "title": "Conectar el servicio",
+      "objective": "Llamar al caso de uso con los datos de QuestionDto.",
+      "code": "import { Injectable } from '@nestjs/common';\nimport OpenAI from 'openai';\nimport { QuestionDto } from './dto/question.dto';\nimport { createMessageUseCase, createThreadUseCase } from './use-cases';\n\n@Injectable()\nexport class SamAssistantService {\n  private readonly openai = new OpenAI();\n\n  async createThread() {\n    return createThreadUseCase(this.openai);\n  }\n\n  async userQuestion(questionDto: QuestionDto) {\n    const { threadId, question } = questionDto;\n    const message = await createMessageUseCase(this.openai, { threadId, question });\n    console.log(message);\n  }\n}",
+      "why": "El servicio tiene el cliente configurado y pasa los campos del DTO al contrato del caso de uso. Exportar el nuevo símbolo desde use-cases/index.ts.",
+      "check": "Con un hilo ya creado y en el entorno del curso, enviar una pregunta y comprobar los identificadores, el rol y el contenido que el ejemplo imprime.",
+      "evidence": [
+        "E4",
+        "E5",
+        "E9",
+        "E10"
+      ],
+      "language": "typescript"
+    },
+    {
+      "title": "Delegar desde HTTP",
+      "objective": "Pasar la pregunta al servicio desde el controlador.",
+      "code": "import { Body, Controller, Post } from '@nestjs/common';\nimport { QuestionDto } from './dto/question.dto';\nimport { SamAssistantService } from './sam-assistant.service';\n\n@Controller('sam-assistant')\nexport class SamAssistantController {\n  constructor(private readonly samAssistantService: SamAssistantService) {}\n\n  @Post('create-thread')\n  async createThread() {\n    const { id } = await this.samAssistantService.createThread();\n    return { id };\n  }\n\n  @Post('user-question')\n  async userQuestion(@Body() questionDto: QuestionDto) {\n    return this.samAssistantService.userQuestion(questionDto);\n  }\n}",
+      "why": "La ruta activa la persistencia del SDK y conserva la ruta de creación de hilos ya comprobada.",
+      "check": "La ruta create-thread devuelve { id }. Al enviar una pregunta con ese id, la ruta termina con cuerpo vacío y el servicio registra el mensaje.",
+      "evidence": [
+        "E6",
+        "E7",
+        "E8"
+      ],
+      "language": "typescript"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/sam-assistant/sam-assistant.module.ts",
+      "language": "typescript",
+      "code": "import { Module } from '@nestjs/common';\nimport { SamAssistantController } from './sam-assistant.controller';\nimport { SamAssistantService } from './sam-assistant.service';\n\n@Module({\n  controllers: [SamAssistantController],\n  providers: [SamAssistantService],\n})\nexport class SamAssistantModule {}",
+      "provenance": "Módulo heredado de 134, líneas 13–17."
+    },
+    {
+      "path": "src/sam-assistant/dto/question.dto.ts",
+      "language": "typescript",
+      "code": "import { IsNotEmpty, IsString } from 'class-validator';\n\nexport class QuestionDto {\n  @IsString()\n  @IsNotEmpty()\n  readonly threadId: string;\n\n  @IsString()\n  @IsNotEmpty()\n  readonly question: string;\n}",
+      "provenance": "E10 para la forma del DTO, con validación de la lección 134, línea 29."
+    },
+    {
+      "path": "src/sam-assistant/use-cases/create-thread.use-case.ts",
+      "language": "typescript",
+      "code": "import OpenAI from 'openai';\n\nexport const createThreadUseCase = async (openai: OpenAI) => {\n  return openai.beta.threads.create();\n};",
+      "provenance": "Lección 135, líneas 19–23 para el caso de uso heredado."
+    },
+    {
+      "path": "src/sam-assistant/use-cases/create-message.use-case.ts",
+      "language": "typescript",
+      "code": "import OpenAI from 'openai';\n\ninterface Options {\n  threadId: string;\n  question: string;\n}\n\nexport const createMessageUseCase = async (openai: OpenAI, options: Options) => {\n  const { threadId, question } = options;\n\n  const message = await openai.beta.threads.messages.create(threadId, {\n    role: 'user',\n    content: question,\n  });\n\n  return message;\n};",
+      "provenance": "E1, E2 y E3 para argumentos, rol, contenido y persistencia."
+    },
+    {
+      "path": "src/sam-assistant/use-cases/index.ts",
+      "language": "typescript",
+      "code": "export * from './create-thread.use-case';\nexport * from './create-message.use-case';",
+      "provenance": "E4 para la exportación y lección 135, línea 23 para la exportación de createThreadUseCase."
+    },
+    {
+      "path": "src/sam-assistant/sam-assistant.service.ts",
+      "language": "typescript",
+      "code": "import { Injectable } from '@nestjs/common';\nimport OpenAI from 'openai';\nimport { QuestionDto } from './dto/question.dto';\nimport { createMessageUseCase, createThreadUseCase } from './use-cases';\n\n@Injectable()\nexport class SamAssistantService {\n  private readonly openai = new OpenAI();\n\n  async createThread() {\n    return createThreadUseCase(this.openai);\n  }\n\n  async userQuestion(questionDto: QuestionDto) {\n    const { threadId, question } = questionDto;\n    const message = await createMessageUseCase(this.openai, { threadId, question });\n    console.log(message);\n  }\n}",
+      "provenance": "E4, E5, E9 y E10 para cliente y delegación."
+    },
+    {
+      "path": "src/sam-assistant/sam-assistant.controller.ts",
+      "language": "typescript",
+      "code": "import { Body, Controller, Post } from '@nestjs/common';\nimport { QuestionDto } from './dto/question.dto';\nimport { SamAssistantService } from './sam-assistant.service';\n\n@Controller('sam-assistant')\nexport class SamAssistantController {\n  constructor(private readonly samAssistantService: SamAssistantService) {}\n\n  @Post('create-thread')\n  async createThread() {\n    const { id } = await this.samAssistantService.createThread();\n    return { id };\n  }\n\n  @Post('user-question')\n  async userQuestion(@Body() questionDto: QuestionDto) {\n    return this.samAssistantService.userQuestion(questionDto);\n  }\n}",
+      "provenance": "E6–E8 para las respuestas y la delegación."
+    }
+  ],
+  "temporary": "El ejemplo muestra el mensaje en consola para comprobar el SDK. La ejecución del asistente se estudia después.",
+  "mental": "El hilo conserva los mensajes. El controlador recibe el DTO, el servicio extrae sus campos y el caso de uso guarda la pregunta en ese hilo con el rol de usuario."
+}

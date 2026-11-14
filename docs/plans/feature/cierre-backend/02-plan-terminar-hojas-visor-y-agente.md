@@ -87,15 +87,15 @@ Evaluar primero toda la API con el inventario y el piloto del [23, plan C7](../.
 
 | Etapa | Repositorio | Qué | Comprobación |
 | --- | --- | --- | --- |
-| **E6.1b.2** | Nest | Fuentes de hojas y organización en el índice | Las cinco fuentes nuevas; sin correos |
-| **E6.2** | Nest | Conversaciones y mensajes. Migración | Privadas; `clientMessageId` idempotente |
-| **H6** | Nest | Herramientas de hoja para el agente (P12) | 5 % exacto sobre la selección; solo crea un borrador (T20) |
-| **E6.3a** | Nest | Catálogo de operaciones, autorización del cliente GraphQL con token por ejecución y ruta interna para las demás operaciones autorizadas, ejecuciones y confirmaciones (P13) | Cobertura de rutas; nada prohibido declarado; ajeno 404 |
+| **E6.1b.2** | Nest y FastAPI | [Fuentes de hojas y organización en el índice](../ai-assistant/02-plan-conocimiento-de-hojas-y-organizacion.md) | Implementado y verificado en local con Qdrant. Queda Vertex AI. |
+| **E6.2** | Nest | [Conversaciones y mensajes](../ai-assistant/03-plan-conversaciones-y-mensajes.md), migración | Privacidad por autor y `clientMessageId` idempotente |
+| **H6** | Nest | [Herramientas de hoja para el agente](../ai-assistant/04-plan-herramientas-de-hoja-del-agente.md) (P12) | Cálculo del 5 % exacto sobre la selección y propuesta como borrador (T20) |
+| **E6.3a** | Nest y FastAPI | [Catálogo, ejecuciones y confirmaciones](../ai-assistant/05-plan-catalogo-ejecuciones-y-confirmaciones.md) (P13) | Cobertura de rutas, credencial acotada y 404 para recursos ajenos |
 | **E6.3b** | FastAPI | `FunctionAgent` con LLM simulado, herramientas por búsqueda y espera de confirmación | T18, T19 |
-| **E6.4** | Los dos | Streaming, SSE con `after=<seq>`, cancelar y cuotas | T21, T22 |
+| **E6.4** | Los dos | [Streaming, SSE con `after=<seq>`, cancelar y cuotas](../ai-assistant/06-plan-eventos-cuotas-y-contrato-del-chat.md) | T21, T22 |
 | **E6.5** | FastAPI | Gemini por Vertex AI con evaluación | Dataset de 15; coste medido |
-| **E6.6** | Los dos | Endurecimiento, contrato para Nuxt y plan de despliegue | Recorrido completo con dos organizaciones; IA apagada |
-| **E6.7** | FastAPI | (Opcional) servidor MCP | Si el usuario lo pide |
+| **E6.6** | Los dos | [Endurecimiento y contrato para Nuxt](../ai-assistant/06-plan-eventos-cuotas-y-contrato-del-chat.md) | Recorrido completo con dos organizaciones y con la IA apagada |
+| **E6.7** | FastAPI | [Servidor MCP local](../../../../../LearningAllPosibolIt-ai/docs/plans/feature/agente/04-plan-servidor-mcp-local.md), solicitado por el usuario | Después de terminar y probar el recorrido local de las APIs |
 
 ## Orden de ejecución
 

@@ -16,7 +16,7 @@ export type Changeset = Readonly<{
   id: string;
   worksheetId: string;
   authorId: string;
-  source: 'manual' | 'revert' | 'import';
+  source: 'manual' | 'revert' | 'import' | 'ai';
   title: string;
   status: ChangesetStatus;
   /** ETag del borrador: cambia con cada guardado o reapertura (D3, D7). */

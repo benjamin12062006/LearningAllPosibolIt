@@ -19,6 +19,8 @@ import { WorksheetCatalogSnapshotsModule } from './worksheet-catalog-snapshots/w
 import { HealthModule } from './health/health.module.js';
 import { FeedViewerModule } from './feed-viewer/feed-viewer.module.js';
 import { KnowledgeModule } from './knowledge/knowledge.module.js';
+import { ConversationsModule } from './conversations/conversations.module.js';
+import { WorksheetToolsModule } from './worksheet-tools/worksheet-tools.module.js';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { KnowledgeModule } from './knowledge/knowledge.module.js';
     GraphqlApiModule,
     FeedViewerModule,
     KnowledgeModule,
+    ConversationsModule,
+    WorksheetToolsModule,
   ],
 })
 export class AppModule {}

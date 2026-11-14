@@ -71,6 +71,7 @@ const PRODUCT_SOURCES: SourceType[] = [
   'catalog',
   'evaluation',
   'feed',
+  'organization',
   'project',
   'ruleset',
 ];
@@ -338,16 +339,18 @@ describe('Conocimiento por HTTP: Nest manda al servicio de IA lo que cambió', (
   });
 
   describe('una pasada del reconciliador', () => {
-    it('manda las cinco fuentes del proyecto completo y deja el estado al día', async () => {
+    it('manda las fuentes del proyecto completo y deja el estado al día', async () => {
       await completeAliceProject();
 
       const outcome = await sync.syncOnce();
 
       expect(ai.replacedTypes(projectId)).toEqual(PRODUCT_SOURCES);
-      // El proyecto de Bob solo tiene su configuración.
-      expect(ai.replacedTypes(bobProjectId)).toEqual(['project']);
+      expect(ai.replacedTypes(bobProjectId)).toEqual([
+        'organization',
+        'project',
+      ]);
       expect(outcome).toEqual({
-        replaced: 6,
+        replaced: 8,
         removed: 0,
         removedProjects: 0,
         rejected: 0,
@@ -360,7 +363,8 @@ describe('Conocimiento por HTTP: Nest manda al servicio de IA lo que cambió', (
       );
       for (const source of status.sources) {
         expect(source).toMatchObject({
-          sourceId: projectId,
+          sourceId:
+            source.sourceType === 'organization' ? organizationId : projectId,
           syncedAt: SYNC_TIME,
           pending: false,
         });
@@ -447,7 +451,7 @@ describe('Conocimiento por HTTP: Nest manda al servicio de IA lo que cambió', (
       ai.isDown = false;
       const recovered = await sync.syncOnce();
 
-      expect(recovered).toMatchObject({ replaced: 6, interrupted: false });
+      expect(recovered).toMatchObject({ replaced: 8, interrupted: false });
       expect(await pendingTypes()).toEqual([]);
     });
 
@@ -461,7 +465,7 @@ describe('Conocimiento por HTTP: Nest manda al servicio de IA lo que cambió', (
       const outcome = await sync.syncOnce();
 
       expect(outcome).toMatchObject({
-        replaced: 5,
+        replaced: 7,
         rejected: 1,
         interrupted: false,
       });
@@ -526,6 +530,7 @@ describe('Conocimiento por HTTP: Nest manda al servicio de IA lo que cambió', (
       expect(outcome).toMatchObject({ removed: 1, replaced: 0 });
       const status = await knowledgeStatus();
       expect(status.sources.map((source) => source.sourceType).sort()).toEqual([
+        'organization',
         'project',
         'ruleset',
       ]);
@@ -586,7 +591,7 @@ describe('Conocimiento por HTTP: Nest manda al servicio de IA lo que cambió', (
       const status = await knowledgeStatus('carol-session');
 
       expect(status.enabled).toBe(true);
-      expect(status.sources).toHaveLength(5);
+      expect(status.sources).toHaveLength(PRODUCT_SOURCES.length);
       for (const source of status.sources) {
         expect(source).toMatchObject({ syncedAt: null, pending: true });
       }

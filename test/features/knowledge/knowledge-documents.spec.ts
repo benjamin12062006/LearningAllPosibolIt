@@ -7,12 +7,16 @@ import {
   productDocumentId,
   projectDocuments,
   rulesetDocuments,
+  worksheetDocuments,
 } from '../../../src/knowledge/knowledge-documents.js';
 import type {
   CatalogFacts,
   CatalogProductRow,
   FeedFacts,
+  WorksheetFacts,
 } from '../../../src/knowledge/knowledge.repository.js';
+import { WORKSHEET_LIMITS } from '../../../src/worksheets/worksheet-columns.js';
+import type { WorksheetColumn } from '../../../src/worksheets/worksheets.types.js';
 
 const catalog: CatalogFacts = {
   originalName: 'productos-otono.csv',
@@ -55,6 +59,25 @@ const feed: FeedFacts = {
   lastRefreshOutcome: 'needs_review',
   lastRefreshError: { code: 'FEED_GENERATION_CONFLICT' },
   lastRefreshAt: '2026-11-09T06:30:00.000Z',
+};
+
+const worksheet: WorksheetFacts = {
+  name: 'Inventario',
+  mode: 'free',
+  workbookName: 'Productos',
+  archived: false,
+  revisionId: 'revision-2',
+  sequence: 2,
+  schemaVersion: 1,
+  rowCount: WORKSHEET_LIMITS.rowsPerWorksheet,
+};
+
+const skuColumn: WorksheetColumn = {
+  id: 'sku',
+  name: 'SKU',
+  type: 'text',
+  position: 1,
+  required: true,
 };
 
 describe('documentos de conocimiento', () => {
@@ -195,5 +218,52 @@ describe('documentos de conocimiento', () => {
     expect(document.text).toContain('País: sin configurar · Moneda: EUR');
     expect(document.text).toContain('archivada');
     expect(document.metadata.configured).toBe(false);
+  });
+
+  it('una hoja admite un resumen y hasta 5.000 filas con identificadores distintos y estables', async () => {
+    const limit = WORKSHEET_LIMITS.rowsPerWorksheet;
+    const rows = Array.from({ length: limit + 1 }, (_, index) => ({
+      rowId: `fixture-${index + 1}`,
+      cellValues: { sku: `Código ${index + 1}` },
+    }));
+
+    const [summary, ...rowDocuments] = await worksheetDocuments(
+      worksheet,
+      [skuColumn],
+      rows,
+    );
+
+    expect(summary).toMatchObject({
+      documentId: 'worksheet',
+      metadata: { kind: 'worksheet' },
+    });
+    expect(rowDocuments).toHaveLength(limit);
+    expect(new Set(rowDocuments.map(({ documentId }) => documentId)).size).toBe(
+      limit,
+    );
+    expect(rowDocuments[0]).toMatchObject({ documentId: 'row:fixture-1' });
+    expect(rowDocuments[limit - 1]).toMatchObject({
+      documentId: `row:fixture-${limit}`,
+      metadata: { source_row: limit },
+    });
+    expect(rowDocuments[limit - 1].text).toContain(`Código ${limit}`);
+  });
+
+  it('una fila muy larga se recorta sin perder la identidad de la fila', async () => {
+    const [summary, row] = await worksheetDocuments(
+      { ...worksheet, rowCount: 1 },
+      [skuColumn],
+      [
+        {
+          rowId: 'fixture-long',
+          cellValues: { sku: 'ñ'.repeat(8_192) },
+        },
+      ],
+    );
+
+    expect(summary.text).toContain('Inventario');
+    expect(row.documentId).toBe('row:fixture-long');
+    expect(row.text).toHaveLength(DOCUMENT_LIMITS.textLength);
+    expect(row.text.endsWith('…')).toBe(true);
   });
 });

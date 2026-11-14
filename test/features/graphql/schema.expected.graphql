@@ -6,6 +6,11 @@ type ApiError {
   sourceRow: Int
 }
 
+input AppendConversationMessageInput {
+  clientMessageId: ID!
+  content: String!
+}
+
 type AppliedChangeset {
   changesetId: ID!
   revisionId: ID!
@@ -163,7 +168,60 @@ input ConflictResolutionInput {
   rowId: ID
 }
 
+type Conversation {
+  createdAt: String!
+  createdBy: ID!
+  id: ID!
+  messages(cursor: String, limit: Int): ConversationMessagePage!
+  organizationId: ID!
+  projectId: ID!
+  status: ConversationStatus!
+  title: String!
+  updatedAt: String!
+  visibility: ConversationVisibility!
+  workbookId: ID!
+  worksheetId: ID
+}
+
+type ConversationMessage {
+  authorId: ID
+  clientMessageId: ID
+  content: String!
+  conversationId: ID!
+  createdAt: String!
+  id: ID!
+  role: ConversationMessageRole!
+  sequence: Int!
+}
+
+type ConversationMessagePage {
+  items: [ConversationMessage!]!
+  nextCursor: String
+}
+
+enum ConversationMessageRole {
+  assistant
+  user
+}
+
+type ConversationPage {
+  items: [Conversation!]!
+  nextCursor: String
+}
+
+enum ConversationStatus {
+  active
+}
+
+enum ConversationVisibility {
+  private
+}
+
 input CreateChangesetInput {
+  title: String!
+}
+
+input CreateConversationInput {
   title: String!
 }
 
@@ -576,6 +634,7 @@ type LocalizedText {
 }
 
 type Mutation {
+  appendConversationMessage(conversationId: ID!, input: AppendConversationMessageInput!, organizationId: ID!, projectId: ID!): ConversationMessage!
   applyChangeset(id: ID!, input: ApplyChangesetInput!, organizationId: ID!, projectId: ID!): AppliedChangeset!
   approveExport(input: ApproveExportInput!, projectId: ID!): ExportApproval!
   approveFeedPolicy(feedId: ID!, input: FeedPolicyInput!, projectId: ID!): Feed!
@@ -588,7 +647,9 @@ type Mutation {
   createProject(input: CreateProjectInput!): Project!
   createRuleset(input: RulesetInput!, projectId: ID!): Ruleset!
   createWorkbook(input: CreateWorkbookInput!, organizationId: ID!, projectId: ID!): Workbook!
+  createWorkbookConversation(input: CreateConversationInput!, organizationId: ID!, projectId: ID!, workbookId: ID!): Conversation!
   createWorksheet(input: CreateWorksheetInput!, organizationId: ID!, projectId: ID!, workbookId: ID!): Worksheet!
+  createWorksheetConversation(input: CreateConversationInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): Conversation!
   decideChangeset(id: ID!, input: DecisionInput!, organizationId: ID!, projectId: ID!): ChangesetDecisionResult!
   deleteImport(id: ID!, projectId: ID!): Boolean!
   deleteImportMapping(id: ID!, organizationId: ID!, projectId: ID!): Boolean!
@@ -711,6 +772,7 @@ type Project {
   access: ProjectAccess!
   channelProfile: ChannelProfile
   configurationStatus: ConfigurationStatus!
+  conversations(cursor: String, limit: Int, workbookId: ID, worksheetId: ID): ConversationPage!
   country: String
   createdAt: String!
   currency: String
@@ -742,6 +804,7 @@ input PublishFeedInput {
 
 type Query {
   changeset(id: ID!, organizationId: ID!, projectId: ID!): Changeset!
+  conversation(id: ID!, organizationId: ID!, projectId: ID!): Conversation!
   evaluation(id: ID!, projectId: ID!): Evaluation!
   export(id: ID!, projectId: ID!): Export!
   feed(id: ID!, projectId: ID!): Feed!

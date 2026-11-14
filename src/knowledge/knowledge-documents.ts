@@ -1,18 +1,31 @@
 import { createHash } from 'node:crypto';
+import { SCHEMA_OPERATION_TYPES } from '../changesets/changeset-schema.js';
+import { isErrorCode } from '../common/http/error-codes.js';
 import { localizeStoredError } from '../common/http/public-error.js';
 import { isRuleset, type Rule } from '../evaluations/engine/ruleset.js';
 import {
   describeProblem,
   isRowProblem,
 } from '../evaluations/problem-messages.js';
+import { ORGANIZATION_ROLES } from '../organizations/organization-roles.js';
+import type { FormulaExpression } from '../worksheets/formula.js';
+import { evaluateRow } from '../worksheets/row-evaluation.js';
+import { WORKSHEET_LIMITS } from '../worksheets/worksheet-columns.js';
+import type { StoredRow } from '../worksheets/worksheet-rows.repository.js';
+import type { WorksheetColumn } from '../worksheets/worksheets.types.js';
 import type {
   CatalogFacts,
   CatalogProductRow,
+  ChangesetFacts,
   EvaluationFacts,
   FeedFacts,
+  OrganizationFacts,
   ProblemCount,
   ProjectFacts,
   RulesetFacts,
+  WorkbookFacts,
+  WorksheetFacts,
+  WorksheetImportFacts,
 } from './knowledge.repository.js';
 import type { KnowledgeDocument, MetadataValue } from './knowledge.types.js';
 
@@ -161,7 +174,248 @@ export function feedDocuments(facts: FeedFacts): KnowledgeDocument[] {
   ];
 }
 
+export function organizationDocuments(
+  facts: OrganizationFacts,
+): KnowledgeDocument[] {
+  const roles = ORGANIZATION_ROLES.map(
+    (role) => `${role}: ${facts.memberCounts[role] ?? 0}`,
+  );
+  const lines = [
+    `Organización «${facts.name}» (${facts.archived ? 'archivada' : 'activa'}).`,
+    `Proyectos: ${facts.projectCount}.`,
+    `Miembros por rol: ${roles.join(SEPARATOR)}.`,
+  ];
+  return [
+    document('organization', lines, {
+      archived: facts.archived,
+      project_count: facts.projectCount,
+    }),
+  ];
+}
+
+export function workbookDocuments(facts: WorkbookFacts): KnowledgeDocument[] {
+  const lines = [
+    `Libro «${facts.name}» (${facts.archived ? 'archivado' : 'activo'}).`,
+    `Hojas: ${facts.worksheets.length}.`,
+  ];
+  for (const sheet of facts.worksheets) {
+    const archived = facts.archived || sheet.archived;
+    lines.push(`- «${sheet.name}» (${archived ? 'archivada' : 'activa'}).`);
+  }
+  return [
+    document('workbook', lines, {
+      archived: facts.archived,
+      worksheet_count: facts.worksheets.length,
+    }),
+  ];
+}
+
+export async function worksheetDocuments(
+  facts: WorksheetFacts,
+  columns: readonly WorksheetColumn[],
+  rows: AsyncIterable<StoredRow> | Iterable<StoredRow>,
+): Promise<KnowledgeDocument[]> {
+  const columnNames = new Map(columns.map(({ id, name }) => [id, name]));
+  const columnIds = columns.map(({ id }) => id);
+  const documents = [worksheetSummary(facts, columns, columnNames)];
+  const { rowsPerWorksheet } = WORKSHEET_LIMITS;
+  let position = 0;
+  for await (const row of rows) {
+    position += 1;
+    documents.push(worksheetRow(facts, columns, columnIds, row, position));
+    if (position === rowsPerWorksheet) {
+      break;
+    }
+  }
+  return documents;
+}
+
+export function changesetDocuments(facts: ChangesetFacts): KnowledgeDocument[] {
+  const lines = [
+    `Borrador «${facts.title}» de la hoja «${facts.worksheetName}»: ${CHANGESET_STATUS_TEXT[facts.status] ?? facts.status}.`,
+    `Revisión de base: ${facts.baseSequence}.`,
+  ];
+  let operationCount = 0;
+  for (const type of CHANGESET_OPERATION_TYPES) {
+    const count = facts.operationCounts[type] ?? 0;
+    if (count > 0) {
+      operationCount += count;
+      lines.push(`- ${type}: ${count}`);
+    }
+  }
+  if (operationCount === 0) {
+    lines.push('Sin operaciones.');
+  }
+  const metadata: Record<string, MetadataValue> = {
+    worksheet_id: facts.worksheetId,
+    status: facts.status,
+    base_sequence: facts.baseSequence,
+    operation_count: operationCount,
+  };
+  if (facts.decision) {
+    const decision = facts.decision === 'accept' ? 'aprobado' : 'rechazado';
+    lines.push(`Última decisión sobre esta versión: ${decision}.`);
+    metadata.decision = facts.decision;
+  }
+  return [document('changeset', lines, metadata)];
+}
+
+export function worksheetImportDocuments(
+  facts: WorksheetImportFacts,
+): KnowledgeDocument[] {
+  const lines = [
+    `Última importación ${facts.format.toUpperCase()} de la hoja «${facts.worksheetName}», del ${facts.createdAt}.`,
+    `Filas del archivo: ${facts.rowCount}. El borrador propone añadir ${facts.insertedCount}, actualizar ${facts.updatedCount} y dejar ${facts.unchangedCount} sin cambios.`,
+    `Filas excluidas: ${facts.excludedCount}. Filas inválidas: ${facts.invalidCount}. Columnas nuevas propuestas: ${facts.newColumnCount}.`,
+  ];
+  const problemCounts = Object.entries(facts.problemCounts).sort(
+    ([left], [right]) => left.localeCompare(right),
+  );
+  for (const [code, count] of problemCounts) {
+    if (isErrorCode(code) && count > 0) {
+      lines.push(`- ${code}: ${count}`);
+    }
+  }
+  return [
+    document('worksheet_import', lines, {
+      worksheet_id: facts.worksheetId,
+      format: facts.format,
+      row_count: facts.rowCount,
+      excluded_count: facts.excludedCount,
+    }),
+  ];
+}
+
 // -----------------------------------------------------------------------------
+
+const CHANGESET_OPERATION_TYPES = [
+  ...SCHEMA_OPERATION_TYPES,
+  'insert_row',
+  'set_cell',
+  'delete_row',
+];
+
+const CHANGESET_STATUS_TEXT: Readonly<Record<string, string>> = {
+  draft: 'en borrador',
+  pending_review: 'en revisión',
+  approved: 'aprobado y pendiente de aplicar',
+};
+
+const COLUMN_TYPE_TEXT: Readonly<Record<WorksheetColumn['type'], string>> = {
+  text: 'texto',
+  integer: 'entero',
+  decimal: 'decimal',
+  date: 'fecha',
+  boolean: 'booleano',
+  selection: 'selección',
+  calculated: 'calculada',
+};
+
+const FORMULA_OPERATOR_TEXT = {
+  add: '+',
+  sub: '−',
+  mul: '×',
+  div: '÷',
+} as const;
+
+function worksheetSummary(
+  facts: WorksheetFacts,
+  columns: readonly WorksheetColumn[],
+  columnNames: ReadonlyMap<string, string>,
+): KnowledgeDocument {
+  const mode = facts.mode === 'free' ? 'libre' : facts.mode;
+  const lines = [
+    `Hoja «${facts.name}» del libro «${facts.workbookName}» (${facts.archived ? 'archivada' : 'activa'}).`,
+    `Modo ${mode}. Revisión vigente ${facts.sequence}, esquema ${facts.schemaVersion}, ${facts.rowCount} filas.`,
+  ];
+  for (const column of columns) {
+    lines.push(`- ${columnLine(column, columnNames)}`);
+  }
+  return document('worksheet', lines, {
+    kind: 'worksheet',
+    revision_id: facts.revisionId,
+    revision: facts.sequence,
+    archived: facts.archived,
+    row_count: facts.rowCount,
+  });
+}
+
+function worksheetRow(
+  facts: WorksheetFacts,
+  columns: readonly WorksheetColumn[],
+  columnIds: readonly string[],
+  row: StoredRow,
+  position: number,
+): KnowledgeDocument {
+  const lines = [
+    `Hoja «${facts.name}» · revisión ${facts.sequence} · fila ${position}.`,
+  ];
+  const { values } = evaluateRow(columns, row.cellValues, columnIds);
+  for (const column of columns) {
+    const value = cellText(column, values[column.id]);
+    if (value !== null) {
+      lines.push(`${column.name}: ${value}`);
+    }
+  }
+  return document(`row:${row.rowId}`, lines, {
+    kind: 'worksheet_row',
+    revision_id: facts.revisionId,
+    revision: facts.sequence,
+    row_id: row.rowId,
+    source_row: position,
+    archived: facts.archived,
+  });
+}
+
+function columnLine(
+  column: WorksheetColumn,
+  columnNames: ReadonlyMap<string, string>,
+): string {
+  const parts = [
+    `«${column.name}»: ${COLUMN_TYPE_TEXT[column.type]}`,
+    column.required ? 'obligatoria' : 'opcional',
+  ];
+  if (column.options?.length) {
+    parts.push(
+      `opciones: ${column.options.map(({ label }) => label).join(', ')}`,
+    );
+  }
+  if (column.formula) {
+    const { expression, scale, rounding } = column.formula;
+    parts.push(
+      `fórmula: ${expressionText(expression, columnNames)}, escala ${scale}, redondeo ${rounding}`,
+    );
+  }
+  return parts.join(SEPARATOR);
+}
+
+function expressionText(
+  expression: FormulaExpression,
+  columnNames: ReadonlyMap<string, string>,
+): string {
+  if ('value' in expression) {
+    return expression.value;
+  }
+  if ('column' in expression) {
+    return `«${columnNames.get(expression.column) ?? expression.column}»`;
+  }
+  const [left, right] = expression.args;
+  const operator = FORMULA_OPERATOR_TEXT[expression.op];
+  return `(${expressionText(left, columnNames)} ${operator} ${expressionText(right, columnNames)})`;
+}
+
+function cellText(column: WorksheetColumn, value: unknown): string | null {
+  if (typeof value === 'boolean') {
+    return value ? 'sí' : 'no';
+  }
+  if (typeof value !== 'string' || value.trim() === '') {
+    return null;
+  }
+  if (column.type === 'selection') {
+    return column.options?.find(({ id }) => id === value)?.label ?? null;
+  }
+  return value.trim();
+}
 
 function catalogSummary(facts: CatalogFacts): KnowledgeDocument {
   const lines = [
@@ -353,5 +607,10 @@ function document(
 
 /** Recorta con «…» para que se note que falta texto. */
 function truncate(text: string, maximum: number): string {
-  return text.length <= maximum ? text : `${text.slice(0, maximum - 1)}…`;
+  if (text.length <= maximum) {
+    return text;
+  }
+  // FastAPI decodifica Unicode y no admite la mitad de un par sustituto.
+  const prefix = text.slice(0, maximum - 1).replace(/[\uD800-\uDBFF]$/u, '');
+  return `${prefix}…`;
 }

@@ -1,7 +1,8 @@
-import type {
-  CurrentSource,
-  SourceKey,
-  SyncedSource,
+import {
+  REINDEX_PENDING,
+  type CurrentSource,
+  type SourceKey,
+  type SyncedSource,
 } from './knowledge.types.js';
 
 /** Qué hacer en una pasada del reconciliador (D15). */
@@ -30,9 +31,8 @@ export function planSync(
   const currentKeys = new Set(current.map(keyOf));
   const existingProjects = new Set(current.map((source) => source.projectId));
 
-  const changed = current.filter(
-    (source) =>
-      syncedByKey.get(keyOf(source))?.fingerprint !== source.fingerprint,
+  const changed = current.filter((source) =>
+    needsSync(source, syncedByKey.get(keyOf(source))),
   );
 
   const removed: SourceKey[] = [];
@@ -52,6 +52,16 @@ export function planSync(
   }
 
   return { changed, removed, removedProjects: [...removedProjects.values()] };
+}
+
+export function needsSync(
+  current: CurrentSource,
+  synced?: SyncedSource,
+): boolean {
+  return (
+    synced?.syncedAt === REINDEX_PENDING ||
+    synced?.fingerprint !== current.fingerprint
+  );
 }
 
 /** Clave de una fuente: proyecto, tipo e id. */
