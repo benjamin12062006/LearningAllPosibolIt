@@ -1,0 +1,38 @@
+# Pantalla «Reglas»: la revisión guardada, probar cambios y guardarlos.
+query RulesetScreen($projectId: ID!, $revision: Int!) {
+  ruleset(projectId: $projectId, revision: $revision) {
+    id
+    revision
+    mapping { attribute column }
+    rules
+    createdAt
+  }
+}
+
+query RulesPreviewScreen($projectId: ID!, $input: RulesPreviewInput!, $limit: Int!, $offset: Int!) {
+  rulesPreview(projectId: $projectId, input: $input, limit: $limit, offset: $offset) {
+    snapshotId
+    baseRevision
+    changedProducts
+    counts { current { total valid invalid excluded } proposed { total valid invalid excluded } }
+    problems {
+      appeared { attribute code productCount problem { es en } }
+      resolved { attribute code productCount problem { es en } }
+      persisting { attribute code productCount problem { es en } }
+    }
+    outcomeChanges { from to productCount }
+    changedValues { attribute productCount }
+    products {
+      sourceRow
+      externalId
+      current { outcome excludedByRule }
+      proposed { outcome excludedByRule }
+      values { attribute before after }
+    }
+    page { limit offset hasMore }
+  }
+}
+
+mutation SaveRuleset($projectId: ID!, $input: RulesetInput!) {
+  createRuleset(projectId: $projectId, input: $input) { id revision createdAt }
+}

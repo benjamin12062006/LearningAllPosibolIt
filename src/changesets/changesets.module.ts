@@ -16,5 +16,7 @@ import { ChangesetsService } from './changesets.service.js';
   imports: [AuthModule, PrismaModule, UsersModule],
   controllers: [ChangesetsController],
   providers: [ChangesetsRepository, ChangesetsService],
+  // Lo usa la capa GraphQL, igual que el controlador REST.
+  exports: [ChangesetsService],
 })
 export class ChangesetsModule {}

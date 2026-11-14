@@ -1,8 +1,8 @@
 # 02 — Terminar el backend: hojas, después del TSV y agente
 
 Fecha de creación: 2026-11-12  
-Última actualización: 2026-11-12  
-Estado: En curso. P1, el Bloque B (V2–V5) y la evaluación de C7 hechos y verificados (2026-11-13); sigue H1–H5.  
+Última actualización: 2026-11-14  
+Estado: En curso. P1, el Bloque B (V2–V5), el Bloque A (H1–H5) y C7 (evaluación e implementación) hechos y verificados (2026-11-14); sigue el Bloque C desde E6.1b.2.  
 Ámbito: la API Nest (`LearningAllPosibolIt`) y el servicio de IA (`LearningAllPosibolIt-ai`). La web Nuxt (E7) la lleva otra sesión.  
 Relacionada con: [fuentes 04](../../../fonts/feature/cierre-backend/04-fuentes-de-terminar-hojas-visor-y-agente.md), [plan 01 de cierre](01-plan-cierre-de-pendientes.md), [23, plan C7](../../../../../docs-diagrams/23-graphql-nest-para-fastapi-y-nuxt.md), [plan E6](../ai-assistant/01-plan-e6-ia-con-qdrant-y-llamaindex.md), [22](../../../../../docs-diagrams/22-visor-y-diagnostico-del-feed.md), [12](../../../../../docs-diagrams/12-hojas-modelo-editor-importacion-y-exportacion.md), [15](../../../../../docs-diagrams/15-chat-ia-herramientas-y-propuestas.md).  
 Revisión de partida: `feature/cierre-backend` `b219b30` más los cambios sin commit de los días 9–11.
@@ -44,8 +44,8 @@ Regla del reparto (plan E6): **Nest decide y calcula; FastAPI razona.** Todo lo 
 | P7 | **Archivar y renombrar** libros y hojas con `PATCH` y `POST …/archive` / `…/restore`; una hoja archivada se lee pero no admite borradores, importaciones ni puente (409 `WORKSHEET_ARCHIVED`). Columna `archived_at`: migración. | H8; E2 |
 | P8 | **Duplicar una hoja** fija la revisión de origen, crea hoja, columnas y filas con IDs nuevos y guarda la procedencia; no copia borradores. | H8 |
 | P9 | **Historial:** listados paginados de revisiones, borradores, importaciones y exportaciones de una hoja. Solo lectura, sin migración. | E2 |
-| P10 | **Plantillas de mapeo** (`worksheet_import_mappings`) y **vistas guardadas** (`worksheet_saved_views`, personales o del equipo), validadas contra el esquema de la hoja al guardar y al usar. | H9 |
-| P11 | **Catálogo → hoja:** `POST …/workbooks/:workbookId/worksheets/from-catalog` crea una hoja nueva con las columnas y filas de un snapshot terminado, por el mismo camino que una importación (límite de 5.000 filas). | 12, vínculo inverso |
+| P10 | **Plantillas de mapeo** (`worksheet_import_mappings`) y **vistas guardadas** (`worksheet_saved_views`, personales o del equipo), validadas contra el esquema de la hoja al guardar y al usar. *Ajustado en H3 y H4:* la plantilla guarda solo lo que no depende del archivo (modo, clave, separador decimal, booleanos y columnas) y sirve para CSV y XLSX; se usa con el campo `mappingId`. Las vistas se usan con `viewId` en `rows/query`; una personal solo existe para su autor y una del equipo la crea un Editor (valor por defecto de la decisión abierta). | H9 |
+| P11 | **Catálogo → hoja:** `POST …/workbooks/:workbookId/worksheets/from-catalog` crea una hoja nueva con las columnas y filas de un snapshot terminado, por el mismo camino que una importación (límite de 5.000 filas). *Ajustado en H5:* no pasa por un borrador: abrir un catálogo crea una hoja nueva, como crearla vacía o duplicarla; toma de la importación los límites y la forma de los errores. Vive en el módulo puente (`worksheet-catalog-snapshots`). | 12, vínculo inverso |
 | P12 | **Herramientas de hoja para el agente en Nest:** `preview_transform` (operación cerrada: limpiar espacios, reemplazo exacto, porcentaje, mapa de valores), `create_change_proposal` (crea el changeset desde una vista previa vigente) y `propose_sheet_layout`. Son rutas normales con DTO; el catálogo las declara como cualquier otra. | H2; 15 |
 | P13 | **Cobertura comprobada del catálogo:** una prueba recorre las rutas reales de la aplicación y falla si alguna no está declarada en el catálogo ni en la lista de exclusiones con motivo. Así «casi toda la API» no depende de la memoria de nadie. | H1; E1 |
 | P14 | **C7 se evalúa primero y se implementa antes del Bloque C.** Inventario y piloto REST/GraphQL. El 70–85 % orienta la evaluación. Construir las operaciones justificadas para FastAPI y Nuxt, verificar el cliente Python con Nest y retomar E6.1b.2. | [23, plan C7](../../../../../docs-diagrams/23-graphql-nest-para-fastapi-y-nuxt.md) |
@@ -73,11 +73,11 @@ Cada etapa sigue el flujo: ficha de fuentes si hay un mecanismo nuevo, bitácora
 
 | Etapa | Qué | Comprobación |
 | --- | --- | --- |
-| **H1** | Renombrar, archivar, restaurar y duplicar (P7, P8). Migración | Archivada: lectura sí, escritura 409; duplicado con IDs nuevos |
-| **H2** | Historial: revisiones, borradores, importaciones y exportaciones (P9) | Paginación, orden y aislamiento |
-| **H3** | Plantillas de mapeo (P10). Migración | Guardar, usar en vista previa e importación; columna que ya no existe |
-| **H4** | Vistas guardadas (P10). Migración | Personal no visible para otro; del equipo sí; filtro inválido 400 |
-| **H5** | Catálogo → hoja (P11) | La hoja nueva exportada equivale al catálogo de origen |
+| ✅ **H1** | Renombrar, archivar, restaurar y duplicar (P7, P8). Migración 32, [bitácora 04](../../../../bitacora-construccion/feature/worksheets/04-renombrar-archivar-y-duplicar.md) | Hecho el 2026-11-14: 31 pruebas, 20 de 20 defectos |
+| ✅ **H2** | Historial: revisiones, borradores, importaciones y exportaciones (P9), [bitácora 05](../../../../bitacora-construccion/feature/worksheets/05-historial-de-la-hoja.md) | Hecho el 2026-11-14: 10 pruebas, 14 de 14 defectos |
+| ✅ **H3** | Plantillas de mapeo (P10). Migración 33, [bitácora 06](../../../../bitacora-construccion/feature/worksheets/06-plantillas-de-mapeo.md) | Hecho el 2026-11-14: 24 pruebas, 14 de 14 defectos |
+| ✅ **H4** | Vistas guardadas (P10). Migración 34, [bitácora 07](../../../../bitacora-construccion/feature/worksheets/07-vistas-guardadas.md) | Hecho el 2026-11-14: 15 pruebas, 12 de 12 defectos |
+| ✅ **H5** | Catálogo → hoja (P11). Migración 35, [bitácora 08](../../../../bitacora-construccion/feature/worksheets/08-abrir-un-catalogo-como-hoja.md) | Hecho el 2026-11-14: 13 pruebas, 12 de 12 defectos; exportada y de vuelta al catálogo, igual |
 
 ### C7 — GraphQL de Nest para FastAPI y Nuxt
 
@@ -101,7 +101,9 @@ Evaluar primero toda la API con el inventario y el piloto del [23, plan C7](../.
 
 Completados: P1, V2, V3, V4, V5 y la **evaluación de C7** (2026-11-13): matriz de 88 rutas, alcance recomendado de 64 (72,7 %) y piloto medido, en la [ficha 05](../../../fonts/feature/graphql&rulesets-evaluations-exports/05-inventario-y-alcance-de-c7.md) y la [bitácora del piloto](../../../../bitacora-construccion/feature/graphql&rulesets-evaluations-exports/01-piloto-de-c7-y-mediciones.md).
 
-Pendientes: H1–H5 → implementación y verificación de C7 → Bloque C desde E6.1b.2 → E6.2 → H6 → E6.3a → E6.3b → E6.4 → E6.5 → E6.6.
+Completado además el 2026-11-14: H1–H5 (Bloque A) y la **implementación de C7**: 85 de 109 rutas con equivalente GraphQL, cliente Python contra Nest y contrato para Nuxt ([plan 02 de C7](../graphql&rulesets-evaluations-exports/02-plan-c7-implementar-graphql.md), bitácoras 02–06 de `graphql&rulesets-evaluations-exports`).
+
+Pendientes: Bloque C desde E6.1b.2 → E6.2 → H6 → E6.3a → E6.3b → E6.4 → E6.5 → E6.6.
 
 ## Comprobación al cerrar el plan
 

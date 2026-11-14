@@ -8,9 +8,12 @@ import { PaginationArgs } from '../common/pagination.args.js';
 import { uuidParamPipe } from '../../common/http/validation-errors.js';
 import {
   CreateProjectInput,
+  OrganizationPageArgs,
+  ProjectPageType,
   ProjectType,
   UpdateProjectInput,
 } from './projects.graphql.js';
+import { ProjectMembershipService } from '../../projects/project-membership.service.js';
 import { ProjectsService } from '../../projects/projects.service.js';
 
 @Resolver(() => ProjectType)
@@ -19,6 +22,7 @@ export class ProjectsResolver {
   constructor(
     private readonly projectsService: ProjectsService,
     private readonly imports: CatalogImportService,
+    private readonly membership: ProjectMembershipService,
   ) {}
 
   @Query(() => [ProjectType], { name: 'projects' })
@@ -27,6 +31,21 @@ export class ProjectsResolver {
     @Args() page: PaginationArgs,
   ) {
     return (await this.projectsService.findAll(identity, page)).items;
+  }
+
+  /** Los proyectos de una organización que ve quien pregunta. */
+  @Query(() => ProjectPageType, { name: 'organizationProjects' })
+  organizationProjects(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Args('organizationId', { type: () => ID }, uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Args() page: OrganizationPageArgs,
+  ) {
+    return this.membership.findAllInOrganization(
+      identity,
+      organizationId,
+      page,
+    );
   }
 
   @Query(() => ProjectType, { name: 'project' })

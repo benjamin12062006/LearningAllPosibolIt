@@ -1,14 +1,18 @@
 import {
+  ArgsType,
   Field,
   ID,
   InputType,
   ObjectType,
   registerEnumType,
 } from '@nestjs/graphql';
+import { Allow } from 'class-validator';
 import {
   CreateProjectDto,
   UpdateProjectDto,
 } from '../../projects/projects.dto.js';
+import { PaginationArgs } from '../common/pagination.args.js';
+import { PageInfoType } from '../common/page-info.type.js';
 
 export enum ChannelProfile {
   google_merchant = 'google_merchant',
@@ -49,4 +53,28 @@ export class UpdateProjectInput extends UpdateProjectDto {
   @Field(() => String, { nullable: true }) declare currency?: string;
   @Field(() => ChannelProfile, { nullable: true })
   declare channelProfile?: 'google_merchant';
+}
+
+@ObjectType('ProjectPage')
+export class ProjectPageType {
+  @Field(() => [ProjectType]) items!: ProjectType[];
+  @Field(() => PageInfoType) page!: PageInfoType;
+}
+
+/** Qué puede hacer quien pregunta en el proyecto, como `GET /projects/:id/access`. */
+@ObjectType('ProjectAccess')
+export class ProjectAccessType {
+  @Field(() => ID) organizationId!: string;
+  @Field() role!: string;
+  @Field(() => [String]) permissions!: string[];
+}
+
+/**
+ * `@Args()` sin nombre recibe todos los argumentos de la operación: esta
+ * clase valida la página y deja pasar `organizationId`, que llega con su propio
+ * `@Args` y su pipe de UUID (sin `@Field`: no se declara dos veces).
+ */
+@ArgsType()
+export class OrganizationPageArgs extends PaginationArgs {
+  @Allow() organizationId?: unknown;
 }

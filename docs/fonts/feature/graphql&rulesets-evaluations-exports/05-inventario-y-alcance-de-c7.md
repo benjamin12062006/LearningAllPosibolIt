@@ -1,7 +1,8 @@
 # 05 — Inventario de la API y alcance de C7 (GraphQL para FastAPI y Nuxt)
 
 Fecha de creación: 2026-11-13  
-Estado: Investigación con piloto medido (2026-11-13). Matriz, alcance recomendado y mediciones de tres recorridos. Falta el experimento de `isOneOf`.  
+Última actualización: 2026-11-14 (las 21 rutas de H1–H5 entran en la matriz; C7 construido).  
+Estado: Investigación con piloto medido (2026-11-13). Matriz, alcance recomendado y mediciones de tres recorridos. C7 construido el 2026-11-14 (ver la nota de la matriz).  
 Relacionada con: [23, plan C7](../../../../../docs-diagrams/23-graphql-nest-para-fastapi-y-nuxt.md), [plan 02 de cierre](../../../plans/feature/cierre-backend/02-plan-terminar-hojas-visor-y-agente.md), [plan aplazado de GraphQL](../../../plans/feature/graphql&rulesets-evaluations-exports/01-plan-aplazado-sincronizacion-graphql.md), [04, mapa de necesidades](04-mapa-de-necesidades-para-el-plan.md), [fuentes 04 de cierre](../cierre-backend/04-fuentes-de-terminar-hojas-visor-y-agente.md).  
 Revisión de partida: `feature/cierre-backend` `3733be4` más V5 sin commit.
 
@@ -11,21 +12,26 @@ Un script recorre los decoradores `@Controller`, `@Get`, `@Post`, `@Put`, `@Patc
 
 ## Resultado
 
+*Actualizado el 2026-11-14 con las rutas de H1–H5.* La foto del 2026-11-13 tenía 88 rutas; H1–H5 añadieron 21, todas elegibles y todas con equivalente previsto.
+
 | Dato | Rutas | Cálculo |
 | --- | --- | --- |
-| Rutas REST montadas | 88 | 82 de la foto anterior + 5 de V2–V4 + 1 de V5 |
+| Rutas REST montadas | 109 | 88 del 2026-11-13 + 21 de H1–H5 |
 | Se quedan en HTTP por contrato | 10 | 3 subidas multipart, 3 descargas, URL pública del feed, salud, sesión (`auth/me`) y alta al iniciar sesión |
-| **Elegibles** | **78** | 88 − 10 |
+| **Elegibles** | **99** | 109 − 10 |
 | Elegibles que se quedan en REST | 14 | 12 de organizaciones y 2 del token de entrega |
 | Ya tenían equivalente GraphQL | 10 | perfil, proyectos e importaciones de catálogo |
 | Añadidas por el piloto (2026-11-13) | 7 | hoja y sus filas; feed, entrega y comparación; evaluación y «Requiere atención» |
-| Quedan por añadir | 47 | |
-| **Con equivalente al cerrar C7** | **64** | 10 + 7 + 47 |
+| Quedan por añadir | 68 | 47 del 2026-11-13 + 21 de H1–H5 |
+| **Con equivalente al cerrar C7** | **85** | 10 + 7 + 68 |
 
-- **Cobertura sobre el total: 64 / 88 = 72,7 %.** Dentro de la referencia del 70–85 %.
-- **Cobertura sobre las elegibles: 64 / 78 = 82,1 %.**
-- Antes del piloto: 10 / 88 = 11,4 %. Con el piloto: 17 / 88 = 19,3 %.
-- **Nuxt** puede usar las 64. **FastAPI (el agente)** tiene permitidas 46: todas las lecturas y las escrituras que preparan trabajo. Las otras 18 son solo de la persona.
+- **Cobertura sobre el total: 85 / 109 = 78,0 %.** Dentro de la referencia del 70–85 %.
+- **Cobertura sobre las elegibles: 85 / 99 = 85,9 %.**
+- Antes del piloto: 10 / 109 = 9,2 %. Con el piloto: 17 / 109 = 15,6 %.
+- **Nuxt** puede usar las 85. **FastAPI (el agente)** tiene permitidas 61: las 46 de antes y 15 de H1–H5. Las otras 24 son solo de la persona.
+- Usar una plantilla de mapeo al importar (`mappingId`) va dentro de la subida multipart: sigue en HTTP.
+
+<!-- Recuentos del 2026-11-13, antes de H1–H5: 88 rutas, 78 elegibles, 64 con equivalente (72,7 % y 82,1 %), 46 para el agente. -->
 
 ### Por qué no más
 
@@ -39,9 +45,9 @@ Llegar al 85 % del total (75 rutas) obligaría a pasar a GraphQL casi todo organ
 
 Por debajo del 70 % habría que dejar fuera mutaciones de borradores o de reglas. Entonces el agente y la web necesitarían los dos clientes para un mismo recorrido (leer por GraphQL y escribir por REST), que es justo lo que C7 quiere evitar.
 
-## Las 18 operaciones GraphQL que el agente no puede usar
+## Las operaciones GraphQL que el agente no puede usar
 
-Borrar (`deleteProject`, `deleteImport`), aprobar o aplicar (`approveExport`, `decideChangeset`, `applyChangeset`, `approveFeedPolicy`), publicar o lo que puede acabar publicando (`publishFeed`, `requestFeedRefresh`), configurar el feed (`createFeed`, `setFeedSource`, `setFeedSchedule`), gastar cuota (`reindexKnowledge`), y las que son de la persona en la web (`updateMe`, `createProject`, `updateProject`, `reopenChangeset`, `cancelChangeset`, `Project.knowledge`). El catálogo de operaciones de E6.3a es quien lo hace cumplir; esta columna es su punto de partida.
+Borrar (`deleteProject`, `deleteImport`), aprobar o aplicar (`approveExport`, `decideChangeset`, `applyChangeset`, `approveFeedPolicy`), publicar o lo que puede acabar publicando (`publishFeed`, `requestFeedRefresh`), configurar el feed (`createFeed`, `setFeedSource`, `setFeedSchedule`), gastar cuota (`reindexKnowledge`), y las que son de la persona en la web (`updateMe`, `createProject`, `updateProject`, `reopenChangeset`, `cancelChangeset`, `Project.knowledge`). Desde H1–H5 se añaden archivar y restaurar libros y hojas (son de Manager) y borrar plantillas y vistas: 24 en total. El catálogo de operaciones de E6.3a es quien lo hace cumplir; esta columna es su punto de partida.
 
 ## Piloto y mediciones (2026-11-13)
 
@@ -98,24 +104,24 @@ El alcance recomendado se mantiene (64 rutas, 72,7 %), con tres condiciones para
 
 ## Operaciones que todavía no existen
 
-No cuentan en los porcentajes. Se añaden a la matriz cuando estén en el código.
+H1–H5 ya existen y están en la matriz (2026-11-14). Quedan fuera hasta que existan:
 
 | Etapa | Operaciones previstas | Equivalente previsto | Consumidor |
 | --- | --- | --- | --- |
-| H1 | Renombrar, archivar, restaurar libro y hoja; duplicar hoja | Mutaciones | Ambos, salvo archivar (Nuxt) |
-| H2 | Listar revisiones, borradores, importaciones y exportaciones de una hoja | Campos paginados de `Worksheet` | Ambos |
-| H3 | Plantillas de mapeo: guardar, listar, borrar | Campo de `Worksheet` y mutaciones | Ambos |
-| H4 | Vistas guardadas: guardar, listar, borrar | Campo de `Worksheet` y mutaciones | Ambos |
-| H5 | Catálogo → hoja | Mutación | Ambos |
 | E6.2–E6.4 | Conversaciones, mensajes, ejecuciones, confirmaciones; eventos por SSE | Consultas y mutaciones; SSE sigue en HTTP | Nuxt |
+| H6 | Herramientas de hoja para el agente (`preview_transform`, `create_change_proposal`, `propose_sheet_layout`) | Mutaciones | FastAPI |
 
 ## Lo que falta de la evaluación
+
+*Hecho al construir C7 (2026-11-14):* `isOneOf` funciona (bitácora 03 de C7), el cliente Python llama a Nest con dos organizaciones y una credencial inválida (bitácora 06) y el diagnóstico repetido con la caché baja a 22 sentencias (bitácora 02). La identidad de servicio de FastAPI y el alcance delegado pasan a E6.3a.
 
 - El experimento de `@InputType({ isOneOf: true })` con el `ValidationPipe` global (N2 del [mapa](04-mapa-de-necesidades-para-el-plan.md)), del que depende `createRuleset`.
 - Decidir cómo valida Nest la identidad de servicio de FastAPI y el alcance delegado; se prueba al construir C7 con un cliente Python mínimo.
 - Repetir la medición del diagnóstico después de la caché de acceso por petición.
 
 ## Matriz
+
+*Nota del 2026-11-14, al cerrar C7:* las 68 filas «Añadir» están construidas. La prueba [`coverage.spec.ts`](../../../../test/features/graphql/coverage.spec.ts) lee esta tabla, la compara con las rutas montadas en los controladores y comprueba que cada equivalente existe en el esquema esperado: 109 rutas, 85 con equivalente, 10 solo HTTP y 14 en REST. Las decisiones se dejan como se tomaron. La consulta de filas ya admite filtro, orden, columnas y vista guardada. El experimento de `isOneOf` está hecho (bitácora 03 de C7).
 
 `…/proyecto` es `/api/v1/projects/:projectId` y `…/org/proyecto` es `/api/v1/organizations/:organizationId/projects/:projectId`. Decisión: **Existe** (ya estaba en el esquema), **Existe (piloto)** (añadida el 2026-11-13), **Añadir** (C7), **REST** (elegible, pero se queda como está) y **HTTP** (no elegible por contrato).
 
@@ -209,3 +215,24 @@ No cuentan en los porcentajes. Se añaden a la matriz cuando estén en el códig
 | `worksheets` | `GET …/org/proyecto/workbooks/:workbookId/worksheets` | Miembro | `Workbook.worksheets` | Ambos | Añadir | Libros con sus hojas en una llamada |
 | `worksheets` | `GET …/org/proyecto/worksheets/:worksheetId` | Miembro | `worksheet` | Ambos | Existe (piloto) | Hoja con columnas y revisión |
 | `worksheets` | `POST …/org/proyecto/worksheets/:worksheetId/rows/query` | Miembro | `Worksheet.rows` | Ambos | Existe (piloto) (sin filtro ni orden todavía) | Hoja, columnas y filas en una llamada |
+| `worksheets` | `PATCH …/org/proyecto/workbooks/:workbookId` | Editor | `renameWorkbook` | Ambos | Añadir | H1 |
+| `worksheets` | `POST …/org/proyecto/workbooks/:workbookId/archive` | Manager | `archiveWorkbook` | Nuxt | Añadir | H1; de Manager: prohibido al agente |
+| `worksheets` | `POST …/org/proyecto/workbooks/:workbookId/restore` | Manager | `restoreWorkbook` | Nuxt | Añadir | Ídem |
+| `worksheets` | `PATCH …/org/proyecto/worksheets/:worksheetId` | Editor | `renameWorksheet` | Ambos | Añadir | H1 |
+| `worksheets` | `POST …/org/proyecto/worksheets/:worksheetId/archive` | Manager | `archiveWorksheet` | Nuxt | Añadir | H1; de Manager: prohibido al agente |
+| `worksheets` | `POST …/org/proyecto/worksheets/:worksheetId/restore` | Manager | `restoreWorksheet` | Nuxt | Añadir | Ídem |
+| `worksheets` | `POST …/org/proyecto/worksheets/:worksheetId/duplicate` | Editor | `duplicateWorksheet` | Ambos | Añadir | H1; crea una hoja nueva, no cambia la de origen |
+| `worksheets` | `GET …/org/proyecto/worksheets/:worksheetId/revisions` | Miembro | `Worksheet.revisions` | Ambos | Añadir | H2; campo paginado de la hoja |
+| `changesets` | `GET …/org/proyecto/worksheets/:worksheetId/changesets` | Miembro | `Worksheet.changesets` | Ambos | Añadir | H2 |
+| `worksheet-imports` | `GET …/org/proyecto/worksheets/:worksheetId/imports` | Miembro | `Worksheet.imports` | Ambos | Añadir | H2 |
+| `worksheet-exports` | `GET …/org/proyecto/worksheets/:worksheetId/exports` | Miembro | `Worksheet.exports` | Ambos | Añadir | H2 |
+| `worksheet-imports` | `POST …/org/proyecto/worksheets/:worksheetId/import-mappings` | Editor | `createImportMapping` | Ambos | Añadir | H3 |
+| `worksheet-imports` | `GET …/org/proyecto/worksheets/:worksheetId/import-mappings` | Miembro | `Worksheet.importMappings` | Ambos | Añadir | H3 |
+| `worksheet-imports` | `GET …/org/proyecto/import-mappings/:mappingId` | Miembro | `importMapping` | Ambos | Añadir | H3 |
+| `worksheet-imports` | `DELETE …/org/proyecto/import-mappings/:mappingId` | Editor | `deleteImportMapping` | Nuxt | Añadir | H3; prohibido al agente (borrar) |
+| `worksheets` | `POST …/org/proyecto/worksheets/:worksheetId/saved-views` | Miembro o Editor | `saveView` | Ambos | Añadir | H4; `suggest_view` de 15 |
+| `worksheets` | `GET …/org/proyecto/worksheets/:worksheetId/saved-views` | Miembro | `Worksheet.savedViews` | Ambos | Añadir | H4 |
+| `worksheets` | `GET …/org/proyecto/saved-views/:viewId` | Quien la ve | `savedView` | Ambos | Añadir | H4 |
+| `worksheets` | `PUT …/org/proyecto/saved-views/:viewId` | Autor o Manager | `replaceSavedView` | Ambos | Añadir | H4 |
+| `worksheets` | `DELETE …/org/proyecto/saved-views/:viewId` | Autor o Manager | `deleteSavedView` | Nuxt | Añadir | H4; prohibido al agente (borrar) |
+| `worksheet-catalog-snapshots` | `POST …/org/proyecto/workbooks/:workbookId/worksheets/from-catalog` | Editor | `openCatalogAsWorksheet` | Ambos | Añadir | H5; crea una hoja, no cambia el catálogo |

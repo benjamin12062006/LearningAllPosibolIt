@@ -3,31 +3,26 @@ import {
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
+import { openRequestCache } from './common/http/request-cache.js';
 import { ApiExceptionFilter } from './common/http/api-exception.filter.js';
 import {
   assignRequestId,
   REQUEST_ID_HEADER,
 } from './common/http/request-id.js';
-import { validationException } from './common/http/validation-errors.js';
+import { VALIDATION_OPTIONS } from './common/http/validation-options.js';
 import { transportErrors } from './common/http/transport-errors.js';
 
 /** Misma configuración para el servidor y las pruebas HTTP de las features. */
 export function configureHttp(app: INestApplication) {
   // El `requestId` va primero: también un cuerpo mal formado lo lleva (jobs&files, D12).
   app.use(assignRequestId);
+  // Las lecturas de acceso se recuerdan durante la petición (plan C7, G2).
+  app.use(openRequestCache);
   // Mismos parsers del adaptador, antes del normalizador de errores de transporte.
   app.getHttpAdapter().registerParserMiddleware();
   app.use(transportErrors);
   app.useGlobalFilters(new ApiExceptionFilter());
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      validationError: { target: false, value: false },
-      exceptionFactory: validationException,
-    }),
-  );
+  app.useGlobalPipes(new ValidationPipe(VALIDATION_OPTIONS));
   // La URL pública del feed se sirve en `/feeds/<token>.tsv`, fuera de `/api`;
   // su controlador además es neutral a la versión (plan feeds&publications, D7).
   app.setGlobalPrefix('api', { exclude: ['feeds/:file'] });

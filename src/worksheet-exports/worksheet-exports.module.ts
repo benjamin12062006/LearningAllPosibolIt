@@ -35,5 +35,7 @@ import {
       useFactory: (): WorksheetExportOptions => ({ autoStart: true }),
     },
   ],
+  // Lo usa la capa GraphQL, igual que el controlador REST.
+  exports: [WorksheetExportsService],
 })
 export class WorksheetExportsModule {}

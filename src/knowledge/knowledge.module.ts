@@ -33,5 +33,7 @@ import { SourceDocuments } from './source-documents.js';
     },
     { provide: KNOWLEDGE_OPTIONS, useValue: KNOWLEDGE_DEFAULTS },
   ],
+  // Lo usa la capa GraphQL, igual que el controlador REST.
+  exports: [KnowledgeService],
 })
 export class KnowledgeModule {}

@@ -160,6 +160,23 @@ describe('Contrato HTTP global de errores', () => {
     });
   });
 
+  it('un campo que el DTO no declara se rechaza con su nombre, no se ignora', async () => {
+    const { body } = await request(app.getHttpServer())
+      .post(api)
+      .send({
+        name: 'Tienda',
+        country: 'US',
+        currency: 'USD',
+        channelProfile: 'google_merchant',
+        ownerId: 'otro',
+      })
+      .expect(400);
+    expect(body).toMatchObject({
+      ...publicError('VALIDATION_FAILED'),
+      issues: [{ field: 'ownerId', ...publicError('FIELD_NOT_ALLOWED') }],
+    });
+  });
+
   it('el éxito mantiene el contrato de datos sin añadir mensajes', async () => {
     const project = {
       name: 'Tienda',

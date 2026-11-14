@@ -23,6 +23,7 @@ import { POSTGRESQL_CONNECTION } from '../../../src/database/postgresql.connecti
 import { PrismaService } from '../../../src/database/prisma.service.js';
 import { EVALUATION_OPTIONS } from '../../../src/evaluations/evaluations.types.js';
 import { EXPORT_OPTIONS } from '../../../src/exports/exports.types.js';
+import { FEED_REFRESH_OPTIONS } from '../../../src/feed-refreshes/feed-refreshes.types.js';
 import { FEED_OPTIONS } from '../../../src/feeds/feeds.types.js';
 import { GraphqlApiModule } from '../../../src/graphql/graphql-api.module.js';
 import { UsersService } from '../../../src/users/users.service.js';
@@ -87,6 +88,16 @@ describe('GraphQL sobre los servicios, el guard y la persistencia reales', () =>
       .useValue({ autoStart: false, pollMs: 1000, shutdownMs: 1000 })
       .overrideProvider(EXPORT_OPTIONS)
       .useValue({ autoStart: false })
+      .overrideProvider(FEED_REFRESH_OPTIONS)
+      .useValue({
+        autoStart: false,
+        pollMs: 1_000,
+        waitMs: 0,
+        leaseMs: 60_000,
+        shutdownMs: 200,
+        retry: { baseDelayMs: 1, maxDelayMs: 4, maxAttempts: 3 },
+        clock: () => new Date(),
+      })
       .overrideProvider(FEED_OPTIONS)
       .useValue({ autoStart: false, retainedFiles: 3 })
       .overrideProvider(DescopeService)

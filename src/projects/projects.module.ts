@@ -14,6 +14,7 @@ import { ProjectsService } from './projects.service.js';
   imports: [AuthModule, PrismaModule, UsersModule, OrganizationsModule],
   controllers: [ProjectsController, ProjectMembershipController],
   providers: [ProjectsRepository, ProjectsService, ProjectMembershipService],
-  exports: [ProjectsService],
+  // `ProjectMembershipService` también lo usa la capa GraphQL.
+  exports: [ProjectsService, ProjectMembershipService],
 })
 export class ProjectsModule {}

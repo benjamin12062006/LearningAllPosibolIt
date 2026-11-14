@@ -1,0 +1,18 @@
+# Pantalla «Libros»: los libros del proyecto con sus hojas.
+query WorkbooksScreen($projectId: ID!, $archived: Boolean) {
+  project(id: $projectId) {
+    id
+    workbooks(limit: 10, archived: $archived) {
+      items {
+        id
+        name
+        archivedAt
+        worksheets(limit: 10) {
+          items { id name archivedAt headRevision { sequence rowCount } }
+          page { hasMore }
+        }
+      }
+      page { limit offset hasMore }
+    }
+  }
+}

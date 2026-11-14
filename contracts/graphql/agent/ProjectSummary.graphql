@@ -1,0 +1,20 @@
+# El resumen del proyecto en una llamada (6 rutas REST): qué puede hacer quien
+# pregunta, qué catálogos hay, qué reglas, qué evaluaciones, el feed y los libros.
+query ProjectSummary($projectId: ID!) {
+  project(id: $projectId) {
+    id
+    name
+    country
+    currency
+    configurationStatus
+    access { organizationId role permissions }
+    imports(limit: 5) { items { id status rowCount originalName createdAt } page { hasMore } }
+    rulesets(limit: 3) { items { revision createdAt } page { hasMore } }
+    evaluations(limit: 5) {
+      items { id status rulesetRevision counts { total valid invalid excluded } createdAt }
+      page { hasMore }
+    }
+    feeds { id generation deliveryEnabled publishedVersion { id rowCount publishedAt } }
+    workbooks(limit: 10) { items { id name archivedAt } page { hasMore } }
+  }
+}

@@ -1,0 +1,24 @@
+# Una hoja con sus columnas y una página de filas (con filtro y orden).
+query WorksheetWithRows(
+  $organizationId: ID!
+  $projectId: ID!
+  $worksheetId: ID!
+  $filter: JSONObject
+  $sort: [SortTermInput!]
+  $limit: Int
+  $cursor: String
+) {
+  worksheet(organizationId: $organizationId, projectId: $projectId, id: $worksheetId) {
+    id
+    name
+    generation
+    headRevision { id sequence rowCount }
+    columns { id name type required }
+    capabilities { write approve }
+    rows(filter: $filter, sort: $sort, limit: $limit, cursor: $cursor) {
+      items
+      nextCursor
+      revisionId
+    }
+  }
+}

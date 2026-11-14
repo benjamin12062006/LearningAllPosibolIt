@@ -1,0 +1,18 @@
+# «Requiere atención» de una evaluación y las primeras filas con un problema.
+query EvaluationAttention($projectId: ID!, $evaluationId: ID!, $attribute: String, $code: String) {
+  evaluation(projectId: $projectId, id: $evaluationId) {
+    id
+    status
+    counts { total valid invalid excluded }
+    attention {
+      affectedProducts
+      excludedProducts
+      problemGroups { attribute code productCount problem { es en } suggestion { es en } }
+      exclusionGroups { rulePosition rule productCount }
+    }
+    rows(attribute: $attribute, code: $code, limit: 10) {
+      items { sourceRow externalId outcome problems { attribute code } }
+      page { hasMore }
+    }
+  }
+}

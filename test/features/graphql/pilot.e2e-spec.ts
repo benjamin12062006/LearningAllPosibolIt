@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import pg from 'pg';
 import request from 'supertest';
 import { ARTIFACT_STORE_OPTIONS } from '../../../src/artifacts/artifacts.types.js';
 import { DescopeService } from '../../../src/auth/descope.service.js';
@@ -22,6 +23,7 @@ import { POSTGRESQL_CONNECTION } from '../../../src/database/postgresql.connecti
 import { EVALUATION_OPTIONS } from '../../../src/evaluations/evaluations.types.js';
 import { EvaluationWorker } from '../../../src/evaluations/evaluations.worker.js';
 import { EXPORT_OPTIONS } from '../../../src/exports/exports.types.js';
+import { FEED_REFRESH_OPTIONS } from '../../../src/feed-refreshes/feed-refreshes.types.js';
 import { FEED_OPTIONS } from '../../../src/feeds/feeds.types.js';
 import { GraphqlApiModule } from '../../../src/graphql/graphql-api.module.js';
 import { ProjectsService } from '../../../src/projects/projects.service.js';
@@ -123,6 +125,28 @@ describe('GraphQL piloto: la hoja con filas y el diagnóstico del feed', () => {
     return result.errors![0];
   }
 
+  /** Las sentencias SQL que llegan a PostgreSQL mientras corre `work`. */
+  async function captureStatements(work: () => Promise<unknown>) {
+    const statements: string[] = [];
+    const original = pg.Client.prototype.query;
+    const capturing = function (this: pg.Client, ...args: unknown[]) {
+      const [config] = args;
+      statements.push(
+        typeof config === 'string'
+          ? config
+          : String((config as { text?: unknown })?.text ?? ''),
+      );
+      return (original as (...a: unknown[]) => unknown).apply(this, args);
+    };
+    pg.Client.prototype.query = capturing as typeof original;
+    try {
+      await work();
+    } finally {
+      pg.Client.prototype.query = original;
+    }
+    return statements;
+  }
+
   const projectPath = () => `/api/v1/projects/${projectId}`;
   const scopePath = () =>
     `/api/v1/organizations/${organizationId}/projects/${projectId}`;
@@ -212,6 +236,16 @@ describe('GraphQL piloto: la hoja con filas y el diagnóstico del feed', () => {
       .useValue(idle)
       .overrideProvider(EXPORT_OPTIONS)
       .useValue({ autoStart: false })
+      .overrideProvider(FEED_REFRESH_OPTIONS)
+      .useValue({
+        autoStart: false,
+        pollMs: 1_000,
+        waitMs: 0,
+        leaseMs: 60_000,
+        shutdownMs: 200,
+        retry: { baseDelayMs: 1, maxDelayMs: 4, maxAttempts: 3 },
+        clock: () => new Date(),
+      })
       .overrideProvider(FEED_OPTIONS)
       .useValue({ autoStart: false, retainedFiles: 3 })
       .overrideProvider(DescopeService)
@@ -346,6 +380,61 @@ describe('GraphQL piloto: la hoja con filas y el diagnóstico del feed', () => {
     });
   });
 
+  describe('límite de coste', () => {
+    it('rechaza con 400 una consulta demasiado cara antes de ejecutarla', async () => {
+      const { feedId, exportId } = await publishedFeedWithCandidate();
+      const page = 'changes { id change fields { field before after } }';
+      const query = `
+        query Costly($projectId: ID!, $feedId: ID!, $exportId: ID!) {
+          feed(projectId: $projectId, id: $feedId) {
+            a: comparison(exportId: $exportId, limit: 100) { ${page} }
+            b: comparison(exportId: $exportId, limit: 100) { ${page} }
+          }
+        }`;
+      const variables = { projectId, feedId, exportId };
+
+      const { status, body } = await gql(query, variables);
+
+      expect(status).toBe(400);
+      const result = body as GraphQLBody;
+      expect(result.data).toBeUndefined();
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors![0].extensions).toMatchObject({
+        code: 'GRAPHQL_QUERY_TOO_COSTLY',
+        maxCost: 1000,
+      });
+      expect(result.errors![0].extensions.cost).toBeGreaterThan(1000);
+      expect(result.errors![0].extensions.requestId).toEqual(
+        expect.any(String),
+      );
+
+      // La misma lectura con un límite razonable sí pasa.
+      const cheap = query.replaceAll('limit: 100', 'limit: 20');
+      const data = await ok(cheap, variables);
+      expect(data.feed.a.changes).toEqual(data.feed.b.changes);
+    });
+
+    it('el límite llega también por variables', async () => {
+      const { feedId, exportId } = await publishedFeedWithCandidate();
+      const query = `
+        query Costly($projectId: ID!, $feedId: ID!, $exportId: ID!, $limit: Int) {
+          feed(projectId: $projectId, id: $feedId) {
+            a: comparison(exportId: $exportId, limit: $limit) { changes { id change fields { field before after } } }
+            b: comparison(exportId: $exportId, limit: $limit) { changes { id change fields { field before after } } }
+          }
+        }`;
+
+      const costly = await failure(query, {
+        projectId,
+        feedId,
+        exportId,
+        limit: 100,
+      });
+      expect(costly.extensions.code).toBe('GRAPHQL_QUERY_TOO_COSTLY');
+      await ok(query, { projectId, feedId, exportId, limit: 5 });
+    });
+  });
+
   describe('diagnóstico del feed', () => {
     it('una llamada da lo mismo que las cuatro rutas REST', async () => {
       const { feedId, exportId, evaluationId } =
@@ -406,6 +495,37 @@ describe('GraphQL piloto: la hoja con filas y el diagnóstico del feed', () => {
         invalid: 1,
         excluded: 1,
       });
+    });
+
+    it('no hace más SQL que las cuatro rutas REST (caché por petición)', async () => {
+      const { feedId, exportId, evaluationId } =
+        await publishedFeedWithCandidate();
+      const feedPath = `${projectPath()}/feeds/${feedId}`;
+
+      const restStatements = await captureStatements(async () => {
+        await rest().get(feedPath).expect(200);
+        await rest().get(`${feedPath}/delivery`).expect(200);
+        await rest()
+          .get(`${feedPath}/comparison?exportId=${exportId}`)
+          .expect(200);
+        await rest()
+          .get(`${projectPath()}/evaluations/${evaluationId}/attention`)
+          .expect(200);
+      });
+      const graphqlStatements = await captureStatements(() =>
+        ok(DIAGNOSIS_QUERY, { projectId, feedId, exportId, evaluationId }),
+      );
+
+      // Sin la caché eran 38 frente a 33 (piloto); con ella, 22 frente a 26.
+      expect(graphqlStatements.length).toBeLessThanOrEqual(
+        restStatements.length,
+      );
+      // Dentro de una petición, la persona y su acceso se leen una sola vez
+      // aunque cada campo los vuelva a pedir (plan C7, G2).
+      const reads = (marker: string) =>
+        graphqlStatements.filter((text) => text.includes(marker)).length;
+      expect(reads('AND identity_subject =')).toBe(1);
+      expect(reads('AS "isArchived"')).toBe(1);
     });
 
     it('la comparación admite el tipo de cambio y la página, como REST', async () => {

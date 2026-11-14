@@ -8,6 +8,7 @@ import {
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import type { PageRequest } from '../common/http/pagination.js';
+import { rememberForRequest } from '../common/http/request-cache.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { lockOrganization } from '../organizations/organization-lock.js';
@@ -224,7 +225,18 @@ export class ProjectsRepository {
    * Lo mismo y, además, si la organización está archivada: lo que necesita la
    * puerta de las rutas de `/projects/:projectId/…` (C6).
    */
-  async findAccess(
+  findAccess(
+    userId: string,
+    projectId: string,
+  ): Promise<ProjectMemberAccess | null> {
+    // Se recuerda durante la petición: cada campo GraphQL y cada servicio de
+    // una ruta vuelven a comprobar el acceso (plan C7, G2).
+    return rememberForRequest(`project-access:${userId}:${projectId}`, () =>
+      this.readAccess(userId, projectId),
+    );
+  }
+
+  private async readAccess(
     userId: string,
     projectId: string,
   ): Promise<ProjectMemberAccess | null> {
