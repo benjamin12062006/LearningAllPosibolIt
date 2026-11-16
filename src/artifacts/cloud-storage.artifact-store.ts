@@ -129,7 +129,12 @@ export class CloudStorageArtifactStore implements ArtifactOperations {
   }
 
   openRead(key: string, signal?: AbortSignal): Readable {
-    const content = readObject(this.object('artifacts', key));
+    const object = this.object('artifacts', key);
+    if (signal?.aborted) {
+      // Evita abrir la descarga si el consumidor ya canceló la lectura.
+      return addAbortSignal(signal, new PassThrough());
+    }
+    const content = readObject(object);
     if (signal) {
       addAbortSignal(signal, content);
     }
