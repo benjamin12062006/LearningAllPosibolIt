@@ -29,11 +29,7 @@ import {
 } from './artifacts.types.js';
 
 export type Folder =
-  | 'tmp'
-  | 'artifacts'
-  | 'exports'
-  | 'feeds'
-  | 'worksheet-exports';
+  'tmp' | 'artifacts' | 'exports' | 'feeds' | 'worksheet-exports';
 
 /** Extensión de una exportación de hoja (E5.3). */
 export type WorksheetExportExtension = 'csv' | 'xlsx';

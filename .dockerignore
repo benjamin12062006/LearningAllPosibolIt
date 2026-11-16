@@ -1,0 +1,41 @@
+# Lo que no entra al contexto de `docker build` (deploys, plan 02, regla 1).
+# El build solo necesita: manifiestos, prisma/, src/ y scripts/deploy/.
+
+# Git, editor y sistema
+.git
+.gitignore
+.idea
+.DS_Store
+
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+requests
+http-client.private.env.json
+
+# Dependencias, salidas y cachés locales
+node_modules
+dist
+coverage
+.test-build
+*.tsbuildinfo
+*.log
+src/generated
+
+# Datos locales
+.data
+
+# Lo que no forma parte de la imagen
+test
+docs
+bitacora-construccion
+contracts
+observability
+scripts/db
+scripts/descope
+scripts/testing
+README.md
+Dockerfile
+.dockerignore
+.gcloudignore
