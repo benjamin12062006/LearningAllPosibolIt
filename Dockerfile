@@ -28,10 +28,9 @@ WORKDIR /app
 
 # --- Dependencias completas: lo que hace falta para compilar y migrar -------
 FROM base AS dependencies
-# Prisma CLI necesita OpenSSL para generar el cliente y para migrar, y la imagen
-# `slim` no lo trae. La API no lo necesita: usa el driver `pg` directamente.
+# Prisma CLI necesita OpenSSL y Cloud SQL Auth Proxy valida TLS con las CA del sistema.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends openssl \
+    && apt-get install --yes --no-install-recommends ca-certificates openssl \
     && rm -rf /var/lib/apt/lists/*
 # Solo los manifiestos: esta capa se reutiliza mientras no cambie el lockfile.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
