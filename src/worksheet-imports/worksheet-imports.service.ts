@@ -7,6 +7,12 @@ import { normalizeOperations } from '../changesets/changeset-operations.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes, type ErrorCode } from '../common/http/error-codes.js';
 import {
+  fetchWindow,
+  resolvePage,
+  toPage,
+  type PageRequest,
+} from '../common/http/pagination.js';
+import {
   ApplicationFailure,
   publicError,
 } from '../common/http/public-error.js';
@@ -23,6 +29,11 @@ import {
   type ImportOptions,
   type XlsxImportOptions,
 } from './import-options.js';
+import { withTemplate, type MappingTemplate } from './import-mapping.js';
+import {
+  ImportMappingsRepository,
+  type ImportMapping,
+} from './import-mappings.repository.js';
 import {
   planImport,
   type IncludedRow,
@@ -35,6 +46,7 @@ import {
   type ImportFormat,
   type ImportPreview,
   type ImportTable,
+  type TemplateCoverage,
 } from './worksheet-imports.types.js';
 import {
   isCompoundFile,
@@ -45,6 +57,8 @@ import {
 /** Como mucho se devuelven estos problemas; el informe guarda el total. */
 const MAX_REPORTED_PROBLEMS = 500;
 const MAX_FIELD_LENGTH = 128;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Cómo leer el archivo: las opciones propias de su formato (D11). */
 type FileChoice =
@@ -63,6 +77,8 @@ export type PreviewFields = Readonly<{
   delimiter?: string;
   sheet?: string;
   headerRow?: string;
+  /** Una plantilla de mapeo de la hoja (H3), para ver si encaja con el archivo. */
+  mappingId?: string;
 }>;
 
 /**
@@ -75,6 +91,7 @@ export class WorksheetImportsService {
   constructor(
     private readonly usersService: UsersService,
     private readonly repository: WorksheetImportsRepository,
+    private readonly mappings: ImportMappingsRepository,
   ) {}
 
   /**
@@ -90,6 +107,12 @@ export class WorksheetImportsService {
   ): Promise<ImportPreview> {
     const user = await this.usersService.findCurrent(identity);
     const head = await this.requireHead(user.id, scope, worksheetId);
+    const template = await this.findTemplate(
+      user.id,
+      scope,
+      worksheetId,
+      fields.mappingId,
+    );
     const choice = previewChoiceOf(formatOf(file), fields);
     const read = await readImportFile(file, choice);
     const { table } = read;
@@ -121,6 +144,7 @@ export class WorksheetImportsService {
         const columnId = writableByName.get(normalizeName(header));
         return columnId ? [{ header, columnId }] : [];
       }),
+      ...(template ? { template: coverageOf(template, table.headers) } : {}),
     };
   }
 
@@ -135,9 +159,17 @@ export class WorksheetImportsService {
     worksheetId: string,
     file: Buffer,
     rawOptions: string | undefined,
+    mappingId?: string,
   ) {
-    const options = parseOptionsField(rawOptions, formatOf(file));
+    const format = formatOf(file);
     const user = await this.usersService.findCurrent(identity);
+    const template = await this.findTemplate(
+      user.id,
+      scope,
+      worksheetId,
+      mappingId,
+    );
+    const options = parseOptionsField(rawOptions, format, template?.mapping);
     const head = await this.requireHead(user.id, scope, worksheetId);
     const { table } = await readImportFile(file, options);
     if (!table) {
@@ -201,6 +233,49 @@ export class WorksheetImportsService {
       throw apiError(ErrorCodes.WORKSHEET_IMPORT_NOT_FOUND);
     }
     return found;
+  }
+
+  /** Importaciones de una hoja (H2), también de una archivada. */
+  async findByWorksheet(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    query?: Partial<PageRequest>,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    await this.requireHead(user.id, scope, worksheetId);
+
+    const page = resolvePage(query);
+    const rows = await this.repository.findByWorksheet(
+      user.id,
+      scope,
+      worksheetId,
+      fetchWindow(page),
+    );
+    return toPage(rows, page);
+  }
+
+  /**
+   * La plantilla pedida, si es de esta hoja. Una de otra hoja responde como una
+   * que no existe: sus columnas no tendrían sentido aquí.
+   */
+  private async findTemplate(
+    userId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    mappingId: string | undefined,
+  ): Promise<ImportMapping | null> {
+    if (mappingId === undefined) {
+      return null;
+    }
+    if (!UUID_PATTERN.test(mappingId)) {
+      throw optionsError(['mappingId']);
+    }
+    const mapping = await this.mappings.find(userId, scope, mappingId);
+    if (!mapping || mapping.worksheetId !== worksheetId) {
+      throw apiError(ErrorCodes.IMPORT_MAPPING_NOT_FOUND);
+    }
+    return mapping;
   }
 
   private async requireHead(
@@ -294,22 +369,65 @@ function optionsError(fields: readonly string[]) {
   );
 }
 
-/** El campo `options` del formulario es JSON; su forma la valida `parseImportOptions`. */
+/**
+ * El campo `options` del formulario es JSON; su forma la valida
+ * `parseImportOptions`. Con plantilla, el campo es opcional y solo lleva lo que
+ * depende del archivo (H3).
+ */
 function parseOptionsField(
   raw: string | undefined,
   format: ImportFormat,
+  template: MappingTemplate | undefined,
 ): ImportOptions {
-  let parsed: unknown;
-  try {
-    parsed = raw === undefined ? undefined : JSON.parse(raw);
-  } catch {
-    parsed = undefined;
-  }
-  const result = parseImportOptions(parsed, format);
+  const own = readJsonField(raw);
+  const result = parseImportOptions(
+    template ? templatedOrReject(template, own) : own,
+    format,
+  );
   if (!result.ok) {
     throw issuesError(ErrorCodes.IMPORT_OPTIONS_INVALID, result.issues);
   }
   return result.options;
+}
+
+/**
+ * Un JSON mal formado no es «sin opciones»: con una plantilla dejaría
+ * importar sin las exclusiones que la persona escribió.
+ */
+function readJsonField(raw: string | undefined): unknown {
+  if (raw === undefined) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw optionsError(['options']);
+  }
+}
+
+function templatedOrReject(template: MappingTemplate, own: unknown) {
+  const merged = withTemplate(template, own);
+  if (!merged.ok) {
+    throw issuesError(ErrorCodes.IMPORT_OPTIONS_INVALID, merged.issues);
+  }
+  return merged.raw;
+}
+
+/** Qué columnas de la plantilla tienen su cabecera en este archivo. */
+function coverageOf(
+  template: ImportMapping,
+  headers: readonly string[],
+): TemplateCoverage {
+  const present = new Set(headers);
+  const columns = template.mapping.columns;
+  return {
+    id: template.id,
+    name: template.name,
+    columns: columns.filter((column) => present.has(column.header)),
+    missingHeaders: columns
+      .map((column) => column.header)
+      .filter((header) => !present.has(header)),
+  };
 }
 
 /**

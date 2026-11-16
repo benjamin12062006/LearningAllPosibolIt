@@ -1,0 +1,24 @@
+# Pantalla «Visor»: el TSV aprobado o el de una versión del feed, y la ficha de un producto.
+query ExportViewerScreen($projectId: ID!, $exportId: ID!, $search: String, $limit: Int, $offset: Int) {
+  export(projectId: $projectId, id: $exportId) {
+    id
+    rowCount
+    createdAt
+    products(search: $search, limit: $limit, offset: $offset) {
+      columns
+      rowCount
+      products { line values }
+      page { limit offset hasMore }
+    }
+  }
+}
+
+query ExportProductScreen($projectId: ID!, $exportId: ID!, $productId: String!) {
+  export(projectId: $projectId, id: $exportId) {
+    product(id: $productId) {
+      columns
+      product { line values }
+      source { kind export { id evaluationId createdAt } }
+    }
+  }
+}

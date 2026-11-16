@@ -1,0 +1,24 @@
+# Proponer un cambio en una hoja: un borrador con sus operaciones, enviado a
+# revisión. Aprobar y aplicar son de la persona (Manager), no del agente.
+mutation CreateChangeset($organizationId: ID!, $projectId: ID!, $worksheetId: ID!, $title: String!) {
+  createChangeset(organizationId: $organizationId, projectId: $projectId, worksheetId: $worksheetId, input: { title: $title }) {
+    id
+    draftVersion
+  }
+}
+
+mutation SaveChangesetOperations($organizationId: ID!, $projectId: ID!, $changesetId: ID!, $input: SaveOperationsInput!) {
+  saveChangesetOperations(organizationId: $organizationId, projectId: $projectId, id: $changesetId, input: $input) {
+    id
+    draftVersion
+    diff { resultingRowCount counts problems { rowId columnId code } }
+  }
+}
+
+mutation SubmitChangeset($organizationId: ID!, $projectId: ID!, $changesetId: ID!, $draftVersion: Int!) {
+  submitChangeset(organizationId: $organizationId, projectId: $projectId, id: $changesetId, input: { draftVersion: $draftVersion }) {
+    id
+    status
+    contentHash
+  }
+}

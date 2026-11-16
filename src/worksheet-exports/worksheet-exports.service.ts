@@ -9,6 +9,12 @@ import {
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import {
+  fetchWindow,
+  resolvePage,
+  toPage,
+  type PageRequest,
+} from '../common/http/pagination.js';
 import { publicError } from '../common/http/public-error.js';
 import { UsersService } from '../users/users.service.js';
 import {
@@ -130,6 +136,29 @@ export class WorksheetExportsService {
       throw apiError(ErrorCodes.WORKSHEET_EXPORT_NOT_FOUND);
     }
     return found;
+  }
+
+  /**
+   * Exportaciones de una hoja (H2), también de una archivada. Leer la
+   * revisión actual comprueba que la hoja existe y que quien pregunta la ve.
+   */
+  async findByWorksheet(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    query?: Partial<PageRequest>,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    await this.requireRevision(user.id, scope, worksheetId, null);
+
+    const page = resolvePage(query);
+    const rows = await this.repository.findByWorksheet(
+      user.id,
+      scope,
+      worksheetId,
+      fetchWindow(page),
+    );
+    return toPage(rows, page);
   }
 
   /** El archivo de una exportación, ya abierto (como `productos.tsv`, R2). */

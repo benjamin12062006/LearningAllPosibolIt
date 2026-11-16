@@ -5,6 +5,7 @@ import { CatalogImportModule } from '../catalog-import/catalog-import.module.js'
 import { PrismaModule } from '../database/prisma.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { WorksheetsModule } from '../worksheets/worksheets.module.js';
+import { CatalogWorksheetService } from './catalog-worksheet.service.js';
 import { WorksheetCatalogSnapshotsController } from './worksheet-catalog-snapshots.controller.js';
 import { WorksheetCatalogSnapshotsRepository } from './worksheet-catalog-snapshots.repository.js';
 import { WorksheetCatalogSnapshotsService } from './worksheet-catalog-snapshots.service.js';
@@ -26,6 +27,9 @@ import { WorksheetCatalogSnapshotsService } from './worksheet-catalog-snapshots.
   providers: [
     WorksheetCatalogSnapshotsRepository,
     WorksheetCatalogSnapshotsService,
+    CatalogWorksheetService,
   ],
+  // Los usa la capa GraphQL, igual que el controlador REST.
+  exports: [WorksheetCatalogSnapshotsService, CatalogWorksheetService],
 })
 export class WorksheetCatalogSnapshotsModule {}

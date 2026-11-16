@@ -12,6 +12,7 @@ import {
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
+import { PaginationQueryDto } from '../common/http/pagination.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
 import { WorksheetRowsService } from './worksheet-rows.service.js';
 import {
@@ -173,6 +174,25 @@ export class WorksheetsController {
       { organizationId, projectId },
       worksheetId,
     );
+  }
+
+  /** Historial: `{ revisions: [{ id, sequence, source, rowCount, changesetId, … }], page }`. */
+  @Get('worksheets/:worksheetId/revisions')
+  async findRevisions(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('worksheetId', uuidParamPipe('worksheetId')) worksheetId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    const { items, page } = await this.worksheetsService.findRevisions(
+      identity,
+      { organizationId, projectId },
+      worksheetId,
+      query,
+    );
+    return { revisions: items, page };
   }
 
   /** `{ worksheet, capabilities }`, como al leerla. */

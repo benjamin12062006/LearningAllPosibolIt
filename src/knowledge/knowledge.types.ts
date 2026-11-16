@@ -38,7 +38,10 @@ export type SourceKey = Readonly<{
 /** Una fuente como está ahora en PostgreSQL, con su huella. */
 export type CurrentSource = SourceKey & Readonly<{ fingerprint: string }>;
 
-/** Una fuente como se mandó la última vez. */
+/** Marca de reindexado. Conserva la clave para retirar una fuente que haya desaparecido. */
+export const REINDEX_PENDING = '';
+
+/** Estado guardado de una fuente que se mandó al índice. */
 export type SyncedSource = CurrentSource & Readonly<{ syncedAt: string }>;
 
 export const KNOWLEDGE_OPTIONS = Symbol('KNOWLEDGE_OPTIONS');

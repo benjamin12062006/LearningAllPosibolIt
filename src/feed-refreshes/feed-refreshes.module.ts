@@ -59,5 +59,7 @@ import {
       }),
     },
   ],
+  // Lo usa la capa GraphQL, igual que el controlador REST.
+  exports: [FeedRefreshesService],
 })
 export class FeedRefreshesModule {}

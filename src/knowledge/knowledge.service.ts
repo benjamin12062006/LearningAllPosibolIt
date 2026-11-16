@@ -6,7 +6,7 @@ import { ProjectsService } from '../projects/projects.service.js';
 import { KnowledgeSyncWorker } from './knowledge-sync.worker.js';
 import { KnowledgeRepository } from './knowledge.repository.js';
 import type { SourceType } from './knowledge.types.js';
-import { keyOf } from './sync-plan.js';
+import { keyOf, needsSync } from './sync-plan.js';
 
 /** Una fuente del proyecto y si el índice ya tiene su versión actual. */
 export type SourceStatus = Readonly<{
@@ -54,17 +54,16 @@ export class KnowledgeService {
         return {
           sourceType: source.sourceType,
           sourceId: source.sourceId,
-          syncedAt: done?.syncedAt ?? null,
-          pending: done?.fingerprint !== source.fingerprint,
+          syncedAt: done?.syncedAt || null,
+          pending: needsSync(source, done),
         };
       }),
     };
   }
 
   /**
-   * Manager o más (D17): gasta llamadas a Google. Olvida lo mandado para que la
-   * pasada siguiente mande el proyecto entero; el servicio de IA solo vuelve a
-   * calcular los documentos que no tenga ya iguales.
+   * Manager o más (D17). Pide otra pasada para todas las fuentes del proyecto.
+   * Las claves permanecen guardadas para retirar del índice las que desaparecieron.
    */
   async reindex(identity: AuthenticatedIdentity, projectId: string) {
     await this.projectsService.requireAccess(
@@ -75,7 +74,7 @@ export class KnowledgeService {
     if (!this.worker.enabled) {
       throw apiError(ErrorCodes.KNOWLEDGE_DISABLED);
     }
-    await this.repository.forgetProject(projectId);
+    await this.repository.requestReindex(projectId);
     this.worker.wake();
     return { status: 'queued' as const };
   }

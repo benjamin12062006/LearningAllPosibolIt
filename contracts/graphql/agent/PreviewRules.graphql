@@ -1,0 +1,11 @@
+# Probar unas reglas sin guardarlas: qué cambiaría en el catálogo.
+query PreviewRules($projectId: ID!, $input: RulesPreviewInput!) {
+  rulesPreview(projectId: $projectId, input: $input, limit: 10) {
+    baseRevision
+    changedProducts
+    counts { current { valid invalid excluded } proposed { valid invalid excluded } }
+    problems { appeared { attribute code productCount } resolved { attribute code productCount } }
+    outcomeChanges { from to productCount }
+    products { externalId values { attribute before after } }
+  }
+}

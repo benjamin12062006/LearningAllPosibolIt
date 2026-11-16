@@ -33,5 +33,8 @@ import { SourceDocuments } from './source-documents.js';
     },
     { provide: KNOWLEDGE_OPTIONS, useValue: KNOWLEDGE_DEFAULTS },
   ],
+  // Lo usa la capa GraphQL, igual que el controlador REST.
+  // El cliente del servicio de IA lo usan también las ejecuciones del agente.
+  exports: [KnowledgeService, AI_SERVICE_CLIENT],
 })
 export class KnowledgeModule {}

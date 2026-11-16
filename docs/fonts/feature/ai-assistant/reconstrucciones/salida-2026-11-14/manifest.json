@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "date": "2026-11-14",
+  "originals": {
+    "Sección 15 Backend - Asistentes de OpenAI/134. Crear módulo - Assistant.md": "80fa728f8d761388577c069e5753dba62a97060cc42b6b800764b89d733f8b52",
+    "Sección 15 Backend - Asistentes de OpenAI/136. Crear Mensaje - Caso de Uso.md": "49c8e66acde6d5274d3f61374769f862b9e8fab30c9a0f643fef9b805f8538f3",
+    "Sección 15 Backend - Asistentes de OpenAI/135. Crear Thread - Caso de Uso.md": "6d40f02c8d3f491091dc6726b10981c25e9a59bb21441b7a2eb631b280ef93bb"
+  },
+  "guides": [
+    {
+      "source": "Sección 15 Backend - Asistentes de OpenAI/134. Crear módulo - Assistant.md",
+      "guide": "Sección 15 Backend - Asistentes de OpenAI/134. Crear módulo - Assistant - Reconstrucción guiada.md",
+      "sha256": "16124983c2e85795aa133aa2ff9270b6dc84fa272b532f87d5a9fed16ca13847"
+    },
+    {
+      "source": "Sección 15 Backend - Asistentes de OpenAI/136. Crear Mensaje - Caso de Uso.md",
+      "guide": "Sección 15 Backend - Asistentes de OpenAI/136. Crear Mensaje - Caso de Uso - Reconstrucción guiada.md",
+      "sha256": "55f876fa6566717fe446e832a34d3125624533fc895c4d16fd4b580291e0710c"
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "review_status": "ready",
+  "source": "Sección 15 Backend - Asistentes de OpenAI/134. Crear módulo - Assistant.md",
+  "previous": [],
+  "objective": "Añadir a la aplicación Nest un módulo para Sam Assistant y comprobar sus dos primeras rutas con un DTO para la pregunta.",
+  "initial": "La aplicación Nest y su módulo del GPT ya existen. La lección genera un segundo módulo y asume la configuración de validación de la aplicación.",
+  "certainty": "Se recuperan las responsabilidades, los campos, los nombres de los métodos y el comportamiento de los endpoints. Se reconstruyen el caso y los guiones de los nombres, el texto provisional de createThread y los decoradores concretos necesarios para rechazar los campos ausentes. La transcripción no enseña el contenido del AppModule completo.",
+  "evidence": [
+    {
+      "id": "E1",
+      "line": 13,
+      "phrase": "una funcionalidad totalmente independiente",
+      "change": "Generar Sam Assistant como recurso REST independiente.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E2",
+      "line": 15,
+      "phrase": "el controlador y el servicio definidos ahí",
+      "change": "Módulo con controlador y servicio, incluido en AppModule.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E3",
+      "line": 19,
+      "phrase": "no necesito recibir ningún argumento",
+      "change": "POST para createThread sin cuerpo y retorno provisional.",
+      "certainty": "Explícito, excepto la cadena provisional exacta"
+    },
+    {
+      "id": "E4",
+      "line": 23,
+      "phrase": "Ambos deberían de ser readonly",
+      "change": "QuestionDto declara threadId y question como cadenas de solo lectura.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E5",
+      "line": 25,
+      "phrase": "el body que va a ser de tipo question dto",
+      "change": "El controlador recibe QuestionDto y lo devuelve durante la prueba.",
+      "certainty": "Explícito"
+    },
+    {
+      "id": "E6",
+      "line": 29,
+      "phrase": "vamos a tener un Bad Request",
+      "change": "Campos obligatorios y prueba de eco mediante Postman.",
+      "certainty": "Comportamiento explícito, decoradores concretos reconstruidos"
+    }
+  ],
+  "phases": [
+    {
+      "title": "Crear el módulo del asistente",
+      "objective": "Registrar el controlador y el servicio en el módulo que genera el CLI.",
+      "code": "nest generate resource sam-assistant",
+      "why": "Elegir REST y responder que no se generen endpoints CRUD. Conservar el registro de SamAssistantModule que añade el CLI al AppModule existente.",
+      "check": "Revisar que el módulo esté en imports de AppModule y tenga controlador y servicio propios.",
+      "evidence": [
+        "E1",
+        "E2"
+      ],
+      "language": "bash"
+    },
+    {
+      "title": "Validar la pregunta",
+      "objective": "Declarar las dos cadenas que consume la ruta.",
+      "code": "import { IsNotEmpty, IsString } from 'class-validator';\n\nexport class QuestionDto {\n  @IsString()\n  @IsNotEmpty()\n  readonly threadId: string;\n\n  @IsString()\n  @IsNotEmpty()\n  readonly question: string;\n}",
+      "why": "El DTO hace explícito el identificador de conversación y el contenido de la pregunta.",
+      "check": "Con el pipe de validación de la aplicación, enviar los dos campos y repetir omitiendo cada uno.",
+      "evidence": [
+        "E4",
+        "E6"
+      ],
+      "language": "typescript"
+    },
+    {
+      "title": "Exponer dos operaciones",
+      "objective": "Montar createThread y userQuestion para comprobar el flujo de HTTP.",
+      "code": "import { Body, Controller, Post } from '@nestjs/common';\nimport { QuestionDto } from './dto/question.dto';\nimport { SamAssistantService } from './sam-assistant.service';\n\n@Controller('sam-assistant')\nexport class SamAssistantController {\n  constructor(private readonly samAssistantService: SamAssistantService) {}\n\n  @Post('create-thread')\n  async createThread() {\n    return 'createThread';\n  }\n\n  @Post('user-question')\n  async userQuestion(@Body() questionDto: QuestionDto) {\n    return questionDto;\n  }\n}",
+      "why": "La creación del hilo puede iniciarse sin cuerpo. La pregunta recibe QuestionDto en @Body.",
+      "check": "En Postman, llamar a POST /sam-assistant/create-thread y luego a POST /sam-assistant/user-question con threadId y question. La primera ruta devuelve su texto provisional y la segunda devuelve los campos enviados.",
+      "evidence": [
+        "E2",
+        "E3",
+        "E5",
+        "E6"
+      ],
+      "language": "typescript"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/sam-assistant/sam-assistant.module.ts",
+      "language": "typescript",
+      "code": "import { Module } from '@nestjs/common';\nimport { SamAssistantController } from './sam-assistant.controller';\nimport { SamAssistantService } from './sam-assistant.service';\n\n@Module({\n  controllers: [SamAssistantController],\n  providers: [SamAssistantService],\n})\nexport class SamAssistantModule {}",
+      "provenance": "E1 y E2 para el módulo y su registro. El AppModule previo se conserva y añade SamAssistantModule a imports."
+    },
+    {
+      "path": "src/sam-assistant/sam-assistant.service.ts",
+      "language": "typescript",
+      "code": "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class SamAssistantService {}",
+      "provenance": "E2 para el servicio inyectable independiente."
+    },
+    {
+      "path": "src/sam-assistant/dto/question.dto.ts",
+      "language": "typescript",
+      "code": "import { IsNotEmpty, IsString } from 'class-validator';\n\nexport class QuestionDto {\n  @IsString()\n  @IsNotEmpty()\n  readonly threadId: string;\n\n  @IsString()\n  @IsNotEmpty()\n  readonly question: string;\n}",
+      "provenance": "E4 para los campos y E6 para la validación observada."
+    },
+    {
+      "path": "src/sam-assistant/sam-assistant.controller.ts",
+      "language": "typescript",
+      "code": "import { Body, Controller, Post } from '@nestjs/common';\nimport { QuestionDto } from './dto/question.dto';\nimport { SamAssistantService } from './sam-assistant.service';\n\n@Controller('sam-assistant')\nexport class SamAssistantController {\n  constructor(private readonly samAssistantService: SamAssistantService) {}\n\n  @Post('create-thread')\n  async createThread() {\n    return 'createThread';\n  }\n\n  @Post('user-question')\n  async userQuestion(@Body() questionDto: QuestionDto) {\n    return questionDto;\n  }\n}",
+      "provenance": "E2 y E3 para la inyección y la primera ruta, E5 y E6 para el cuerpo de la segunda."
+    }
+  ],
+  "temporary": "Los dos retornos permiten inspeccionar el contrato inicial en Postman. Las siguientes lecciones conectan estas rutas con el servicio del asistente.",
+  "mental": "El módulo registra el controlador y su servicio. Las rutas ponen nombres a operaciones concretas. QuestionDto describe el cuerpo de la segunda ruta y el pipe activo comprueba sus campos."
+}

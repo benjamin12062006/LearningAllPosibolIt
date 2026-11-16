@@ -21,9 +21,11 @@ import type {
   CreateWorksheetDto,
   DuplicateWorksheetDto,
 } from './worksheets.dto.js';
+import { exceedsRowLimit } from './worksheet-columns.js';
 import {
   isArchivedWorksheet,
   WorksheetsRepository,
+  type NewRow,
   type ProjectAccess,
 } from './worksheets.repository.js';
 import type {
@@ -135,6 +137,36 @@ export class WorksheetsService {
     return { worksheet, capabilities: capabilitiesOf(access, worksheet) };
   }
 
+  /**
+   * Una hoja que nace con filas (H5), para quien la abre desde otro sitio,
+   * como un catálogo. Las celdas de cada fila van en el orden de `columns`;
+   * `null` es una celda vacía. Las columnas se validan como al crear una hoja.
+   */
+  async createFilledWorksheet(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    workbookId: string,
+    input: FilledWorksheetInput,
+  ) {
+    const columns = planOrReject(input.columns);
+    if (exceedsRowLimit(input.rows.length)) {
+      throw apiError(ErrorCodes.WORKSHEET_ROW_LIMIT_EXCEEDED);
+    }
+
+    const user = await this.usersService.findCurrent(identity);
+    const { worksheet, access } = await this.repository.createFilledWorksheet(
+      user.id,
+      scope,
+      workbookId,
+      buildNewWorksheet(input.name, columns),
+      {
+        rows: input.rows.map((row) => toNewRow(row, columns)),
+        catalogSnapshotId: input.catalogSnapshotId,
+      },
+    );
+    return { worksheet, capabilities: capabilitiesOf(access, worksheet) };
+  }
+
   async findWorksheets(
     identity: AuthenticatedIdentity,
     scope: ProjectScope,
@@ -174,6 +206,29 @@ export class WorksheetsService {
       throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
     }
     return { worksheet, capabilities: capabilitiesOf(access, worksheet) };
+  }
+
+  /** El historial de revisiones de la hoja (H2); también de una archivada. */
+  async findRevisions(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    query?: Partial<PageRequest>,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    await this.requireAccess(user.id, scope);
+    if (!(await this.repository.worksheetExists(user.id, scope, worksheetId))) {
+      throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
+    }
+
+    const page = resolvePage(query);
+    const rows = await this.repository.findRevisions(
+      user.id,
+      scope,
+      worksheetId,
+      fetchWindow(page),
+    );
+    return toPage(rows, page);
   }
 
   async renameWorksheet(
@@ -263,6 +318,30 @@ export class WorksheetsService {
     }
     return access;
   }
+}
+
+/** Una fila de una hoja que nace llena: su orden y sus celdas por posición de columna. */
+export type FilledRow = Readonly<{
+  sortKey: string;
+  cells: readonly (string | null)[];
+}>;
+
+export type FilledWorksheetInput = Readonly<{
+  name: string;
+  columns: readonly ColumnRequest[];
+  rows: readonly FilledRow[];
+  catalogSnapshotId: string;
+}>;
+
+/** Las celdas por ID de columna; una vacía no se guarda, como en el resto de filas. */
+function toNewRow(row: FilledRow, columns: readonly PlannedColumn[]): NewRow {
+  const values: Record<string, string> = {};
+  row.cells.forEach((cell, position) => {
+    if (cell !== null) {
+      values[columns[position].columnId] = cell;
+    }
+  });
+  return { sortKey: row.sortKey, values };
 }
 
 /** Lo que acepta un listado: la página y, si se quiere, solo activos o solo archivados. */

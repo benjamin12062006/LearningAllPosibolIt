@@ -6,8 +6,14 @@ import { randomUUID } from 'node:crypto';
 import { ErrorCodes } from '../common/http/error-codes.js';
 import { publicError } from '../common/http/public-error.js';
 import { maxQueryDepth } from './common/max-query-depth.rule.js';
+import { queryCostPlugin } from './common/query-cost.plugin.js';
 
-export const GRAPHQL_MAX_DEPTH = 6;
+/**
+ * Cada lista paginada suma un nivel (`items`): con 8 caben las lecturas
+ * compuestas previstas (libros con sus hojas, evaluaciones con su «Requiere
+ * atención») y el límite de coste acota el tamaño (plan C7, ajuste a G3).
+ */
+export const GRAPHQL_MAX_DEPTH = 8;
 
 /** Sirve `/api/graphql` junto a REST; el esquema se genera en memoria (code first). */
 export const graphqlRootModule = GraphQLModule.forRootAsync<ApolloDriverConfig>(
@@ -27,6 +33,8 @@ export const graphqlRootModule = GraphQLModule.forRootAsync<ApolloDriverConfig>(
         includeStacktraceInErrorResponses: false,
         allowBatchedHttpRequests: false,
         validationRules: [maxQueryDepth(GRAPHQL_MAX_DEPTH)],
+        // Además de la profundidad, el coste con sus variables (plan C7, G3).
+        plugins: [queryCostPlugin],
         // Nest no aplica los filtros a los campos (`@ResolveField`) si no se
         // pide: sin esto, un 404 o un 409 lanzado desde un campo saldría como
         // `INTERNAL_ERROR`. Los guards no se repiten por campo a propósito: la

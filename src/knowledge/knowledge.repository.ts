@@ -1,10 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
-import type {
-  CurrentSource,
-  SourceKey,
-  SyncedSource,
+import type { OrganizationRole } from '../organizations/organization-roles.js';
+import { orderSql } from '../worksheets/row-query-sql.js';
+import type { StoredRow } from '../worksheets/worksheet-rows.repository.js';
+import { WORKSHEET_LIMITS } from '../worksheets/worksheet-columns.js';
+import { findColumnsIn } from '../worksheets/worksheets.repository.js';
+import type { WorksheetColumn } from '../worksheets/worksheets.types.js';
+import {
+  REINDEX_PENDING,
+  type CurrentSource,
+  type SourceKey,
+  type SyncedSource,
 } from './knowledge.types.js';
 
 // -----------------------------------------------------------------------------
@@ -77,6 +84,59 @@ export type FeedFacts = {
   lastRefreshAt: string | null;
 };
 
+export type OrganizationFacts = {
+  name: string;
+  archived: boolean;
+  projectCount: number;
+  memberCounts: Partial<Record<OrganizationRole, number>>;
+};
+
+export type WorkbookFacts = {
+  name: string;
+  archived: boolean;
+  worksheets: Array<{ name: string; archived: boolean }>;
+};
+
+export type WorksheetFacts = {
+  name: string;
+  mode: string;
+  workbookName: string;
+  archived: boolean;
+  revisionId: string;
+  sequence: number;
+  schemaVersion: number;
+  rowCount: number;
+};
+
+export type ChangesetFacts = {
+  title: string;
+  worksheetId: string;
+  worksheetName: string;
+  status: string;
+  baseSequence: number;
+  operationCounts: Record<string, number>;
+  decision: 'accept' | 'reject' | null;
+};
+
+export type WorksheetImportFacts = {
+  worksheetId: string;
+  worksheetName: string;
+  format: string;
+  createdAt: string;
+  rowCount: number;
+  insertedCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  excludedCount: number;
+  invalidCount: number;
+  newColumnCount: number;
+  problemCounts: Record<string, number>;
+};
+
+const OPEN_CHANGESETS = Prisma.sql`c.status IN ('draft', 'pending_review', 'approved')`;
+const WORKSHEET_KNOWLEDGE_PAGE_SIZE = 100;
+type WorksheetPageRow = StoredRow & { sortKey: string };
+
 /**
  * La huella de cada fuente (D15). `json_build_array` y no `concat_ws`: este se
  * salta los nulos y daría la misma huella a `(ES, null)` que a `(null, ES)`.
@@ -94,6 +154,36 @@ function currentSourcesOf(projects: Prisma.Sql) {
         p.channel_profile
       FROM estadistica_forms.projects p
       WHERE ${projects}
+    ),
+    chosen_organizations AS (
+      SELECT DISTINCT organization_id FROM chosen_projects
+    ),
+    organization_summaries AS (
+      SELECT
+        o.id,
+        o.name,
+        o.archived_at IS NOT NULL AS archived,
+        ${organizationProjectCount()} AS project_count,
+        ${organizationMemberCounts()} AS member_counts
+      FROM chosen_organizations co
+      JOIN estadistica_forms.organizations o ON o.id = co.organization_id
+    ),
+    chosen_workbooks AS (
+      SELECT b.id, b.organization_id, b.project_id, b.name, b.archived_at
+      FROM chosen_projects cp
+      JOIN estadistica_forms.workbooks b
+        ON b.organization_id = cp.organization_id AND b.project_id = cp.id
+    ),
+    chosen_worksheets AS (
+      SELECT
+        w.id, w.organization_id, w.project_id, w.workbook_id, w.name, w.mode,
+        w.archived_at, w.head_revision_id, b.name AS workbook_name,
+        b.archived_at AS workbook_archived_at
+      FROM chosen_workbooks b
+      JOIN estadistica_forms.worksheets w
+        ON w.organization_id = b.organization_id
+        AND w.project_id = b.project_id
+        AND w.workbook_id = b.id
     ),
     latest_snapshots AS (
       SELECT DISTINCT ON (s.project_id)
@@ -146,10 +236,10 @@ function currentSourcesOf(projects: Prisma.Sql) {
       cp.id AS "sourceId",
       md5(json_build_array(
         cp.name, cp.country, cp.currency, cp.channel_profile,
-        o.name, o.archived_at IS NOT NULL
+        o.name, o.archived
       )::text) AS fingerprint
     FROM chosen_projects cp
-    JOIN estadistica_forms.organizations o ON o.id = cp.organization_id
+    JOIN organization_summaries o ON o.id = cp.organization_id
     UNION ALL
     SELECT
       cp.organization_id,
@@ -193,6 +283,63 @@ function currentSourcesOf(projects: Prisma.Sql) {
       )::text)
     FROM chosen_projects cp
     JOIN project_feeds pf ON pf.project_id = cp.id
+    UNION ALL
+    SELECT
+      cp.organization_id,
+      cp.id,
+      'organization',
+      o.id,
+      md5(json_build_array(o.name, o.archived, o.project_count, o.member_counts)::text)
+    FROM chosen_projects cp
+    JOIN organization_summaries o ON o.id = cp.organization_id
+    UNION ALL
+    SELECT
+      b.organization_id,
+      b.project_id,
+      'workbook',
+      b.id,
+      md5(json_build_array(
+        b.name, b.archived_at IS NOT NULL, ${workbookWorksheets()}
+      )::text)
+    FROM chosen_workbooks b
+    UNION ALL
+    SELECT
+      w.organization_id,
+      w.project_id,
+      'worksheet',
+      w.id,
+      md5(json_build_array(
+        w.name, w.mode, w.workbook_name,
+        (w.archived_at IS NOT NULL OR w.workbook_archived_at IS NOT NULL),
+        w.head_revision_id
+      )::text)
+    FROM chosen_worksheets w
+    WHERE w.head_revision_id IS NOT NULL
+    UNION ALL
+    SELECT
+      w.organization_id,
+      w.project_id,
+      'changeset',
+      c.id,
+      md5(json_build_array(
+        w.name, c.title, c.status, c.draft_version, c.base_sequence, d.id
+      )::text)
+    FROM chosen_worksheets w
+    JOIN estadistica_forms.worksheet_changesets c
+      ON c.organization_id = w.organization_id
+      AND c.project_id = w.project_id
+      AND c.worksheet_id = w.id
+    LEFT JOIN LATERAL (${currentChangesetDecision()}) d ON true
+    WHERE ${OPEN_CHANGESETS}
+    UNION ALL
+    SELECT
+      w.organization_id,
+      w.project_id,
+      'worksheet_import',
+      i.id,
+      md5(json_build_array(w.name, i.id)::text)
+    FROM chosen_worksheets w
+    JOIN LATERAL (${latestWorksheetImport()}) i ON true
     ORDER BY 2, 3, 4`;
 }
 
@@ -206,9 +353,8 @@ const SYNCED_COLUMNS = Prisma.sql`
 `;
 
 /**
- * Lecturas del conocimiento (plan E6, D14). Lee las tablas de proyectos,
- * catálogo, evaluaciones, reglas y feeds con su propio SQL, como `exports` lee
- * las de evaluaciones: ninguno de esos módulos depende de este.
+ * Lecturas del conocimiento (plan E6, D14). Lee el estado compartido de los
+ * proyectos con su propio SQL, como `exports` lee las evaluaciones.
  */
 @Injectable()
 export class KnowledgeRepository {
@@ -278,7 +424,14 @@ export class KnowledgeRepository {
         AND source_id = ${key.sourceId}`;
   }
 
-  /** Olvidar un proyecto: la pasada siguiente lo manda entero (reindexar). */
+  async requestReindex(projectId: string): Promise<void> {
+    await this.prisma.$executeRaw`
+      UPDATE estadistica_forms.knowledge_sync_state
+      SET synced_at = ${REINDEX_PENDING}
+      WHERE project_id = ${projectId}`;
+  }
+
+  /** Solo tras retirar todo el proyecto del índice. */
   async forgetProject(projectId: string): Promise<void> {
     await this.prisma.$executeRaw`
       DELETE FROM estadistica_forms.knowledge_sync_state
@@ -456,6 +609,239 @@ export class KnowledgeRepository {
       WHERE f.project_id = ${projectId}`;
     return rows[0] ?? null;
   }
+
+  async findOrganizationFacts(
+    scope: SourceKey,
+  ): Promise<OrganizationFacts | null> {
+    const rows = await this.prisma.$queryRaw<OrganizationFacts[]>`
+      SELECT
+        o.name,
+        o.archived_at IS NOT NULL AS archived,
+        ${organizationProjectCount()} AS "projectCount",
+        ${organizationMemberCounts()} AS "memberCounts"
+      FROM estadistica_forms.organizations o
+      JOIN estadistica_forms.projects p ON p.organization_id = o.id
+      WHERE o.id = ${scope.sourceId}
+        AND o.id = ${scope.organizationId}
+        AND p.id = ${scope.projectId}`;
+    return rows[0] ?? null;
+  }
+
+  async findWorkbookFacts(scope: SourceKey): Promise<WorkbookFacts | null> {
+    const rows = await this.prisma.$queryRaw<WorkbookFacts[]>`
+      SELECT
+        b.name,
+        b.archived_at IS NOT NULL AS archived,
+        ${workbookWorksheets()} AS worksheets
+      FROM estadistica_forms.workbooks b
+      WHERE b.id = ${scope.sourceId}
+        AND b.organization_id = ${scope.organizationId}
+        AND b.project_id = ${scope.projectId}`;
+    return rows[0] ?? null;
+  }
+
+  async findWorksheetFacts(scope: SourceKey): Promise<WorksheetFacts | null> {
+    const rows = await this.prisma.$queryRaw<WorksheetFacts[]>`
+      SELECT
+        w.name,
+        w.mode,
+        b.name AS "workbookName",
+        w.archived_at IS NOT NULL OR b.archived_at IS NOT NULL AS archived,
+        r.id AS "revisionId",
+        r.sequence,
+        r.schema_version AS "schemaVersion",
+        r.row_count AS "rowCount"
+      FROM estadistica_forms.worksheets w
+      JOIN estadistica_forms.workbooks b
+        ON b.organization_id = w.organization_id
+        AND b.project_id = w.project_id
+        AND b.id = w.workbook_id
+      JOIN estadistica_forms.worksheet_revisions r
+        ON r.organization_id = w.organization_id
+        AND r.worksheet_id = w.id
+        AND r.id = w.head_revision_id
+      WHERE w.id = ${scope.sourceId}
+        AND w.organization_id = ${scope.organizationId}
+        AND w.project_id = ${scope.projectId}`;
+    return rows[0] ?? null;
+  }
+
+  findWorksheetColumns(
+    scope: SourceKey,
+    schemaVersion: number,
+  ): Promise<WorksheetColumn[]> {
+    return findColumnsIn(this.prisma, scope, scope.sourceId, schemaVersion);
+  }
+
+  /**
+   * Fija la secuencia antes de paginar. Las filas de esa revisión siguen
+   * siendo las mismas aunque alguien aplique un borrador durante la lectura.
+   */
+  async *worksheetRowsAt(
+    scope: SourceKey,
+    sequence: number,
+  ): AsyncGenerator<StoredRow> {
+    const { rowsPerWorksheet } = WORKSHEET_LIMITS;
+    let remaining = rowsPerWorksheet;
+    let cursor: WorksheetPageRow | undefined;
+    while (remaining > 0) {
+      const limit = Math.min(WORKSHEET_KNOWLEDGE_PAGE_SIZE, remaining);
+      const after = cursor
+        ? Prisma.sql`AND (r.sort_key, r.row_id) > (${cursor.sortKey}, ${cursor.rowId})`
+        : Prisma.empty;
+      const rows = await this.prisma.$queryRaw<WorksheetPageRow[]>`
+        SELECT
+          r.row_id AS "rowId",
+          r.cell_values AS "cellValues",
+          r.sort_key AS "sortKey"
+        FROM estadistica_forms.worksheet_row_versions r
+        JOIN estadistica_forms.worksheets w
+          ON w.organization_id = r.organization_id AND w.id = r.worksheet_id
+        WHERE r.worksheet_id = ${scope.sourceId}
+          AND r.organization_id = ${scope.organizationId}
+          AND w.project_id = ${scope.projectId}
+          AND r.from_sequence <= ${sequence}
+          AND (r.to_sequence IS NULL OR r.to_sequence > ${sequence})
+          AND NOT r.is_deleted
+          ${after}
+        ORDER BY ${orderSql([])}
+        LIMIT ${limit}`;
+      yield* rows;
+      if (rows.length < limit) {
+        return;
+      }
+      cursor = rows.at(-1);
+      remaining -= rows.length;
+    }
+  }
+
+  async findChangesetFacts(scope: SourceKey): Promise<ChangesetFacts | null> {
+    const rows = await this.prisma.$queryRaw<ChangesetFacts[]>`
+      SELECT
+        c.title,
+        w.id AS "worksheetId",
+        w.name AS "worksheetName",
+        c.status,
+        c.base_sequence AS "baseSequence",
+        (
+          SELECT coalesce(jsonb_object_agg(kind, total), '{}'::jsonb)
+          FROM (
+            SELECT operation->>'type' AS kind, count(*)::int AS total
+            FROM jsonb_array_elements(c.operations) AS operation
+            WHERE operation->>'type' IS NOT NULL
+            GROUP BY 1
+          ) counts
+        ) AS "operationCounts",
+        d.decision
+      FROM estadistica_forms.worksheet_changesets c
+      JOIN estadistica_forms.worksheets w
+        ON w.organization_id = c.organization_id
+        AND w.project_id = c.project_id
+        AND w.id = c.worksheet_id
+      LEFT JOIN LATERAL (${currentChangesetDecision()}) d ON true
+      WHERE c.id = ${scope.sourceId}
+        AND c.organization_id = ${scope.organizationId}
+        AND c.project_id = ${scope.projectId}
+        AND ${OPEN_CHANGESETS}`;
+    return rows[0] ?? null;
+  }
+
+  async findWorksheetImportFacts(
+    scope: SourceKey,
+  ): Promise<WorksheetImportFacts | null> {
+    const rows = await this.prisma.$queryRaw<WorksheetImportFacts[]>`
+      SELECT
+        w.id AS "worksheetId",
+        w.name AS "worksheetName",
+        i.format,
+        i.created_at AS "createdAt",
+        coalesce((i.report->>'rows')::int, 0) AS "rowCount",
+        coalesce((i.report->>'inserted')::int, 0) AS "insertedCount",
+        coalesce((i.report->>'updated')::int, 0) AS "updatedCount",
+        coalesce((i.report->>'unchanged')::int, 0) AS "unchangedCount",
+        jsonb_array_length(i.excluded_rows) AS "excludedCount",
+        coalesce((i.report->>'invalid')::int, 0) AS "invalidCount",
+        coalesce((i.report->>'newColumns')::int, 0) AS "newColumnCount",
+        (
+          SELECT coalesce(jsonb_object_agg(code, total), '{}'::jsonb)
+          FROM (
+            SELECT code, count(*)::int AS total
+            FROM jsonb_array_elements(i.excluded_rows) AS excluded
+            CROSS JOIN LATERAL jsonb_array_elements_text(excluded->'codes') AS code
+            WHERE code IS NOT NULL
+            GROUP BY code
+          ) counts
+        ) AS "problemCounts"
+      FROM estadistica_forms.worksheet_imports i
+      JOIN estadistica_forms.worksheets w
+        ON w.organization_id = i.organization_id
+        AND w.project_id = i.project_id
+        AND w.id = i.worksheet_id
+      WHERE i.id = ${scope.sourceId}
+        AND i.organization_id = ${scope.organizationId}
+        AND i.project_id = ${scope.projectId}
+        AND i.id = (${latestWorksheetImport()})`;
+    return rows[0] ?? null;
+  }
+}
+
+function organizationProjectCount() {
+  return Prisma.sql`(
+    SELECT count(*)::int
+    FROM estadistica_forms.projects p
+    WHERE p.organization_id = o.id
+  )`;
+}
+
+function organizationMemberCounts() {
+  return Prisma.sql`(
+    SELECT coalesce(jsonb_object_agg(role, total), '{}'::jsonb)
+    FROM (
+      SELECT m.role, count(*)::int AS total
+      FROM estadistica_forms.organization_members m
+      WHERE m.organization_id = o.id
+      GROUP BY m.role
+    ) counts
+  )`;
+}
+
+function workbookWorksheets() {
+  return Prisma.sql`(
+    SELECT coalesce(
+      jsonb_agg(
+        jsonb_build_object('name', w.name, 'archived', w.archived_at IS NOT NULL)
+        ORDER BY w.name, w.id
+      ),
+      '[]'::jsonb
+    )
+    FROM estadistica_forms.worksheets w
+    WHERE w.workbook_id = b.id
+      AND w.organization_id = b.organization_id
+      AND w.project_id = b.project_id
+  )`;
+}
+
+/** Tras reabrir un borrador, la decisión sobre la versión anterior queda invalidada. */
+function currentChangesetDecision() {
+  return Prisma.sql`
+    SELECT d.id, d.decision
+    FROM estadistica_forms.worksheet_changeset_decisions d
+    WHERE d.organization_id = c.organization_id
+      AND d.changeset_id = c.id
+      AND d.draft_version = c.draft_version
+    ORDER BY d.created_at DESC, d.id DESC
+    LIMIT 1`;
+}
+
+function latestWorksheetImport() {
+  return Prisma.sql`
+    SELECT i.id
+    FROM estadistica_forms.worksheet_imports i
+    WHERE i.organization_id = w.organization_id
+      AND i.project_id = w.project_id
+      AND i.worksheet_id = w.id
+    ORDER BY i.created_at DESC, i.id DESC
+    LIMIT 1`;
 }
 
 /** Fecha de la última evaluación terminada del último catálogo, si la hay. */

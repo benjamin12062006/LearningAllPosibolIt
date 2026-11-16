@@ -1,0 +1,37 @@
+# Pantalla «Feed»: estado, configuración, historial y qué cambiaría al publicar.
+query FeedScreen($projectId: ID!, $feedId: ID!) {
+  feed(projectId: $projectId, id: $feedId) {
+    id
+    generation
+    deliveryEnabled
+    publishedVersion { id exportId rowCount publishedBy publishedAt }
+    source { url idColumn delimiter }
+    policy { rulesetRevision maxInvalid maxExcluded maxDropPercent approvedAt }
+    schedule { enabled refreshTime timeZone }
+    lastRefresh { id status stage outcome scheduledFor createdAt finishedAt error { code message { es en } } }
+    delivery { delivering reason deliveryEnabled }
+    versions(limit: 10) {
+      items { id exportId rowCount publishedBy publishedAt current fileRetained }
+      page { limit offset hasMore }
+    }
+  }
+}
+
+query FeedComparisonScreen($projectId: ID!, $feedId: ID!, $exportId: ID!, $change: ProductChangeKind, $limit: Int!, $offset: Int!) {
+  feed(projectId: $projectId, id: $feedId) {
+    comparison(exportId: $exportId, change: $change, limit: $limit, offset: $offset) {
+      candidate { id evaluationId rowCount createdAt }
+      counts { added removed modified unchanged }
+      changedFields { field productCount }
+      changes { id change fields { field before after } }
+      page { limit offset hasMore }
+    }
+  }
+}
+
+mutation PublishFeed($projectId: ID!, $feedId: ID!, $input: PublishFeedInput!) {
+  publishFeed(projectId: $projectId, feedId: $feedId, input: $input) {
+    published
+    feed { id generation publishedVersion { id rowCount publishedAt } }
+  }
+}

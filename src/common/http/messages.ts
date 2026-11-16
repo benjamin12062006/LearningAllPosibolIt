@@ -951,4 +951,189 @@ export const API_MESSAGES = {
     'La hoja o su libro están archivados: se puede consultar, pero no cambiar. Restáurala primero.',
     'The worksheet or its workbook is archived: it can be read but not changed. Restore it first.',
   ),
+  [ErrorCodes.IMPORT_MAPPING_NOT_FOUND]: entry(
+    404,
+    'No se encontró la plantilla de mapeo de esta hoja.',
+    'The import mapping template for this worksheet was not found.',
+  ),
+  [ErrorCodes.IMPORT_MAPPING_NAME_TAKEN]: entry(
+    409,
+    'Ya hay una plantilla de mapeo con ese nombre en la hoja.',
+    'There is already an import mapping template with that name in the worksheet.',
+  ),
+  [ErrorCodes.SAVED_VIEW_NOT_FOUND]: entry(
+    404,
+    'No se encontró la vista guardada de esta hoja.',
+    'The saved view for this worksheet was not found.',
+  ),
+  [ErrorCodes.SAVED_VIEW_NAME_TAKEN]: entry(
+    409,
+    'Ya tienes una vista con ese nombre en la hoja.',
+    'You already have a view with that name in the worksheet.',
+  ),
+  [ErrorCodes.CATALOG_SNAPSHOT_NOT_READY]: entry(
+    409,
+    'El catálogo todavía no terminó de importarse o falló: no se puede abrir como hoja.',
+    'The catalog has not finished importing or it failed: it cannot be opened as a worksheet.',
+  ),
+  [ErrorCodes.GRAPHQL_QUERY_TOO_COSTLY]: entry(
+    400,
+    'La consulta pide demasiado de una vez: reduce los límites o divídela.',
+    'The query asks for too much at once: lower the limits or split it.',
+  ),
+  [ErrorCodes.CONVERSATION_NOT_FOUND]: entry(
+    404,
+    'No se encontró la conversación.',
+    'The conversation was not found.',
+  ),
+  [ErrorCodes.CONVERSATION_CURSOR_INVALID]: entry(
+    400,
+    'El cursor no corresponde a esta consulta de conversación.',
+    'The cursor does not belong to this conversation query.',
+  ),
+  [ErrorCodes.AI_SHEET_SELECTION_NOT_FOUND]: entry(
+    404,
+    'No se encontró la selección de esta hoja.',
+    'The selection was not found for this worksheet.',
+  ),
+  [ErrorCodes.AI_SHEET_SELECTION_EXPIRED]: entry(
+    409,
+    'La selección caducó. Selecciona las filas de nuevo.',
+    'The selection expired. Select the rows again.',
+  ),
+  [ErrorCodes.AI_SHEET_SELECTION_ROW_NOT_FOUND]: entry(
+    404,
+    'No se encontró una fila de la selección en esta revisión.',
+    'A selected row was not found in this revision.',
+  ),
+  [ErrorCodes.AI_SHEET_SELECTION_COLUMN_NOT_FOUND]: entry(
+    404,
+    'No se encontró una columna entre las admitidas para la selección.',
+    'A column was not found among those allowed for the selection.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_NOT_FOUND]: entry(
+    404,
+    'No se encontró la vista previa de esta hoja.',
+    'The transform preview was not found for this worksheet.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_EXPIRED]: entry(
+    409,
+    'La vista previa caducó. Calcula una nueva.',
+    'The transform preview expired. Calculate a new one.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_STALE]: entry(
+    409,
+    'La revisión de la hoja cambió. Calcula una nueva vista previa.',
+    'The worksheet revision changed. Calculate a new transform preview.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_ALREADY_USED]: entry(
+    409,
+    'La vista previa ya produjo un borrador.',
+    'The transform preview already produced a draft.',
+  ),
+  [ErrorCodes.AI_SHEET_TRANSFORM_LIMIT]: entry(
+    422,
+    'La transformación supera los límites de la hoja. Reduce la selección.',
+    'The transform exceeds the worksheet limits. Reduce the selection.',
+  ),
+  [ErrorCodes.AI_SHEET_PREVIEW_INVALID]: entry(
+    422,
+    'La vista previa debe contener cambios válidos para crear un borrador.',
+    'The transform preview must contain valid changes to create a draft.',
+  ),
+  [ErrorCodes.AGENT_UNAVAILABLE]: entry(
+    503,
+    'El asistente no está disponible ahora. Inténtalo más tarde.',
+    'The assistant is not available right now. Try again later.',
+  ),
+  [ErrorCodes.AGENT_RUN_NOT_FOUND]: entry(
+    404,
+    'No se encontró la ejecución del asistente.',
+    'The assistant run was not found.',
+  ),
+  [ErrorCodes.AGENT_RUN_ACTIVE]: entry(
+    409,
+    'El asistente ya está respondiendo en esta conversación.',
+    'The assistant is already answering in this conversation.',
+  ),
+  [ErrorCodes.AGENT_RUN_CONTEXT_CHANGED]: entry(
+    409,
+    'Ese mensaje ya se envió al asistente con otro contexto.',
+    'That message was already sent to the assistant with a different context.',
+  ),
+  [ErrorCodes.AGENT_MESSAGE_NOT_FOUND]: entry(
+    404,
+    'No se encontró ese mensaje en la conversación.',
+    'That message was not found in the conversation.',
+  ),
+  [ErrorCodes.AGENT_CREDENTIAL_INVALID]: entry(
+    401,
+    'La credencial de la ejecución no es válida o ya caducó.',
+    'The run credential is not valid or has expired.',
+  ),
+  [ErrorCodes.AGENT_OPERATION_NOT_FOUND]: entry(
+    404,
+    'Esa operación no está disponible para el asistente.',
+    'That operation is not available to the assistant.',
+  ),
+  [ErrorCodes.AGENT_OPERATION_MODE_INVALID]: entry(
+    400,
+    'La operación no admite ese modo: las lecturas se ejecutan y las escrituras se preparan.',
+    'The operation does not accept that mode: reads are executed and writes are prepared.',
+  ),
+  [ErrorCodes.AGENT_RUN_CALL_LIMIT]: entry(
+    409,
+    'La ejecución alcanzó el límite de llamadas a operaciones.',
+    'The run reached its operation call limit.',
+  ),
+  [ErrorCodes.AGENT_PROPOSAL_EXISTS]: entry(
+    409,
+    'Esta ejecución ya preparó una propuesta.',
+    'This run already prepared a proposal.',
+  ),
+  [ErrorCodes.AGENT_PROPOSAL_NOT_FOUND]: entry(
+    404,
+    'No se encontró la propuesta.',
+    'The proposal was not found.',
+  ),
+  [ErrorCodes.AGENT_PROPOSAL_STALE]: entry(
+    409,
+    'La propuesta cambió desde que la viste. Revísala de nuevo.',
+    'The proposal changed since you saw it. Review it again.',
+  ),
+  [ErrorCodes.AGENT_PROPOSAL_DECIDED]: entry(
+    409,
+    'La propuesta ya se confirmó o se rechazó.',
+    'The proposal was already confirmed or rejected.',
+  ),
+  [ErrorCodes.AGENT_PROPOSAL_EXPIRED]: entry(
+    409,
+    'La propuesta caducó. Pide al asistente que la prepare de nuevo.',
+    'The proposal expired. Ask the assistant to prepare it again.',
+  ),
+  [ErrorCodes.AGENT_PROPOSAL_IN_PROGRESS]: entry(
+    409,
+    'La propuesta se está confirmando. Espera un momento.',
+    'The proposal is being confirmed. Wait a moment.',
+  ),
+  [ErrorCodes.AGENT_RUN_FAILED]: entry(
+    502,
+    'El asistente no pudo terminar la respuesta.',
+    'The assistant could not finish its answer.',
+  ),
+  [ErrorCodes.AGENT_RESULT_TOO_LARGE]: entry(
+    422,
+    'El resultado es demasiado grande para el asistente. Pide menos filas o columnas.',
+    'The result is too large for the assistant. Ask for fewer rows or columns.',
+  ),
+  [ErrorCodes.AGENT_QUOTA_EXCEEDED]: entry(
+    429,
+    'Alcanzaste el límite de respuestas del asistente. Espera a que terminen las que tienes en curso o inténtalo más tarde.',
+    'You reached the assistant limit. Wait for the running answers to finish or try again later.',
+  ),
+  [ErrorCodes.AGENT_RUN_FINISHED]: entry(
+    409,
+    'La ejecución ya terminó: no se puede cancelar.',
+    'The run already finished: it cannot be cancelled.',
+  ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

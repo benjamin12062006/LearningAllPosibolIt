@@ -1,0 +1,36 @@
+# Pantalla «Revisar un borrador»: el borrador con su diff, y decidir y aplicar (Manager).
+query ChangesetReviewScreen($organizationId: ID!, $projectId: ID!, $changesetId: ID!) {
+  changeset(organizationId: $organizationId, projectId: $projectId, id: $changesetId) {
+    id
+    title
+    status
+    source
+    draftVersion
+    contentHash
+    baseRevisionId
+    operations
+    diff {
+      headRevisionId
+      contentHash
+      entries
+      counts
+      resultingRowCount
+      problems { rowId columnId code }
+      columnConversions
+    }
+  }
+}
+
+mutation DecideChangeset($organizationId: ID!, $projectId: ID!, $changesetId: ID!, $input: DecisionInput!) {
+  decideChangeset(organizationId: $organizationId, projectId: $projectId, id: $changesetId, input: $input) {
+    decision { decision policy createdAt }
+    changeset { id status }
+  }
+}
+
+mutation ApplyChangeset($organizationId: ID!, $projectId: ID!, $changesetId: ID!, $input: ApplyChangesetInput!) {
+  applyChangeset(organizationId: $organizationId, projectId: $projectId, id: $changesetId, input: $input) {
+    revisionId
+    sequence
+  }
+}

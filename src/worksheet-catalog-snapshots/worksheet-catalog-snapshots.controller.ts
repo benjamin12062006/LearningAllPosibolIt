@@ -14,7 +14,11 @@ import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DescopeSessionGuard } from '../auth/descope-session.guard.js';
 import type { RequestWithId } from '../common/http/request-id.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
-import { CreateWorksheetCatalogSnapshotDto } from './worksheet-catalog-snapshots.dto.js';
+import { CatalogWorksheetService } from './catalog-worksheet.service.js';
+import {
+  CreateWorksheetCatalogSnapshotDto,
+  OpenCatalogAsWorksheetDto,
+} from './worksheet-catalog-snapshots.dto.js';
 import { WorksheetCatalogSnapshotsService } from './worksheet-catalog-snapshots.service.js';
 
 /**
@@ -25,7 +29,31 @@ import { WorksheetCatalogSnapshotsService } from './worksheet-catalog-snapshots.
 @Controller('organizations/:organizationId/projects/:projectId')
 @UseGuards(DescopeSessionGuard)
 export class WorksheetCatalogSnapshotsController {
-  constructor(private readonly snapshots: WorksheetCatalogSnapshotsService) {}
+  constructor(
+    private readonly snapshots: WorksheetCatalogSnapshotsService,
+    private readonly catalogWorksheets: CatalogWorksheetService,
+  ) {}
+
+  /**
+   * El camino contrario (H5): una hoja nueva con las cabeceras y las filas de
+   * un catálogo terminado. `201 { worksheet, capabilities }`, como al crearla.
+   */
+  @Post('workbooks/:workbookId/worksheets/from-catalog')
+  openCatalog(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('workbookId', uuidParamPipe('workbookId')) workbookId: string,
+    @Body() body: OpenCatalogAsWorksheetDto,
+  ) {
+    return this.catalogWorksheets.open(
+      identity,
+      { organizationId, projectId },
+      workbookId,
+      body,
+    );
+  }
 
   /** 202, como una importación: el worker de catálogo termina el snapshot. */
   @Post('worksheets/:worksheetId/catalog-snapshots')

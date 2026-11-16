@@ -1,0 +1,24 @@
+# Pantalla «Proyecto»: la portada con todo lo que tiene el proyecto.
+query ProjectScreen($projectId: ID!) {
+  project(id: $projectId) {
+    id
+    name
+    country
+    currency
+    channelProfile
+    configurationStatus
+    access { organizationId role permissions }
+    imports(limit: 10) {
+      items { id status rowCount originalName createdAt error { code message { es en } } job { status processedRows } }
+      page { limit offset hasMore }
+    }
+    rulesets(limit: 5) { items { revision createdAt } page { hasMore } }
+    evaluations(limit: 10) {
+      items { id status rulesetRevision counts { total valid invalid excluded } createdAt finishedAt }
+      page { limit offset hasMore }
+    }
+    feeds { id generation deliveryEnabled publishedVersion { id rowCount publishedAt } lastRefresh { status outcome createdAt } }
+    knowledge { enabled sources { sourceType pending syncedAt } }
+    workbooks(limit: 20) { items { id name archivedAt } page { hasMore } }
+  }
+}

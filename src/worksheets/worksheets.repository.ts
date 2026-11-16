@@ -22,7 +22,9 @@ import type {
   ProjectScope,
   Workbook,
   Worksheet,
+  RevisionSource,
   WorksheetColumn,
+  WorksheetRevisionEntry,
   WorksheetSummary,
 } from './worksheets.types.js';
 
@@ -45,6 +47,7 @@ type WorksheetRow = Readonly<{
   workbookArchivedAt: string | null;
   sourceWorksheetId: string | null;
   sourceRevisionId: string | null;
+  sourceCatalogSnapshotId: string | null;
   headRevisionId: string;
   headSequence: number;
   headRowCount: number;
@@ -72,6 +75,7 @@ const WORKSHEET_COLUMNS = Prisma.sql`
   b.archived_at AS "workbookArchivedAt",
   w.source_worksheet_id AS "sourceWorksheetId",
   w.source_revision_id AS "sourceRevisionId",
+  w.source_catalog_snapshot_id AS "sourceCatalogSnapshotId",
   r.id AS "headRevisionId",
   r.sequence AS "headSequence",
   r.row_count AS "headRowCount",
@@ -192,6 +196,50 @@ export class WorksheetsRepository {
     worksheetId: string,
   ): Promise<Worksheet | null> {
     return findWorksheetIn(this.prisma, actorId, scope, worksheetId);
+  }
+
+  async worksheetExists(
+    actorId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+  ): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT w.id
+      FROM estadistica_forms.worksheets w
+      WHERE w.id = ${worksheetId}
+        AND w.organization_id = ${scope.organizationId}
+        AND w.project_id = ${scope.projectId}
+        AND ${isMember(actorId, Prisma.sql`w.organization_id`)}
+    `);
+    return rows.length > 0;
+  }
+
+  /** Historial de la hoja (H2): de la revisión más nueva a la más antigua. */
+  findRevisions(
+    actorId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    page: PageRequest,
+  ): Promise<WorksheetRevisionEntry[]> {
+    return this.prisma.$queryRaw<WorksheetRevisionEntry[]>(Prisma.sql`
+      SELECT
+        r.id,
+        r.sequence,
+        r.schema_version AS "schemaVersion",
+        r.source,
+        r.row_count AS "rowCount",
+        r.changeset_id AS "changesetId",
+        r.created_by AS "createdBy",
+        r.created_at AS "createdAt"
+      FROM estadistica_forms.worksheet_revisions r
+      JOIN estadistica_forms.worksheets w ON w.id = r.worksheet_id
+      WHERE r.worksheet_id = ${worksheetId}
+        AND w.organization_id = ${scope.organizationId}
+        AND w.project_id = ${scope.projectId}
+        AND ${isMember(actorId, Prisma.sql`w.organization_id`)}
+      ORDER BY r.sequence DESC
+      LIMIT ${page.limit} OFFSET ${page.offset}
+    `);
   }
 
   // ── Escrituras ──
@@ -342,6 +390,65 @@ export class WorksheetsRepository {
           actorId,
           scope,
           worksheet.worksheetId,
+        ),
+        access,
+      };
+    });
+  }
+
+  /**
+   * Una hoja que nace con filas (plan 02 de cierre, H5): hoja, columnas, una
+   * revisión 1 que ya las tiene y las filas, en una transacción, como al
+   * crearla vacía. Las filas llegan con los IDs de columna de `worksheet`.
+   */
+  async createFilledWorksheet(
+    actorId: string,
+    scope: ProjectScope,
+    workbookId: string,
+    worksheet: NewWorksheet,
+    input: Readonly<{ rows: readonly NewRow[]; catalogSnapshotId: string }>,
+  ): Promise<{ worksheet: Worksheet; access: ProjectAccess }> {
+    const now = new Date().toISOString();
+    const filled = withRowCount(worksheet, input.rows.length);
+
+    return this.prisma.$transaction(async (tx) => {
+      const access = await lockProjectFor(
+        tx,
+        actorId,
+        scope,
+        'worksheet.write',
+      );
+      assertWorkbookActive(await requireWorkbook(tx, scope, workbookId));
+      if (
+        await worksheetNameTaken(tx, workbookId, filled.nameNormalized, null)
+      ) {
+        throw apiError(ErrorCodes.WORKSHEET_NAME_TAKEN);
+      }
+
+      const insert = { actorId, scope, worksheet: filled, now };
+      await insertWorksheet(tx, {
+        ...insert,
+        workbookId,
+        catalogSnapshotId: input.catalogSnapshotId,
+      });
+      await insertColumns(tx, scope, filled);
+      await insertInitialRevision(tx, { ...insert, source: 'catalog' });
+      await insertRows(tx, scope, filled, input.rows);
+      await pointHeadToInitialRevision(tx, filled);
+      await auditWorksheet(
+        tx,
+        scope,
+        actorId,
+        filled.worksheetId,
+        'worksheet.opened_from_catalog',
+        { catalogSnapshotId: input.catalogSnapshotId },
+      );
+      return {
+        worksheet: await requireWorksheet(
+          tx,
+          actorId,
+          scope,
+          filled.worksheetId,
         ),
         access,
       };
@@ -694,7 +801,34 @@ async function requireCopySource(
   return rows[0];
 }
 
-/** La copia nace con las filas del origen: su primera revisión no está vacía. */
+/** Todas las filas de una hoja nueva en una sentencia: como mucho 5.000. */
+async function insertRows(
+  tx: Prisma.TransactionClient,
+  scope: ProjectScope,
+  worksheet: NewWorksheet,
+  rows: readonly NewRow[],
+) {
+  if (rows.length === 0) {
+    return;
+  }
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO estadistica_forms.worksheet_row_versions
+      (organization_id, worksheet_id, row_id, from_sequence, to_sequence,
+       sort_key, cell_values, is_deleted)
+    SELECT
+      ${scope.organizationId},
+      ${worksheet.worksheetId},
+      gen_random_uuid()::text,
+      ${worksheet.initialRevision.sequence},
+      NULL,
+      row ->> 'sortKey',
+      row -> 'values',
+      false
+    FROM jsonb_array_elements(${JSON.stringify(rows)}::jsonb) AS row
+  `);
+}
+
+/** La hoja nace con filas: su primera revisión no está vacía. */
 function withRowCount(worksheet: NewWorksheet, rowCount: number): NewWorksheet {
   return {
     ...worksheet,
@@ -806,6 +940,12 @@ type WorksheetInsert = Readonly<{
   now: string;
 }>;
 
+/** Una fila de una hoja nueva: su posición y sus celdas por ID de columna. */
+export type NewRow = Readonly<{
+  sortKey: string;
+  values: Readonly<Record<string, unknown>>;
+}>;
+
 /** La revisión de la que sale una copia, con lo necesario para leer sus filas. */
 type CopySource = Readonly<{
   worksheetId: string;
@@ -819,14 +959,18 @@ type CopySource = Readonly<{
 async function insertWorksheet(
   tx: Prisma.TransactionClient,
   input: WorksheetInsert &
-    Readonly<{ workbookId: string; copiedFrom?: CopySource }>,
+    Readonly<{
+      workbookId: string;
+      copiedFrom?: CopySource;
+      catalogSnapshotId?: string;
+    }>,
 ) {
   const { worksheet, scope } = input;
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO estadistica_forms.worksheets
       (id, organization_id, project_id, workbook_id, name, name_normalized,
        mode, schema_version, generation, head_revision_id, created_by, created_at,
-       source_worksheet_id, source_revision_id)
+       source_worksheet_id, source_revision_id, source_catalog_snapshot_id)
     VALUES (
       ${worksheet.worksheetId},
       ${scope.organizationId},
@@ -841,7 +985,8 @@ async function insertWorksheet(
       ${input.actorId},
       ${input.now},
       ${input.copiedFrom?.worksheetId ?? null},
-      ${input.copiedFrom?.revisionId ?? null}
+      ${input.copiedFrom?.revisionId ?? null},
+      ${input.catalogSnapshotId ?? null}
     )
   `);
 }
@@ -883,7 +1028,7 @@ function jsonOrNull(value: unknown) {
 
 async function insertInitialRevision(
   tx: Prisma.TransactionClient,
-  input: WorksheetInsert & Readonly<{ source?: 'initialize' | 'duplicate' }>,
+  input: WorksheetInsert & Readonly<{ source?: RevisionSource }>,
 ) {
   const { worksheet, scope } = input;
   const revision = worksheet.initialRevision;
@@ -995,6 +1140,10 @@ function toSummary(row: WorksheetRow): WorksheetSummary {
     archivedAt: row.archivedAt,
     workbookArchivedAt: row.workbookArchivedAt,
     duplicatedFrom: duplicatedFromOf(row),
+    openedFromCatalog:
+      row.sourceCatalogSnapshotId === null
+        ? null
+        : { snapshotId: row.sourceCatalogSnapshotId },
   };
 }
 

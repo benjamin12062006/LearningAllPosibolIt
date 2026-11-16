@@ -1,20 +1,22 @@
 import type { Operation } from './changeset-operations.js';
 
 /** Estados de [13]; `applied` y `cancelled` son finales. */
-export type ChangesetStatus =
-  | 'draft'
-  | 'pending_review'
-  | 'approved'
-  | 'rejected'
-  | 'conflicted'
-  | 'applied'
-  | 'cancelled';
+export const CHANGESET_STATUSES = [
+  'draft',
+  'pending_review',
+  'approved',
+  'rejected',
+  'conflicted',
+  'applied',
+  'cancelled',
+] as const;
+export type ChangesetStatus = (typeof CHANGESET_STATUSES)[number];
 
 export type Changeset = Readonly<{
   id: string;
   worksheetId: string;
   authorId: string;
-  source: 'manual' | 'revert' | 'import';
+  source: 'manual' | 'revert' | 'import' | 'ai';
   title: string;
   status: ChangesetStatus;
   /** ETag del borrador: cambia con cada guardado o reapertura (D3, D7). */
@@ -29,6 +31,13 @@ export type Changeset = Readonly<{
   createdAt: string;
   updatedAt: string;
 }>;
+
+/**
+ * Un borrador en el historial de la hoja (H2): sin las operaciones, que pueden
+ * ser mil; se leen al abrirlo.
+ */
+export type ChangesetSummary = Omit<Changeset, 'operations'> &
+  Readonly<{ operationCount: number }>;
 
 export type RevisionPointer = Readonly<{
   id: string;

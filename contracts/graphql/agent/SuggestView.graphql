@@ -1,0 +1,8 @@
+# `suggest_view` (documento 15): guardar como vista personal lo que propone el agente.
+mutation SuggestView($organizationId: ID!, $projectId: ID!, $worksheetId: ID!, $input: SaveViewInput!) {
+  saveView(organizationId: $organizationId, projectId: $projectId, worksheetId: $worksheetId, input: $input) {
+    id
+    name
+    visibility
+  }
+}

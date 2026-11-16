@@ -1,0 +1,4 @@
+# Quién actúa: la persona de la sesión.
+query Me {
+  me { id displayName }
+}

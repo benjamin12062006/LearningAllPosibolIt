@@ -1,0 +1,41 @@
+# Pantalla «Evaluación»: estado, «Requiere atención» y las filas de un grupo.
+query EvaluationScreen(
+  $projectId: ID!
+  $evaluationId: ID!
+  $outcome: String
+  $attribute: String
+  $code: String
+  $rule: Int
+  $limit: Int
+  $offset: Int
+) {
+  evaluation(projectId: $projectId, id: $evaluationId) {
+    id
+    snapshotId
+    rulesetRevision
+    status
+    counts { total valid invalid excluded }
+    resultChecksum
+    createdAt
+    finishedAt
+    error { code message { es en } }
+    attention {
+      affectedProducts
+      excludedProducts
+      problemGroups { attribute code productCount problem { es en } suggestion { es en } }
+      exclusionGroups { rulePosition rule productCount }
+    }
+    rows(outcome: $outcome, attribute: $attribute, code: $code, rule: $rule, limit: $limit, offset: $offset) {
+      items { sourceRow externalId outcome values excludedByRule problems { attribute code problem { es en } } }
+      page { limit offset hasMore }
+    }
+  }
+}
+
+mutation ApproveExport($projectId: ID!, $input: ApproveExportInput!) {
+  approveExport(projectId: $projectId, input: $input) {
+    created
+    downloadUrl
+    export { id rowCount createdAt }
+  }
+}

@@ -1,9 +1,96 @@
+type AgentProposal {
+  createdAt: String!
+  decidedAt: String
+  expiresAt: String!
+  hash: String!
+  id: ID!
+  operation: String!
+  result: JSON
+  status: String!
+  summary: String!
+  target: JSON
+}
+
+input AgentProposalDecisionInput {
+  proposalHash: String!
+}
+
+type AgentRun {
+  answer: String
+  answerMessageId: ID
+  context: AgentRunContext!
+  conversationId: ID!
+  createdAt: String!
+  error: ApiError
+  finishedAt: String
+  id: ID!
+  outcome: String
+  proposal: AgentProposal
+  startedAt: String
+  status: String!
+  userMessageId: ID!
+}
+
+type AgentRunContext {
+  revisionId: ID
+  selectionId: ID
+  workbookId: ID!
+  worksheetId: ID
+}
+
+input AgentRunContextInput {
+  revisionId: ID
+  selectionId: ID
+}
+
 type ApiError {
   code: String!
   field: String
   message: LocalizedMessage!
   requestId: String
   sourceRow: Int
+}
+
+input AppendConversationMessageInput {
+  clientMessageId: ID!
+  content: String!
+}
+
+type AppliedChangeset {
+  changesetId: ID!
+  revisionId: ID!
+  sequence: Int!
+}
+
+input ApplyChangesetInput {
+  contentHash: String!
+  expectedHeadRevisionId: ID!
+  idempotencyKey: String!
+}
+
+input ApproveExportInput {
+  acceptedExcludedCount: Int!
+  acceptedInvalidCount: Int!
+  evaluationId: ID!
+  resultChecksum: String!
+}
+
+type AttributeMapping {
+  attribute: String!
+  column: String!
+}
+
+input AttributeMappingInput {
+  attribute: String!
+  column: String!
+}
+
+input BuildTitleRuleInput {
+  template: String!
+}
+
+type CatalogOrigin {
+  snapshotId: ID!
 }
 
 type ChangeCounts {
@@ -13,18 +100,179 @@ type ChangeCounts {
   unchanged: Int!
 }
 
+type ChangedAttribute {
+  attribute: String!
+  productCount: Int!
+}
+
 type ChangedField {
   field: String!
   productCount: Int!
+}
+
+type Changeset {
+  appliedRevisionId: ID
+  authorId: ID!
+  baseRevisionId: ID!
+  baseSchemaVersion: Int!
+  baseSequence: Int!
+  contentHash: String
+  createdAt: String!
+  diff: ChangesetReview!
+  draftVersion: Int!
+  id: ID!
+  operations: [JSON!]!
+  source: String!
+  status: String!
+  title: String!
+  updatedAt: String!
+  worksheetId: ID!
+}
+
+type ChangesetDecision {
+  actorId: ID!
+  contentHash: String!
+  createdAt: String!
+  decision: String!
+  draftVersion: Int!
+  headRevisionId: ID!
+  id: ID!
+  policy: String!
+  reason: String
+}
+
+type ChangesetDecisionResult {
+  changeset: Changeset!
+  decision: ChangesetDecision!
+}
+
+type ChangesetListItem {
+  appliedRevisionId: ID
+  authorId: ID!
+  baseRevisionId: ID!
+  baseSchemaVersion: Int!
+  baseSequence: Int!
+  contentHash: String
+  createdAt: String!
+  draftVersion: Int!
+  id: ID!
+  operationCount: Int!
+  source: String!
+  status: String!
+  title: String!
+  updatedAt: String!
+  worksheetId: ID!
+}
+
+type ChangesetPage {
+  items: [ChangesetListItem!]!
+  page: PageInfo!
+}
+
+type ChangesetProblem {
+  code: String!
+  columnId: ID!
+  rowId: ID!
+}
+
+type ChangesetReview {
+  baseRevisionId: ID!
+  columnConversions: [JSON!]!
+  contentHash: String!
+  counts: JSON!
+  entries: [JSON!]!
+  headRevisionId: ID!
+  problems: [ChangesetProblem!]!
+  resultingRowCount: Int!
 }
 
 enum ChannelProfile {
   google_merchant
 }
 
+input CleanTextRuleInput {
+  attributes: [String!]!
+}
+
+input ColumnDefinitionInput {
+  formula: JSONObject
+  name: String!
+  options: [SelectionOptionInput!]
+  required: Boolean
+  type: String!
+}
+
 enum ConfigurationStatus {
   ready
   required
+}
+
+input ConflictResolutionInput {
+  choice: String!
+  columnId: ID
+  rowId: ID
+}
+
+type Conversation {
+  createdAt: String!
+  createdBy: ID!
+  id: ID!
+  messages(cursor: String, limit: Int): ConversationMessagePage!
+  organizationId: ID!
+  projectId: ID!
+  status: ConversationStatus!
+  title: String!
+  updatedAt: String!
+  visibility: ConversationVisibility!
+  workbookId: ID!
+  worksheetId: ID
+}
+
+type ConversationMessage {
+  authorId: ID
+  clientMessageId: ID
+  content: String!
+  conversationId: ID!
+  createdAt: String!
+  id: ID!
+  role: ConversationMessageRole!
+  sequence: Int!
+}
+
+type ConversationMessagePage {
+  items: [ConversationMessage!]!
+  nextCursor: String
+}
+
+enum ConversationMessageRole {
+  assistant
+  user
+}
+
+type ConversationPage {
+  items: [Conversation!]!
+  nextCursor: String
+}
+
+enum ConversationStatus {
+  active
+}
+
+enum ConversationVisibility {
+  private
+}
+
+input CreateChangesetInput {
+  title: String!
+}
+
+input CreateConversationInput {
+  title: String!
+}
+
+input CreateImportMappingInput {
+  mapping: JSONObject!
+  name: String!
 }
 
 input CreateProjectInput {
@@ -34,15 +282,64 @@ input CreateProjectInput {
   name: String!
 }
 
+input CreateWorkbookInput {
+  name: String!
+}
+
+input CreateWorksheetChangeProposalInput {
+  explanation: String!
+  idempotencyKey: String
+  previewId: ID!
+}
+
+input CreateWorksheetInput {
+  columns: [ColumnDefinitionInput!]!
+  name: String!
+}
+
+input CreateWorksheetSelectionInput {
+  columnIds: [ID!]!
+  revisionId: ID!
+  rows: JSONObject!
+}
+
+type CreatedFeed {
+  deliveryUrl: String!
+  feed: Feed!
+}
+
+input DecisionInput {
+  contentHash: String!
+  decision: String!
+  draftVersion: Int!
+  expectedHeadRevisionId: ID!
+  reason: String
+}
+
+input DraftVersionInput {
+  draftVersion: Int!
+}
+
+input DuplicateWorksheetInput {
+  name: String!
+  revisionId: ID
+  workbookId: ID
+}
+
 type Evaluation {
   attention: EvaluationAttention!
   counts: EvaluationCounts
   createdAt: String!
+  engineVersion: String!
+  error: ApiError
   finishedAt: String
   id: ID!
+  profileVersion: String!
   resultChecksum: String
+  rows(attribute: String, code: String, limit: Int, offset: Int, outcome: String, rule: Int): EvaluationRowPage!
   rulesetRevision: Int!
   snapshotId: ID!
+  startedAt: String
   status: String!
 }
 
@@ -60,10 +357,54 @@ type EvaluationCounts {
   valid: Int!
 }
 
+type EvaluationPage {
+  items: [Evaluation!]!
+  page: PageInfo!
+}
+
+type EvaluationRow {
+  excludedByRule: Int
+  externalId: String!
+  outcome: String!
+  problems: [Problem!]!
+  sourceRow: Int!
+  values: JSON
+}
+
+type EvaluationRowPage {
+  items: [EvaluationRow!]!
+  page: PageInfo!
+}
+
+input ExcludeWhenRuleInput {
+  attribute: String!
+  operator: String!
+  value: String
+}
+
 type ExclusionGroup {
   productCount: Int!
   rule: JSON
   rulePosition: Int!
+}
+
+type Export {
+  acceptedExcludedCount: Int!
+  acceptedInvalidCount: Int!
+  byteSize: Int!
+  createdAt: String!
+  evaluationId: ID!
+  id: ID!
+  product(id: String!): ProductDetail!
+  products(limit: Int, offset: Int, search: String): ProductPage!
+  rowCount: Int!
+  tsvChecksum: String!
+}
+
+type ExportApproval {
+  created: Boolean!
+  downloadUrl: String!
+  export: Export!
 }
 
 type ExportSummary {
@@ -73,6 +414,21 @@ type ExportSummary {
   rowCount: Int!
 }
 
+input ExportWorksheetInput {
+  columns: [ID!]
+  delimiter: String
+  filter: JSONObject
+  format: String!
+  formulas: String
+  revisionId: ID
+  sort: [SortTermInput!]
+}
+
+type ExportedWorksheet {
+  downloadUrl: String!
+  export: WorksheetExport!
+}
+
 type Feed {
   comparison(change: ProductChangeKind, exportId: ID!, limit: Int! = 20, offset: Int! = 0): FeedComparison!
   createdAt: String!
@@ -80,8 +436,13 @@ type Feed {
   deliveryEnabled: Boolean!
   generation: Int!
   id: ID!
+  lastRefresh: FeedLastRefresh
+  policy: FeedPolicy
   publishedVersion: FeedPublishedVersion
+  schedule: FeedSchedule
+  source: FeedSource
   updatedAt: String!
+  versions(limit: Int! = 20, offset: Int! = 0): FeedVersionPage!
 }
 
 type FeedComparison {
@@ -98,6 +459,39 @@ type FeedDelivery {
   reason: String
 }
 
+type FeedLastRefresh {
+  createdAt: String!
+  error: ApiError
+  finishedAt: String
+  id: ID!
+  outcome: String
+  scheduledFor: String
+  stage: String!
+  status: String!
+}
+
+type FeedPolicy {
+  approvedAt: String!
+  engineVersion: String!
+  maxDropPercent: Int!
+  maxExcluded: Int!
+  maxInvalid: Int!
+  profileVersion: String!
+  rulesetRevision: Int!
+}
+
+input FeedPolicyInput {
+  maxDropPercent: Int!
+  maxExcluded: Int!
+  maxInvalid: Int!
+  rulesetRevision: Int!
+}
+
+type FeedPublication {
+  feed: Feed!
+  published: Boolean!
+}
+
 type FeedPublishedVersion {
   byteSize: Int!
   evaluationId: ID
@@ -107,6 +501,67 @@ type FeedPublishedVersion {
   publishedBy: String!
   rowCount: Int!
   tsvChecksum: String!
+}
+
+type FeedRefresh {
+  attempts: Int!
+  createdAt: String!
+  error: ApiError
+  evaluationId: ID
+  feedId: ID!
+  finishedAt: String
+  id: ID!
+  outcome: String
+  runAfter: String!
+  scheduledFor: String
+  snapshotId: ID
+  stage: String!
+  status: String!
+}
+
+type FeedSchedule {
+  enabled: Boolean!
+  refreshTime: String!
+  timeZone: String!
+}
+
+input FeedScheduleInput {
+  enabled: Boolean!
+  refreshTime: String!
+  timeZone: String!
+}
+
+type FeedSource {
+  delimiter: String!
+  idColumn: String!
+  url: String!
+}
+
+input FeedSourceInput {
+  """`comma` por defecto."""
+  delimiter: String = "comma"
+  idColumn: String!
+  url: String!
+}
+
+type FeedVersion {
+  byteSize: Int!
+  current: Boolean!
+  evaluationId: ID
+  exportId: ID
+  fileRetained: Boolean!
+  id: ID!
+  product(id: String!): ProductDetail!
+  products(limit: Int, offset: Int, search: String): ProductPage!
+  publishedAt: String!
+  publishedBy: String!
+  rowCount: Int!
+  tsvChecksum: String!
+}
+
+type FeedVersionPage {
+  items: [FeedVersion!]!
+  page: PageInfo!
 }
 
 enum ImportDelimiter {
@@ -131,6 +586,31 @@ enum ImportJobStatus {
   queued
   running
   succeeded
+}
+
+type ImportJobSummary {
+  id: ID!
+  processedRows: Int!
+  status: ImportJobStatus!
+}
+
+type ImportMapping {
+  createdAt: String!
+  createdBy: ID!
+  id: ID!
+  mapping: JSON!
+  name: String!
+  worksheetId: ID!
+}
+
+type ImportMappingPage {
+  items: [ImportMapping!]!
+  page: PageInfo!
+}
+
+type ImportPage {
+  items: [ImportSummary!]!
+  page: PageInfo!
 }
 
 type ImportRow {
@@ -163,8 +643,42 @@ enum ImportSnapshotStatus {
   ready
 }
 
+type ImportSummary {
+  byteSize: Int!
+  createdAt: String!
+  delimiter: ImportDelimiter!
+  error: ApiError
+  finishedAt: String
+  id: ID!
+  idColumn: String!
+  job: ImportJobSummary
+  originalName: String!
+  projectId: ID!
+  rowCount: Int
+  status: ImportSnapshotStatus!
+}
+
 """Objeto JSON de solo lectura."""
 scalar JSON
+
+"""Objeto JSON de entrada; lo valida el servicio, como en REST."""
+scalar JSONObject
+
+type KnowledgeReindex {
+  status: String!
+}
+
+type KnowledgeSource {
+  pending: Boolean!
+  sourceId: ID!
+  sourceType: String!
+  syncedAt: String
+}
+
+type KnowledgeStatus {
+  enabled: Boolean!
+  sources: [KnowledgeSource!]!
+}
 
 type LocalizedMessage {
   en: String!
@@ -177,17 +691,97 @@ type LocalizedText {
 }
 
 type Mutation {
+  appendConversationMessage(conversationId: ID!, input: AppendConversationMessageInput!, organizationId: ID!, projectId: ID!): ConversationMessage!
+  applyChangeset(id: ID!, input: ApplyChangesetInput!, organizationId: ID!, projectId: ID!): AppliedChangeset!
+  approveExport(input: ApproveExportInput!, projectId: ID!): ExportApproval!
+  approveFeedPolicy(feedId: ID!, input: FeedPolicyInput!, projectId: ID!): Feed!
+  archiveWorkbook(id: ID!, organizationId: ID!, projectId: ID!): Workbook!
+  archiveWorksheet(id: ID!, organizationId: ID!, projectId: ID!): Worksheet!
+  cancelAgentRun(id: ID!, organizationId: ID!, projectId: ID!): AgentRun!
+  cancelChangeset(id: ID!, organizationId: ID!, projectId: ID!): Changeset!
+  confirmAgentProposal(input: AgentProposalDecisionInput!, organizationId: ID!, projectId: ID!, proposalId: ID!, runId: ID!): AgentProposal!
+  createChangeset(input: CreateChangesetInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): Changeset!
+  createFeed(projectId: ID!): CreatedFeed!
+  createImportMapping(input: CreateImportMappingInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): ImportMapping!
   createProject(input: CreateProjectInput!): Project!
+  createRuleset(input: RulesetInput!, projectId: ID!): Ruleset!
+  createWorkbook(input: CreateWorkbookInput!, organizationId: ID!, projectId: ID!): Workbook!
+  createWorkbookConversation(input: CreateConversationInput!, organizationId: ID!, projectId: ID!, workbookId: ID!): Conversation!
+  createWorksheet(input: CreateWorksheetInput!, organizationId: ID!, projectId: ID!, workbookId: ID!): Worksheet!
+  createWorksheetChangeProposal(input: CreateWorksheetChangeProposalInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): WorksheetChangeProposal!
+  createWorksheetConversation(input: CreateConversationInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): Conversation!
+  createWorksheetSelection(input: CreateWorksheetSelectionInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): WorksheetSelection!
+  decideChangeset(id: ID!, input: DecisionInput!, organizationId: ID!, projectId: ID!): ChangesetDecisionResult!
   deleteImport(id: ID!, projectId: ID!): Boolean!
+  deleteImportMapping(id: ID!, organizationId: ID!, projectId: ID!): Boolean!
   deleteProject(id: ID!): Boolean!
+  deleteSavedView(id: ID!, organizationId: ID!, projectId: ID!): Boolean!
+  duplicateWorksheet(id: ID!, input: DuplicateWorksheetInput!, organizationId: ID!, projectId: ID!): Worksheet!
+  exportWorksheet(input: ExportWorksheetInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): ExportedWorksheet!
+  openCatalogAsWorksheet(input: OpenCatalogAsWorksheetInput!, organizationId: ID!, projectId: ID!, workbookId: ID!): Worksheet!
+  previewWorksheetTransform(input: PreviewWorksheetTransformInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): WorksheetTransformPreview!
+  proposeRevert(organizationId: ID!, projectId: ID!, revisionId: ID!): Changeset!
+  publishFeed(feedId: ID!, input: PublishFeedInput!, projectId: ID!): FeedPublication!
+  rebaseChangeset(id: ID!, input: RebaseInput!, organizationId: ID!, projectId: ID!): Changeset!
+  reindexKnowledge(projectId: ID!): KnowledgeReindex!
+  rejectAgentProposal(input: AgentProposalDecisionInput!, organizationId: ID!, projectId: ID!, proposalId: ID!, runId: ID!): AgentProposal!
+  renameWorkbook(id: ID!, input: NameInput!, organizationId: ID!, projectId: ID!): Workbook!
+  renameWorksheet(id: ID!, input: NameInput!, organizationId: ID!, projectId: ID!): Worksheet!
+  reopenChangeset(id: ID!, input: DraftVersionInput!, organizationId: ID!, projectId: ID!): Changeset!
+  replaceSavedView(id: ID!, input: SaveViewInput!, organizationId: ID!, projectId: ID!): SavedView!
+  requestEvaluation(input: RequestEvaluationInput!, projectId: ID!): Evaluation!
+  requestFeedRefresh(feedId: ID!, projectId: ID!): FeedRefresh!
+  restoreWorkbook(id: ID!, organizationId: ID!, projectId: ID!): Workbook!
+  restoreWorksheet(id: ID!, organizationId: ID!, projectId: ID!): Worksheet!
+  saveChangesetOperations(id: ID!, input: SaveOperationsInput!, organizationId: ID!, projectId: ID!): Changeset!
+  saveView(input: SaveViewInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): SavedView!
+  sendWorksheetToCatalog(input: SendWorksheetToCatalogInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): WorksheetCatalogAcceptance!
+  setFeedSchedule(feedId: ID!, input: FeedScheduleInput!, projectId: ID!): Feed!
+  setFeedSource(feedId: ID!, input: FeedSourceInput!, projectId: ID!): Feed!
+  startAgentRun(conversationId: ID!, input: StartAgentRunInput!, organizationId: ID!, projectId: ID!): AgentRun!
+  submitChangeset(id: ID!, input: DraftVersionInput!, organizationId: ID!, projectId: ID!): Changeset!
   updateMe(input: UpdateMeInput!): User!
   updateProject(id: ID!, input: UpdateProjectInput!): Project!
+}
+
+input NameInput {
+  name: String!
+}
+
+input OpenCatalogAsWorksheetInput {
+  name: String!
+  snapshotId: ID!
+}
+
+type OutcomeChange {
+  from: String!
+  productCount: Int!
+  to: String!
 }
 
 type PageInfo {
   hasMore: Boolean!
   limit: Int!
   offset: Int!
+}
+
+input PreviewWorksheetTransformInput {
+  columnIds: [ID!]!
+  selectionId: ID!
+  transform: JSONObject!
+}
+
+type PreviewedOutcome {
+  excludedByRule: Int
+  outcome: String!
+  problems: [Problem!]!
+}
+
+type Problem {
+  attribute: String!
+  code: String!
+  problem: LocalizedText!
+  suggestion: LocalizedText!
 }
 
 type ProblemGroup {
@@ -210,31 +804,217 @@ enum ProductChangeKind {
   removed
 }
 
+type ProductDetail {
+  columns: [String!]!
+  product: TsvProduct!
+  source: ProductSource!
+}
+
 type ProductFieldChange {
   after: String
   before: String
   field: String!
 }
 
+type ProductPage {
+  columns: [String!]!
+  page: PageInfo!
+  products: [TsvProduct!]!
+  rowCount: Int!
+}
+
+type ProductPreview {
+  current: PreviewedOutcome!
+  externalId: String!
+  proposed: PreviewedOutcome!
+  sourceRow: Int!
+  values: [ValueChange!]!
+}
+
+type ProductSource {
+  export: Export
+  feedId: ID
+  kind: String!
+  version: FeedVersion
+}
+
 type Project {
+  access: ProjectAccess!
   channelProfile: ChannelProfile
   configurationStatus: ConfigurationStatus!
+  conversations(cursor: String, limit: Int, workbookId: ID, worksheetId: ID): ConversationPage!
   country: String
   createdAt: String!
   currency: String
+  evaluations(limit: Int! = 20, offset: Int! = 0): EvaluationPage!
+  feeds: [Feed!]!
   id: ID!
+  imports(limit: Int! = 20, offset: Int! = 0): ImportPage!
+  knowledge: KnowledgeStatus!
   name: String!
+  rulesets(limit: Int! = 20, offset: Int! = 0): RulesetPage!
+  workbooks(archived: Boolean, limit: Int, offset: Int): WorkbookPage!
+}
+
+type ProjectAccess {
+  organizationId: ID!
+  permissions: [String!]!
+  role: String!
+}
+
+type ProjectPage {
+  items: [Project!]!
+  page: PageInfo!
+}
+
+input PublishFeedInput {
+  expectedGeneration: Int!
+  exportId: ID!
 }
 
 type Query {
+  agentRun(id: ID!, organizationId: ID!, projectId: ID!): AgentRun!
+  changeset(id: ID!, organizationId: ID!, projectId: ID!): Changeset!
+  conversation(id: ID!, organizationId: ID!, projectId: ID!): Conversation!
   evaluation(id: ID!, projectId: ID!): Evaluation!
+  export(id: ID!, projectId: ID!): Export!
   feed(id: ID!, projectId: ID!): Feed!
+  feedRefresh(feedId: ID!, id: ID!, projectId: ID!): FeedRefresh!
   importJob(id: ID!, projectId: ID!): ImportJob!
+  importMapping(id: ID!, organizationId: ID!, projectId: ID!): ImportMapping!
   importSnapshot(id: ID!, projectId: ID!): ImportSnapshot!
   me: User!
+  organizationProjects(limit: Int! = 20, offset: Int! = 0, organizationId: ID!): ProjectPage!
   project(id: ID!): Project!
   projects(limit: Int! = 20, offset: Int! = 0): [Project!]!
+  rulesPreview(input: RulesPreviewInput!, limit: Int! = 20, offset: Int! = 0, projectId: ID!): RulesPreview!
+  ruleset(projectId: ID!, revision: Int!): Ruleset!
+  savedView(id: ID!, organizationId: ID!, projectId: ID!): SavedView!
   worksheet(id: ID!, organizationId: ID!, projectId: ID!): Worksheet!
+  worksheetCatalogSnapshot(id: ID!, organizationId: ID!, projectId: ID!): WorksheetCatalogSnapshot!
+  worksheetExport(id: ID!, organizationId: ID!, projectId: ID!): WorksheetExport!
+  worksheetImport(id: ID!, organizationId: ID!, projectId: ID!): WorksheetImport!
+  worksheetTransformPreview(limit: Int! = 20, offset: Int! = 0, organizationId: ID!, previewId: ID!, projectId: ID!, worksheetId: ID!): WorksheetTransformPreviewPage!
+}
+
+input RebaseInput {
+  draftVersion: Int!
+  resolutions: [ConflictResolutionInput!]
+}
+
+input RequestEvaluationInput {
+  rulesetRevision: Int!
+  snapshotId: ID!
+}
+
+"""Una regla: exactamente uno de los tres tipos."""
+input RuleInput @oneOf {
+  buildTitle: BuildTitleRuleInput
+  cleanText: CleanTextRuleInput
+  excludeWhen: ExcludeWhenRuleInput
+}
+
+type RulesPreview {
+  baseRevision: Int!
+  changedProducts: Int!
+  changedValues: [ChangedAttribute!]!
+  counts: RulesPreviewCounts!
+  outcomeChanges: [OutcomeChange!]!
+  page: PageInfo!
+  problems: RulesPreviewProblems!
+  products: [ProductPreview!]!
+  snapshotId: ID!
+}
+
+type RulesPreviewCounts {
+  current: EvaluationCounts!
+  proposed: EvaluationCounts!
+}
+
+input RulesPreviewInput {
+  baseRevision: Int
+  mapping: [AttributeMappingInput!]!
+  rules: [RuleInput!]!
+  snapshotId: ID!
+}
+
+type RulesPreviewProblems {
+  appeared: [ProblemGroup!]!
+  persisting: [ProblemGroup!]!
+  resolved: [ProblemGroup!]!
+}
+
+type Ruleset {
+  createdAt: String!
+  id: ID!
+  mapping: [AttributeMapping!]!
+  revision: Int!
+  rules: [JSON!]!
+}
+
+input RulesetInput {
+  mapping: [AttributeMappingInput!]!
+  rules: [RuleInput!]!
+}
+
+type RulesetPage {
+  items: [Ruleset!]!
+  page: PageInfo!
+}
+
+input SaveOperationsInput {
+  draftVersion: Int!
+  operations: [JSONObject!]!
+}
+
+input SaveViewInput {
+  name: String!
+  query: JSONObject!
+  visibility: String!
+}
+
+type SavedView {
+  canEdit: Boolean!
+  createdAt: String!
+  id: ID!
+  name: String!
+  ownerId: ID!
+  query: JSON!
+  updatedAt: String!
+  visibility: String!
+  worksheetId: ID!
+}
+
+type SavedViewPage {
+  items: [SavedView!]!
+  page: PageInfo!
+}
+
+input SelectionOptionInput {
+  label: String!
+}
+
+input SendWorksheetToCatalogInput {
+  columns: [ID!]
+  filter: JSONObject
+  idColumnId: ID!
+  revisionId: ID
+  sort: [SortTermInput!]
+}
+
+input SortTermInput {
+  columnId: ID!
+  direction: String!
+}
+
+input StartAgentRunInput {
+  context: AgentRunContextInput
+  messageId: ID!
+}
+
+type TsvProduct {
+  line: Int!
+  values: JSON!
 }
 
 input UpdateMeInput {
@@ -256,17 +1036,84 @@ type User {
   updatedAt: String!
 }
 
+type ValueChange {
+  after: String
+  attribute: String!
+  before: String
+}
+
+type Workbook {
+  archivedAt: String
+  createdAt: String!
+  id: ID!
+  name: String!
+  projectId: ID!
+  worksheets(archived: Boolean, limit: Int, offset: Int): WorksheetSummaryPage!
+}
+
+type WorkbookPage {
+  items: [Workbook!]!
+  page: PageInfo!
+}
+
 type Worksheet {
+  archivedAt: String
+  capabilities: WorksheetCapabilities!
+  changesets(limit: Int, offset: Int, status: String): ChangesetPage!
   columns: [WorksheetColumn!]!
   createdAt: String!
+  duplicatedFrom: WorksheetOrigin
+  exports(limit: Int! = 20, offset: Int! = 0): WorksheetExportPage!
   generation: Int!
   headRevision: WorksheetRevision!
   id: ID!
+  importMappings(limit: Int! = 20, offset: Int! = 0): ImportMappingPage!
+  imports(limit: Int! = 20, offset: Int! = 0): WorksheetImportPage!
   mode: String!
   name: String!
-  rows(cursor: String, limit: Int, revisionId: ID): WorksheetRowPage!
+  openedFromCatalog: CatalogOrigin
+  revisions(limit: Int! = 20, offset: Int! = 0): WorksheetRevisionPage!
+  rows(columns: [ID!], cursor: String, filter: JSONObject, limit: Int, revisionId: ID, sort: [SortTermInput!], viewId: ID): WorksheetRowPage!
+  savedViews(limit: Int! = 20, offset: Int! = 0): SavedViewPage!
   schemaVersion: Int!
+  workbookArchivedAt: String
   workbookId: ID!
+}
+
+type WorksheetCapabilities {
+  approve: Boolean!
+  write: Boolean!
+}
+
+type WorksheetCatalogAcceptance {
+  catalogSnapshot: WorksheetCatalogSnapshot!
+  jobId: ID!
+  snapshotId: ID!
+  status: String!
+  statusUrl: String!
+}
+
+type WorksheetCatalogSnapshot {
+  columns: [JSON!]!
+  createdAt: String!
+  createdBy: ID!
+  idColumnId: ID!
+  query: JSON!
+  revisionId: ID!
+  revisionSequence: Int!
+  rowCount: Int!
+  serializerVersion: String!
+  snapshotId: ID!
+  sourceHash: String!
+  worksheetId: ID!
+}
+
+type WorksheetChangeProposal {
+  baseRevisionId: ID!
+  draftVersion: Int!
+  id: ID!
+  status: String!
+  worksheetId: ID!
 }
 
 type WorksheetColumn {
@@ -279,6 +1126,70 @@ type WorksheetColumn {
   type: String!
 }
 
+type WorksheetExport {
+  byteSize: Int!
+  checksum: String!
+  columnCount: Int!
+  createdAt: String!
+  createdBy: ID!
+  format: String!
+  id: ID!
+  options: JSON!
+  problemCellCount: Int!
+  query: JSON!
+  revisionId: ID!
+  revisionSequence: Int!
+  rowCount: Int!
+  serializerVersion: String!
+  worksheetId: ID!
+}
+
+type WorksheetExportPage {
+  items: [WorksheetExport!]!
+  page: PageInfo!
+}
+
+type WorksheetImport {
+  changesetId: ID!
+  createdAt: String!
+  createdBy: ID!
+  excludedRows: [JSON!]!
+  fileBytes: Int!
+  fileHash: String!
+  format: String!
+  id: ID!
+  includedHash: String!
+  options: JSON!
+  report: JSON!
+  worksheetId: ID!
+}
+
+type WorksheetImportListItem {
+  changesetId: ID!
+  changesetStatus: String!
+  createdAt: String!
+  createdBy: ID!
+  excludedRowCount: Int!
+  fileBytes: Int!
+  fileHash: String!
+  format: String!
+  id: ID!
+  includedHash: String!
+  options: JSON!
+  report: JSON!
+  worksheetId: ID!
+}
+
+type WorksheetImportPage {
+  items: [WorksheetImportListItem!]!
+  page: PageInfo!
+}
+
+type WorksheetOrigin {
+  revisionId: ID!
+  worksheetId: ID!
+}
+
 type WorksheetRevision {
   createdAt: String!
   id: ID!
@@ -286,9 +1197,85 @@ type WorksheetRevision {
   sequence: Int!
 }
 
+type WorksheetRevisionEntry {
+  changesetId: ID
+  createdAt: String!
+  createdBy: ID!
+  id: ID!
+  rowCount: Int!
+  schemaVersion: Int!
+  sequence: Int!
+  source: String!
+}
+
+type WorksheetRevisionPage {
+  items: [WorksheetRevisionEntry!]!
+  page: PageInfo!
+}
+
 type WorksheetRowPage {
   items: [JSON!]!
   nextCursor: String
   revisionId: ID!
   schemaVersion: Int!
+}
+
+type WorksheetSelection {
+  expiresAt: String!
+  revisionId: ID!
+  rowCount: Int!
+  selectionId: ID!
+}
+
+type WorksheetSummary {
+  archivedAt: String
+  createdAt: String!
+  duplicatedFrom: WorksheetOrigin
+  generation: Int!
+  headRevision: WorksheetRevision!
+  id: ID!
+  mode: String!
+  name: String!
+  openedFromCatalog: CatalogOrigin
+  schemaVersion: Int!
+  workbookArchivedAt: String
+  workbookId: ID!
+}
+
+type WorksheetSummaryPage {
+  items: [WorksheetSummary!]!
+  page: PageInfo!
+}
+
+type WorksheetTransformChange {
+  after: JSON
+  before: JSON
+  columnId: ID!
+  rowId: ID!
+}
+
+type WorksheetTransformPreview {
+  affectedCells: Int!
+  affectedRows: Int!
+  canCreateProposal: Boolean!
+  expiresAt: String!
+  issueCount: Int!
+  previewId: ID!
+  revisionId: ID!
+  sample: [WorksheetTransformChange!]!
+  selectionId: ID!
+}
+
+type WorksheetTransformPreviewPage {
+  affectedCells: Int!
+  affectedRows: Int!
+  canCreateProposal: Boolean!
+  expiresAt: String!
+  issueCount: Int!
+  items: [WorksheetTransformChange!]!
+  page: PageInfo!
+  previewId: ID!
+  revisionId: ID!
+  sample: [WorksheetTransformChange!]!
+  selectionId: ID!
 }

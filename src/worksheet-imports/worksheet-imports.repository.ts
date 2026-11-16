@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { recordAuditEvent } from '../audit/audit-trail.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import type { PageRequest } from '../common/http/pagination.js';
 import type {
   Operation,
   RowValues,
@@ -26,7 +27,10 @@ import type {
   ProjectScope,
   WorksheetColumn,
 } from '../worksheets/worksheets.types.js';
-import type { WorksheetImport } from './worksheet-imports.types.js';
+import type {
+  WorksheetImport,
+  WorksheetImportSummary,
+} from './worksheet-imports.types.js';
 
 const IMPORT_COLUMNS = Prisma.sql`
   i.id,
@@ -41,6 +45,23 @@ const IMPORT_COLUMNS = Prisma.sql`
   i.excluded_rows AS "excludedRows",
   i.included_hash AS "includedHash",
   i.created_at AS "createdAt"
+`;
+
+/** Las de `IMPORT_COLUMNS` sin las filas excluidas, más el estado del borrador. */
+const IMPORT_SUMMARY_COLUMNS = Prisma.sql`
+  i.id,
+  i.worksheet_id AS "worksheetId",
+  i.changeset_id AS "changesetId",
+  i.created_by AS "createdBy",
+  i.format,
+  i.file_hash AS "fileHash",
+  i.file_bytes AS "fileBytes",
+  i.options,
+  i.report,
+  jsonb_array_length(i.excluded_rows) AS "excludedRowCount",
+  i.included_hash AS "includedHash",
+  i.created_at AS "createdAt",
+  c.status AS "changesetStatus"
 `;
 
 export type NewImport = Readonly<{
@@ -174,6 +195,26 @@ export class WorksheetImportsRepository {
     importId: string,
   ): Promise<WorksheetImport | null> {
     return findImportIn(this.prisma, actorId, scope, importId);
+  }
+
+  /** Importaciones de una hoja (H2), de la más reciente a la más antigua. */
+  findByWorksheet(
+    actorId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    page: PageRequest,
+  ): Promise<WorksheetImportSummary[]> {
+    return this.prisma.$queryRaw<WorksheetImportSummary[]>(Prisma.sql`
+      SELECT ${IMPORT_SUMMARY_COLUMNS}
+      FROM estadistica_forms.worksheet_imports i
+      JOIN estadistica_forms.worksheet_changesets c ON c.id = i.changeset_id
+      WHERE i.worksheet_id = ${worksheetId}
+        AND i.organization_id = ${scope.organizationId}
+        AND i.project_id = ${scope.projectId}
+        AND ${isMember(actorId, Prisma.sql`i.organization_id`)}
+      ORDER BY i.created_at DESC, i.id DESC
+      LIMIT ${page.limit} OFFSET ${page.offset}
+    `);
   }
 }
 

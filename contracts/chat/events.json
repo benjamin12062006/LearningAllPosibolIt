@@ -1,0 +1,17 @@
+{
+  "run.queued": ["conversationId", "userMessageId", "createdAt"],
+  "run.started": ["createdAt"],
+  "tool.started": ["callId", "operation", "mode", "target", "createdAt"],
+  "tool.completed": ["callId", "operation", "status", "target", "createdAt"],
+  "proposal.ready": [
+    "proposalId",
+    "operation",
+    "summary",
+    "hash",
+    "target",
+    "createdAt"
+  ],
+  "run.completed": ["outcome", "answerMessageId", "createdAt"],
+  "run.failed": ["status", "code", "createdAt"],
+  "run.cancelled": ["createdAt"]
+}

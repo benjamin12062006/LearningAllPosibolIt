@@ -33,6 +33,39 @@ export type ReplaceResult = Readonly<{
   removed: number;
 }>;
 
+/** Lo que Nest manda al agente en cada ejecución (contrato A11 del servicio). */
+export type AgentRunRequest = Readonly<{
+  runId: string;
+  scope: Readonly<{ organizationId: string; projectIds: readonly string[] }>;
+  credential: string;
+  message: string;
+  history: readonly Readonly<{ role: 'user' | 'assistant'; content: string }>[];
+  operations: readonly Readonly<{
+    name: string;
+    description: string;
+    inputSchema: Readonly<Record<string, unknown>>;
+    level: 'read' | 'write';
+  }>[];
+  context: Readonly<Record<string, unknown>>;
+}>;
+
+/** El desenlace que devuelve el agente; Nest lo valida antes de guardarlo. */
+export type AgentRunResponse = Readonly<{
+  status:
+    | 'answered'
+    | 'confirmation_required'
+    | 'needs_clarification'
+    | 'limit_reached';
+  answer: string;
+}>;
+
+const AGENT_STATUSES = new Set([
+  'answered',
+  'confirmation_required',
+  'needs_clarification',
+  'limit_reached',
+]);
+
 /**
  * El servicio no respondió o respondió 5xx: se reintenta en la pasada
  * siguiente sin guardar la huella (D15).
@@ -91,17 +124,42 @@ export class AiServiceClient {
     );
   }
 
+  /**
+   * Una ejecución del agente (E6.3a). Tarda lo que tarde el modelo: tiene su
+   * propio plazo y la señal del worker para cortarla al apagar.
+   */
+  async runAgent(
+    body: AgentRunRequest,
+    requestId: string,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<AgentRunResponse> {
+    const response = await this.send(
+      'POST',
+      '/v1/agent/runs',
+      body,
+      requestId,
+      {
+        timeoutMs,
+        signal,
+      },
+    );
+    return toAgentRunResponse(await response.json());
+  }
+
   private async send(
-    method: 'PUT' | 'DELETE',
+    method: 'PUT' | 'DELETE' | 'POST',
     path: string,
     body: unknown,
     requestId: string,
+    limits: Readonly<{ timeoutMs?: number; signal?: AbortSignal }> = {},
   ): Promise<Response> {
     const response = await this.fetchOrUnavailable(
       method,
       path,
       body,
       requestId,
+      limits,
     );
     if (response.status >= 500) {
       throw new AiServiceUnavailableError(
@@ -123,13 +181,19 @@ export class AiServiceClient {
     path: string,
     body: unknown,
     requestId: string,
+    limits: Readonly<{ timeoutMs?: number; signal?: AbortSignal }>,
   ): Promise<Response> {
+    const timeout = AbortSignal.timeout(
+      limits.timeoutMs ?? this.config.timeoutMs,
+    );
     try {
       return await fetch(new URL(path, this.config.url), {
         method,
         headers: await this.headersFor(requestId),
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(this.config.timeoutMs),
+        signal: limits.signal
+          ? AbortSignal.any([timeout, limits.signal])
+          : timeout,
       });
     } catch (error) {
       throw new AiServiceUnavailableError(
@@ -179,6 +243,25 @@ function toReplaceResult(body: unknown): ReplaceResult {
   }
   throw new AiServiceUnavailableError(
     'El servicio de IA respondió con una forma inesperada.',
+  );
+}
+
+function toAgentRunResponse(body: unknown): AgentRunResponse {
+  if (typeof body === 'object' && body !== null) {
+    const record = body as Record<string, unknown>;
+    if (
+      typeof record.status === 'string' &&
+      AGENT_STATUSES.has(record.status) &&
+      typeof record.answer === 'string'
+    ) {
+      return {
+        status: record.status as AgentRunResponse['status'],
+        answer: record.answer,
+      };
+    }
+  }
+  throw new AiServiceUnavailableError(
+    'El agente respondió con una forma inesperada.',
   );
 }
 

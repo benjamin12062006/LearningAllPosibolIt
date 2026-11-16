@@ -1,0 +1,4 @@
+# Guardar la revisión siguiente de las reglas (Editor). Cada regla es @oneOf.
+mutation CreateRuleset($projectId: ID!, $input: RulesetInput!) {
+  createRuleset(projectId: $projectId, input: $input) { id revision createdAt }
+}

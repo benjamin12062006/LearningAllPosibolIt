@@ -33,6 +33,14 @@ model AppUser {
   worksheetExports     WorksheetExport[]
   worksheetSnapshots   WorksheetSnapshot[]
 
+  importMappings      WorksheetImportMapping[]
+  savedViews          WorksheetSavedView[]
+  aiConversations     AiConversation[]
+  aiMessages          AiMessage[]
+  aiRuns              AiRun[]
+  aiProposals         AiProposal[]
+  transformSelections WorksheetTransformSelection[]
+
   @@unique([identityIssuer, identitySubject])
   @@map("app_users")
   @@schema("estadistica_forms")
@@ -378,18 +386,19 @@ model OrganizationInvitation {
 /// Libro de un proyecto (ampliación E3.1). Agrupa hojas. La FK compuesta
 /// `(organizationId, projectId)` impide colocarlo en otra organización.
 model Workbook {
-  id             String      @id
-  organizationId String      @map("organization_id")
-  projectId      String      @map("project_id")
-  name           String
-  nameNormalized String      @map("name_normalized")
-  createdBy      String      @map("created_by")
-  createdAt      String      @map("created_at")
+  id              String           @id
+  organizationId  String           @map("organization_id")
+  projectId       String           @map("project_id")
+  name            String
+  nameNormalized  String           @map("name_normalized")
+  createdBy       String           @map("created_by")
+  createdAt       String           @map("created_at")
   /// Nulo es «activo». Archivado se lee, pero no admite escrituras (H1).
-  archivedAt     String?     @map("archived_at")
-  project        Project     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
-  creator        AppUser     @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  worksheets     Worksheet[]
+  archivedAt      String?          @map("archived_at")
+  project         Project          @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator         AppUser          @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  worksheets      Worksheet[]
+  aiConversations AiConversation[]
 
   @@unique([projectId, nameNormalized])
   @@unique([organizationId, projectId, id])
@@ -402,38 +411,180 @@ model Workbook {
 /// solo es nulo dentro de la transacción que la crea. `generation` cuenta las
 /// revisiones.
 model Worksheet {
-  id             String                   @id
-  organizationId String                   @map("organization_id")
-  projectId      String                   @map("project_id")
-  workbookId     String                   @map("workbook_id")
-  name           String
-  nameNormalized String                   @map("name_normalized")
-  mode           String
-  schemaVersion  Int                      @map("schema_version")
-  generation     Int
-  headRevisionId String?                  @map("head_revision_id")
-  createdBy      String                   @map("created_by")
-  createdAt      String                   @map("created_at")
+  id                      String                        @id
+  organizationId          String                        @map("organization_id")
+  projectId               String                        @map("project_id")
+  workbookId              String                        @map("workbook_id")
+  name                    String
+  nameNormalized          String                        @map("name_normalized")
+  mode                    String
+  schemaVersion           Int                           @map("schema_version")
+  generation              Int
+  headRevisionId          String?                       @map("head_revision_id")
+  createdBy               String                        @map("created_by")
+  createdAt               String                        @map("created_at")
   /// Nulo es «activa». También cuenta como archivada si lo está su libro (H1).
-  archivedAt     String?                  @map("archived_at")
+  archivedAt              String?                       @map("archived_at")
   /// Solo en una copia: la hoja y la revisión de las que salió. Sin relación:
   /// es procedencia, no una dependencia.
-  sourceWorksheetId String?               @map("source_worksheet_id")
-  sourceRevisionId  String?               @map("source_revision_id")
-  workbook       Workbook                 @relation(fields: [organizationId, projectId, workbookId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
-  headRevision   WorksheetRevision?       @relation("WorksheetHead", fields: [id, headRevisionId], references: [worksheetId, id], onDelete: NoAction, onUpdate: NoAction)
-  creator        AppUser                  @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  columns        WorksheetColumnVersion[]
-  revisions      WorksheetRevision[]      @relation("WorksheetRevisions")
-  rowVersions    WorksheetRowVersion[]
-  changesets     WorksheetChangeset[]
-  exports        WorksheetExport[]
-  snapshots      WorksheetSnapshot[]
+  sourceWorksheetId       String?                       @map("source_worksheet_id")
+  sourceRevisionId        String?                       @map("source_revision_id")
+  /// Solo en una hoja abierta desde un catálogo (H5): el snapshot del que salió.
+  sourceCatalogSnapshotId String?                       @map("source_catalog_snapshot_id")
+  workbook                Workbook                      @relation(fields: [organizationId, projectId, workbookId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  headRevision            WorksheetRevision?            @relation("WorksheetHead", fields: [id, headRevisionId], references: [worksheetId, id], onDelete: NoAction, onUpdate: NoAction)
+  creator                 AppUser                       @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  columns                 WorksheetColumnVersion[]
+  revisions               WorksheetRevision[]           @relation("WorksheetRevisions")
+  rowVersions             WorksheetRowVersion[]
+  changesets              WorksheetChangeset[]
+  exports                 WorksheetExport[]
+  snapshots               WorksheetSnapshot[]
+  importMappings          WorksheetImportMapping[]
+  savedViews              WorksheetSavedView[]
+  aiConversations         AiConversation[]
+  transformSelections     WorksheetTransformSelection[]
 
   @@unique([workbookId, nameNormalized])
+  @@unique([workbookId, id])
   @@unique([organizationId, id])
+  @@unique([organizationId, projectId, id])
   @@index([organizationId, workbookId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_worksheets_workbook_created")
   @@map("worksheets")
+  @@schema("estadistica_forms")
+}
+
+/// Conversación privada de un libro o de una hoja en ese mismo libro.
+model AiConversation {
+  id             String      @id
+  organizationId String      @map("organization_id")
+  projectId      String      @map("project_id")
+  workbookId     String      @map("workbook_id")
+  worksheetId    String?     @map("worksheet_id")
+  createdBy      String      @map("created_by")
+  title          String
+  visibility     String      @default("private")
+  status         String      @default("active")
+  createdAt      String      @map("created_at")
+  updatedAt      String      @map("updated_at")
+  workbook       Workbook    @relation(fields: [organizationId, projectId, workbookId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  worksheet      Worksheet?  @relation(fields: [workbookId, worksheetId], references: [workbookId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator        AppUser     @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  messages       AiMessage[]
+  runs           AiRun[]
+
+  @@index([organizationId, projectId, createdBy, createdAt(sort: Desc), id(sort: Desc)], map: "idx_ai_conversations_project_author")
+  @@map("ai_conversations")
+  @@schema("estadistica_forms")
+}
+
+model AiMessage {
+  id              String         @id
+  conversationId  String         @map("conversation_id")
+  authorId        String?        @map("author_id")
+  clientMessageId String?        @map("client_message_id")
+  role            String
+  content         String
+  sequence        Int
+  createdAt       String         @map("created_at")
+  conversation    AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  author          AppUser?       @relation(fields: [authorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  triggeredRuns   AiRun[]        @relation("AiRunUserMessage")
+  answeredRun     AiRun?         @relation("AiRunAnswerMessage")
+
+  @@unique([conversationId, sequence])
+  @@unique([conversationId, authorId, clientMessageId])
+  @@map("ai_messages")
+  @@schema("estadistica_forms")
+}
+
+/// Una ejecución del agente por mensaje de la persona (E6.3a). Fechas en texto ISO UTC.
+model AiRun {
+  id              String         @id
+  organizationId  String         @map("organization_id")
+  projectId       String         @map("project_id")
+  conversationId  String         @map("conversation_id")
+  userMessageId   String         @map("user_message_id")
+  actorId         String         @map("actor_id")
+  context         Json
+  status          String
+  outcome         String?
+  answerMessageId String?        @unique @map("answer_message_id")
+  error           Json?
+  credentialHash  String?        @map("credential_hash")
+  claimToken      String?        @map("claim_token")
+  leaseUntil      String?        @map("lease_until")
+  deadlineAt      String         @map("deadline_at")
+  createdAt       String         @map("created_at")
+  startedAt       String?        @map("started_at")
+  finishedAt      String?        @map("finished_at")
+  conversation    AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  userMessage     AiMessage      @relation("AiRunUserMessage", fields: [userMessageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  answerMessage   AiMessage?     @relation("AiRunAnswerMessage", fields: [answerMessageId], references: [id], onUpdate: NoAction)
+  actor           AppUser        @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  calls           AiRunCall[]
+  proposal        AiProposal?
+  events          AiRunEvent[]
+
+  @@unique([conversationId, userMessageId])
+  @@index([status, createdAt], map: "idx_ai_runs_status_created")
+  @@map("ai_runs")
+  @@schema("estadistica_forms")
+}
+
+/// Una llamada de la pasarela del agente, deduplicada por `callId`.
+model AiRunCall {
+  runId         String @map("run_id")
+  callId        String @map("call_id")
+  operation     String
+  mode          String
+  argumentsHash String @map("arguments_hash")
+  status        String
+  target        Json?
+  createdAt     String @map("created_at")
+  run           AiRun  @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([runId, callId])
+  @@map("ai_run_calls")
+  @@schema("estadistica_forms")
+}
+
+/// Un hito de una ejecución, para la web por SSE (E6.4).
+model AiRunEvent {
+  runId     String @map("run_id")
+  sequence  Int
+  type      String
+  payload   Json
+  createdAt String @map("created_at")
+  run       AiRun  @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([runId, sequence])
+  @@map("ai_run_events")
+  @@schema("estadistica_forms")
+}
+
+/// Lo que el agente o un cliente externo preparó y espera la confirmación de la persona.
+model AiProposal {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  projectId      String  @map("project_id")
+  actorId        String  @map("actor_id")
+  runId          String? @unique @map("run_id")
+  credentialId   String? @map("credential_id")
+  operation      String
+  plan           Json
+  target         Json?
+  summary        String
+  hash           String
+  status         String
+  result         Json?
+  expiresAt      String  @map("expires_at")
+  createdAt      String  @map("created_at")
+  decidedAt      String? @map("decided_at")
+  run            AiRun?  @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  actor          AppUser @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@map("ai_proposals")
   @@schema("estadistica_forms")
 }
 
@@ -464,26 +615,27 @@ model WorksheetColumnVersion {
 
 /// Revisión inmutable de una hoja, numerada desde 1.
 model WorksheetRevision {
-  id             String                @id
-  organizationId String                @map("organization_id")
-  worksheetId    String                @map("worksheet_id")
-  sequence       Int
-  schemaVersion  Int                   @map("schema_version")
-  source         String
-  rowCount       Int                   @map("row_count")
-  createdBy      String                @map("created_by")
-  createdAt      String                @map("created_at")
+  id                  String                        @id
+  organizationId      String                        @map("organization_id")
+  worksheetId         String                        @map("worksheet_id")
+  sequence            Int
+  schemaVersion       Int                           @map("schema_version")
+  source              String
+  rowCount            Int                           @map("row_count")
+  createdBy           String                        @map("created_by")
+  createdAt           String                        @map("created_at")
   /// Borrador que la produjo; nulo en la revisión `initialize`.
-  changesetId    String?               @unique @map("changeset_id")
-  worksheet      Worksheet             @relation("WorksheetRevisions", fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
-  creator        AppUser               @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  headOf         Worksheet[]           @relation("WorksheetHead")
-  openedRows     WorksheetRowVersion[] @relation("RowFrom")
-  closedRows     WorksheetRowVersion[] @relation("RowTo")
-  changeset      WorksheetChangeset?   @relation("ChangesetRevision", fields: [organizationId, changesetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
-  baseOf         WorksheetChangeset[]  @relation("ChangesetBase")
-  exports        WorksheetExport[]
-  snapshots      WorksheetSnapshot[]
+  changesetId         String?                       @unique @map("changeset_id")
+  worksheet           Worksheet                     @relation("WorksheetRevisions", fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator             AppUser                       @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  headOf              Worksheet[]                   @relation("WorksheetHead")
+  openedRows          WorksheetRowVersion[]         @relation("RowFrom")
+  closedRows          WorksheetRowVersion[]         @relation("RowTo")
+  changeset           WorksheetChangeset?           @relation("ChangesetRevision", fields: [organizationId, changesetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  baseOf              WorksheetChangeset[]          @relation("ChangesetBase")
+  exports             WorksheetExport[]
+  snapshots           WorksheetSnapshot[]
+  transformSelections WorksheetTransformSelection[]
 
   @@unique([worksheetId, sequence])
   @@unique([worksheetId, id])
@@ -541,6 +693,7 @@ model WorksheetChangeset {
   revisions         WorksheetRevision[]          @relation("ChangesetRevision")
   /// Como mucho una: la importación que creó este borrador (E5.1).
   imports           WorksheetImport[]
+  transformPreview  WorksheetTransformPreview?
 
   @@unique([organizationId, id])
   @@index([organizationId, worksheetId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_worksheet_changesets_worksheet_created")
@@ -731,5 +884,91 @@ model KnowledgeSyncState {
 
   @@id([projectId, sourceType, sourceId])
   @@map("knowledge_sync_state")
+  @@schema("estadistica_forms")
+}
+
+/// Plantilla de mapeo de importación de una hoja (H3): lo que no depende del
+/// archivo. `mapping` es `{ mode, matchColumnId, decimalSeparator,
+/// booleanLabels, columns }`, validado como las opciones de una importación.
+model WorksheetImportMapping {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  projectId      String    @map("project_id")
+  worksheetId    String    @map("worksheet_id")
+  name           String
+  nameNormalized String    @map("name_normalized")
+  mapping        Json
+  createdBy      String    @map("created_by")
+  createdAt      String    @map("created_at")
+  worksheet      Worksheet @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  creator        AppUser   @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([worksheetId, nameNormalized])
+  @@index([organizationId, worksheetId, createdAt(sort: Desc)], map: "idx_worksheet_import_mappings_worksheet_created")
+  @@map("worksheet_import_mappings")
+  @@schema("estadistica_forms")
+}
+
+/// Vista guardada de una hoja (H4): filtro, orden y columnas con nombre.
+/// `personal` solo la ve su autor; `team`, todos los miembros. `query` tiene
+/// la forma de `rows/query` (`filter`, `sort`, `columns`).
+model WorksheetSavedView {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  projectId      String    @map("project_id")
+  worksheetId    String    @map("worksheet_id")
+  ownerId        String    @map("owner_id")
+  name           String
+  nameNormalized String    @map("name_normalized")
+  visibility     String
+  query          Json
+  createdAt      String    @map("created_at")
+  updatedAt      String    @map("updated_at")
+  worksheet      Worksheet @relation(fields: [organizationId, worksheetId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  owner          AppUser   @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([worksheetId, ownerId, nameNormalized])
+  @@index([organizationId, worksheetId, createdAt(sort: Desc)], map: "idx_worksheet_saved_views_worksheet_created")
+  @@map("worksheet_saved_views")
+  @@schema("estadistica_forms")
+}
+
+/// Selección materializada para H6. El ámbito y la revisión no se pueden
+/// cambiar al guardar una vista previa que referencia esta selección.
+model WorksheetTransformSelection {
+  id             String                      @id
+  organizationId String                      @map("organization_id")
+  projectId      String                      @map("project_id")
+  worksheetId    String                      @map("worksheet_id")
+  actorId        String                      @map("actor_id")
+  revisionId     String                      @map("revision_id")
+  rowIds         Json                        @map("row_ids")
+  columnIds      Json                        @map("column_ids")
+  expiresAt      DateTime                    @map("expires_at") @db.Timestamptz(3)
+  worksheet      Worksheet                   @relation(fields: [organizationId, projectId, worksheetId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  actor          AppUser                     @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  revision       WorksheetRevision           @relation(fields: [worksheetId, revisionId], references: [worksheetId, id], onDelete: Restrict, onUpdate: NoAction)
+  previews       WorksheetTransformPreview[]
+
+  @@index([expiresAt], map: "idx_worksheet_transform_selections_expires")
+  @@map("worksheet_transform_selections")
+  @@schema("estadistica_forms")
+}
+
+/// Diff canónico temporal. La selección conserva el autor, el ámbito y la
+/// revisión. `changesetId` se fija en la transacción que consume el preview.
+model WorksheetTransformPreview {
+  id          String                      @id
+  selectionId String                      @map("selection_id")
+  changes     Json
+  issueCount  Int                         @map("issue_count")
+  hash        String
+  expiresAt   DateTime                    @map("expires_at") @db.Timestamptz(3)
+  changesetId String?                     @unique @map("changeset_id")
+  selection   WorksheetTransformSelection @relation(fields: [selectionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  changeset   WorksheetChangeset?         @relation(fields: [changesetId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([expiresAt], map: "idx_worksheet_transform_previews_expires")
+  @@map("worksheet_transform_previews")
   @@schema("estadistica_forms")
 }

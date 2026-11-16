@@ -1,0 +1,16 @@
+# Por qué el canal recibe (o no) el feed y qué cambiaría al publicar.
+query FeedDiagnosis($projectId: ID!, $feedId: ID!, $exportId: ID!) {
+  feed(projectId: $projectId, id: $feedId) {
+    id
+    generation
+    publishedVersion { id rowCount publishedAt }
+    delivery { delivering reason deliveryEnabled }
+    lastRefresh { status stage outcome createdAt }
+    comparison(exportId: $exportId, limit: 20) {
+      counts { added removed modified unchanged }
+      changedFields { field productCount }
+      changes { id change fields { field before after } }
+      page { hasMore }
+    }
+  }
+}

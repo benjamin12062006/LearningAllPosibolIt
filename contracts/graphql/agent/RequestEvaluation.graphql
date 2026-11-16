@@ -1,0 +1,4 @@
+# Poner en cola una evaluación del catálogo con una revisión de reglas.
+mutation RequestEvaluation($projectId: ID!, $input: RequestEvaluationInput!) {
+  requestEvaluation(projectId: $projectId, input: $input) { id status }
+}
