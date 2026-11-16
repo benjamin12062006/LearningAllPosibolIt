@@ -24,6 +24,22 @@ import { ConversationsService } from './conversations.service.js';
 export class ConversationsController {
   constructor(private readonly conversations: ConversationsService) {}
 
+  @Post('conversations')
+  async createForProject(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Body() body: CreateConversationDto,
+  ) {
+    const conversation = await this.conversations.createForProject(
+      identity,
+      { organizationId, projectId },
+      body,
+    );
+    return { conversation };
+  }
+
   @Post('workbooks/:workbookId/conversations')
   async createForWorkbook(
     @CurrentIdentity() identity: AuthenticatedIdentity,

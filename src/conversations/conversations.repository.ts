@@ -17,7 +17,7 @@ import type { ProjectScope } from '../worksheets/worksheets.types.js';
 export type Conversation = Readonly<
   ProjectScope & {
     id: string;
-    workbookId: string;
+    workbookId: string | null;
     worksheetId: string | null;
     createdBy: string;
     title: string;
@@ -71,15 +71,15 @@ export class ConversationsRepository {
   create(
     actorId: string,
     scope: ProjectScope,
-    target: ConversationTarget,
+    target: ConversationTarget | null,
     title: string,
   ): Promise<Conversation> {
     return this.prisma.$transaction(async (tx) => {
       await lockOrganization(tx, scope.organizationId);
       const access = await requireProjectAccess(tx, actorId, scope);
-      const resource = await requireTarget(tx, scope, target);
+      const resource = target ? await requireTarget(tx, scope, target) : null;
       assertProjectPermission(access, 'ai.use');
-      assertTargetActive(resource, target.kind);
+      if (resource && target) assertTargetActive(resource, target.kind);
       const now = new Date().toISOString();
       const [created] = await tx.$queryRaw<Conversation[]>`
         INSERT INTO estadistica_forms.ai_conversations (
@@ -87,7 +87,7 @@ export class ConversationsRepository {
           created_by, title, created_at, updated_at
         ) VALUES (
           ${randomUUID()}, ${scope.organizationId}, ${scope.projectId},
-          ${resource.workbookId}, ${resource.worksheetId}, ${actorId},
+          ${resource?.workbookId ?? null}, ${resource?.worksheetId ?? null}, ${actorId},
           ${title}, ${now}, ${now}
         ) RETURNING ${CONVERSATION_FIELDS}`;
       return created;
@@ -163,7 +163,9 @@ export class ConversationsRepository {
         'ai.use',
       );
       const target = targetOf(conversation);
-      assertTargetActive(await requireTarget(tx, scope, target), target.kind);
+      if (target) {
+        assertTargetActive(await requireTarget(tx, scope, target), target.kind);
+      }
 
       const previous = await findExistingMessage(
         tx,
@@ -317,11 +319,14 @@ async function requireTarget(
   return row;
 }
 
-function targetOf(conversation: Conversation): ConversationTarget {
+function targetOf(conversation: Conversation): ConversationTarget | null {
   if (conversation.worksheetId) {
     return { kind: 'worksheet', id: conversation.worksheetId };
   }
-  return { kind: 'workbook', id: conversation.workbookId };
+  if (conversation.workbookId) {
+    return { kind: 'workbook', id: conversation.workbookId };
+  }
+  return null;
 }
 
 function assertTargetActive(

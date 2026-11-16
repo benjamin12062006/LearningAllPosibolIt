@@ -2,7 +2,8 @@
 
 Fecha de creación: 2026-11-12  
 Última actualización: 2026-11-14  
-Estado: En curso. P1, el Bloque B (V2–V5), el Bloque A (H1–H5) y C7 (evaluación e implementación) hechos y verificados (2026-11-14); sigue el Bloque C desde E6.1b.2.  
+Estado: APIs del Bloque C y piloto MCP verificados en local. Quedan la comprobación con Nuxt y Vertex AI y el despliegue del MCP alojado.
+
 Ámbito: la API Nest (`LearningAllPosibolIt`) y el servicio de IA (`LearningAllPosibolIt-ai`). La web Nuxt (E7) la lleva otra sesión.  
 Relacionada con: [fuentes 04](../../../fonts/feature/cierre-backend/04-fuentes-de-terminar-hojas-visor-y-agente.md), [plan 01 de cierre](01-plan-cierre-de-pendientes.md), [23, plan C7](../../../../../docs-diagrams/23-graphql-nest-para-fastapi-y-nuxt.md), [plan E6](../ai-assistant/01-plan-e6-ia-con-qdrant-y-llamaindex.md), [22](../../../../../docs-diagrams/22-visor-y-diagnostico-del-feed.md), [12](../../../../../docs-diagrams/12-hojas-modelo-editor-importacion-y-exportacion.md), [15](../../../../../docs-diagrams/15-chat-ia-herramientas-y-propuestas.md).  
 Revisión de partida: `feature/cierre-backend` `b219b30` más los cambios sin commit de los días 9–11.
@@ -88,14 +89,14 @@ Evaluar primero toda la API con el inventario y el piloto del [23, plan C7](../.
 | Etapa | Repositorio | Qué | Comprobación |
 | --- | --- | --- | --- |
 | **E6.1b.2** | Nest y FastAPI | [Fuentes de hojas y organización en el índice](../ai-assistant/02-plan-conocimiento-de-hojas-y-organizacion.md) | Implementado y verificado en local con Qdrant. Queda Vertex AI. |
-| **E6.2** | Nest | [Conversaciones y mensajes](../ai-assistant/03-plan-conversaciones-y-mensajes.md), migración | Privacidad por autor y `clientMessageId` idempotente |
-| **H6** | Nest | [Herramientas de hoja para el agente](../ai-assistant/04-plan-herramientas-de-hoja-del-agente.md) (P12) | Cálculo del 5 % exacto sobre la selección y propuesta como borrador (T20) |
-| **E6.3a** | Nest y FastAPI | [Catálogo, ejecuciones y confirmaciones](../ai-assistant/05-plan-catalogo-ejecuciones-y-confirmaciones.md) (P13) | Cobertura de rutas, credencial acotada y 404 para recursos ajenos |
-| **E6.3b** | FastAPI | `FunctionAgent` con LLM simulado, herramientas por búsqueda y espera de confirmación | T18, T19 |
-| **E6.4** | Los dos | [Streaming, SSE con `after=<seq>`, cancelar y cuotas](../ai-assistant/06-plan-eventos-cuotas-y-contrato-del-chat.md) | T21, T22 |
+| ✅ **E6.2** | Nest | [Conversaciones y mensajes](../ai-assistant/03-plan-conversaciones-y-mensajes.md), migración | Privacidad por autor y `clientMessageId` idempotente |
+| ✅ **H6** | Nest | [Herramientas de hoja para el agente](../ai-assistant/04-plan-herramientas-de-hoja-del-agente.md) (P12) | Cálculo del 5 % exacto sobre la selección y propuesta como borrador (T20) |
+| ✅ **E6.3a** | Nest y FastAPI | [Catálogo, ejecuciones y confirmaciones](../ai-assistant/05-plan-catalogo-ejecuciones-y-confirmaciones.md) (P13) | Credencial acotada, lectura y propuesta con FastAPI y Nest reales |
+| ✅ **E6.3b** | FastAPI | `FunctionAgent` con LLM simulado, herramientas por búsqueda y espera de confirmación | T18, T19 |
+| ✅ **E6.4** | Nest | [SSE con `after=<seq>`, cancelación y cuota de ejecuciones](../ai-assistant/06-plan-eventos-cuotas-y-contrato-del-chat.md) | Alcance reducido del plan 06 |
 | **E6.5** | FastAPI | Gemini por Vertex AI con evaluación | Dataset de 15; coste medido |
-| **E6.6** | Los dos | [Endurecimiento y contrato para Nuxt](../ai-assistant/06-plan-eventos-cuotas-y-contrato-del-chat.md) | Recorrido completo con dos organizaciones y con la IA apagada |
-| **E6.7** | FastAPI | [Servidor MCP local](../../../../../LearningAllPosibolIt-ai/docs/plans/feature/agente/04-plan-servidor-mcp-local.md), solicitado por el usuario | Después de terminar y probar el recorrido local de las APIs |
+| ✅ **E6.6** | Los dos | [Endurecimiento y contrato para Nuxt](../ai-assistant/06-plan-eventos-cuotas-y-contrato-del-chat.md) | Conversación privada e índice acotado en la prueba local de APIs |
+| ✅ **E6.7 local** | Los dos | [Servidor MCP local](../../../../../LearningAllPosibolIt-ai/docs/plans/feature/agente/04-plan-servidor-mcp-local.md) y [contrato de Integraciones](../../../../contracts/integrations/README.md) | Cliente MCP por `stdio`, búsqueda acotada, propuesta y confirmación humana |
 
 ## Orden de ejecución
 
@@ -103,7 +104,7 @@ Completados: P1, V2, V3, V4, V5 y la **evaluación de C7** (2026-11-13): matriz 
 
 Completado además el 2026-11-14: H1–H5 (Bloque A) y la **implementación de C7**: 85 de 109 rutas con equivalente GraphQL, cliente Python contra Nest y contrato para Nuxt ([plan 02 de C7](../graphql&rulesets-evaluations-exports/02-plan-c7-implementar-graphql.md), bitácoras 02–06 de `graphql&rulesets-evaluations-exports`).
 
-Pendientes: Bloque C desde E6.1b.2 → E6.2 → H6 → E6.3a → E6.3b → E6.4 → E6.5 → E6.6.
+Completado el piloto local con Qdrant 1.19.1 y el modelo guionizado. La [bitácora de E6.7](../../../../bitacora-construccion/feature/ai-assistant/12-acceso-mcp-desde-nest.md) enlaza la prueba reproducible. El recorrido de Nuxt, el proveedor real y el MCP alojado conservan verificación propia.
 
 ## Comprobación al cerrar el plan
 
@@ -121,4 +122,4 @@ Recorrido completo con dos organizaciones y los dos servicios arrancados: crear 
 
 - Si las vistas guardadas del equipo las puede crear un Editor o solo un Manager (por defecto: Editor).
 - Flash o Pro para el chat (E6.5) y cuándo activar el envío de datos reales a Google.
-- Si quiere el servidor MCP (E6.7).
+- Cuándo habilitar el MCP alojado con OAuth.

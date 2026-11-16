@@ -52,12 +52,13 @@ export class RulesetsService {
     identity: AuthenticatedIdentity,
     projectId: string,
     input: CreateRulesetDto,
+    proposal?: { id: string; baseRevision: number },
   ) {
     const ruleset = toRuleset(input);
     assertRulesetIsConsistent(ruleset);
 
     const owner = await this.usersService.findCurrent(identity);
-    return this.repository.create(owner.id, projectId, ruleset);
+    return this.repository.create(owner.id, projectId, ruleset, proposal);
   }
 
   async findAll(

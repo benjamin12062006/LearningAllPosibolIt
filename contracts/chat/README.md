@@ -6,14 +6,16 @@ La prueba [`agent-runs.e2e-spec.ts`](../../test/features/agent-runs/agent-runs.e
 
 ## Recorrido
 
-1. **Conversación** de una hoja o de un libro: `POST P/worksheets/:worksheetId/conversations` o `POST P/workbooks/:workbookId/conversations` con `{ title }` → 201 `{ conversation }`.
+1. **Conversación** del proyecto, de una hoja o de un libro. Envía `{ title }` a `POST P/conversations`, `POST P/worksheets/:worksheetId/conversations` o `POST P/workbooks/:workbookId/conversations` → 201 `{ conversation }`. La conversación de proyecto devuelve `workbookId: null` y `worksheetId: null`.
 2. **Mensaje** de la persona: `POST P/conversations/:conversationId/messages` con `{ clientMessageId, content }` → 201 `{ message }`. `clientMessageId` es un UUID que genera la web; reintentar con el mismo y el mismo texto devuelve el mismo mensaje.
-3. **Ejecución**: `POST P/conversations/:conversationId/runs` con `{ messageId, context?: { revisionId?, selectionId? } }` → 202 `{ run }` en cola. La selección es la de H6 (`POST P/worksheets/:id/selections`).
+3. **Ejecución**: `POST P/conversations/:conversationId/runs` con `{ messageId, context? }` → 202 `{ run }` en cola. La web envía la `section` visible y el idioma de respuesta (`language`: `en` o `es`). Puede añadir `workbookId`, `worksheetId`, `revisionId`, `selectionId`, `catalogSnapshotId`, `rulesetRevision` o `evaluationId`. Nest verifica los recursos y conserva el contrato anterior para clientes que fijan la hoja o el libro en la conversación. La selección es la de H6 (`POST P/worksheets/:id/selections`).
 4. **En vivo**: `GET P/ai-runs/:runId/events` (SSE). Cada evento lleva `id` (su secuencia), `event` (el tipo) y `data` (JSON). Para reanudar, `?after=<id>` o la cabecera `Last-Event-ID`. El flujo se cierra al terminar la ejecución, o a los 5 minutos: la web reconecta con el último `id`.
 5. **Estado** en cualquier momento: `GET P/ai-runs/:runId` → `{ run }` con `status`, `outcome`, `answer` y `proposal`.
 6. **Confirmar o rechazar** lo que preparó el agente: `POST P/ai-runs/:runId/proposals/:proposalId/confirm` (o `/reject`) con `{ proposalHash }`. El hash es el de la propuesta que se enseñó: si cambió, 409 `AGENT_PROPOSAL_STALE`. El resultado (`result`) dice qué se creó: un borrador (`changesetId`), una hoja (`worksheetId`) o una vista (`savedViewId`). Nada se aplica solo: un borrador sigue su revisión humana.
 7. **Cancelar**: `POST P/ai-runs/:runId/cancel` → 200 `{ run }` cancelada. Lo que el agente prepare después ya no vale.
-8. **Historial**: `GET P/conversations/:conversationId/messages` (la respuesta del agente es un mensaje `assistant`).
+8. **Historial**: `GET P/conversations/:conversationId/messages` devuelve los mensajes. `GET P/conversations/:conversationId/runs/latest` devuelve `{ run }` con la ejecución activa o más reciente del autor. `run` es `null` cuando no hay una ejecución visible.
+
+Cada conversación tiene su propia ejecución y cursor SSE. El worker puede atender hasta tres ejecuciones al mismo tiempo. Confirmar una propuesta de catálogo desde una hoja devuelve `snapshotId` y `jobId`; la vista de Catálogo puede seguir su procesamiento como importación.
 
 GraphQL tiene lo mismo menos el SSE: `startAgentRun`, `agentRun`, `confirmAgentProposal`, `rejectAgentProposal` y `cancelAgentRun`.
 
@@ -57,7 +59,7 @@ La respuesta llega entera al terminar: en esta versión no hay `text.delta` (tex
 
 ## Límites
 
-- 8 llamadas a operaciones por ejecución.
+- 20 llamadas a operaciones por ejecución.
 - Una propuesta por ejecución; caduca a los 30 minutos.
 - 3 ejecuciones activas por persona y 200 al día.
 - Historial enviado al agente: 50 mensajes y 64 KiB.

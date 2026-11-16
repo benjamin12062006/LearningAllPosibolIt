@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import type { AuthenticatedIdentity } from '../../auth/authenticated-request.js';
 import { CatalogImportService } from '../../catalog-import/catalog-import.service.js';
+import { ChangesetsService } from '../../changesets/changesets.service.js';
+import { ExportsService } from '../../exports/exports.service.js';
 import { apiError } from '../../common/http/api-error.js';
 import { ErrorCodes } from '../../common/http/error-codes.js';
 import { validateAs } from '../../common/http/validation-options.js';
@@ -9,7 +13,10 @@ import { FeedsService } from '../../feeds/feeds.service.js';
 import { ProjectMembershipService } from '../../projects/project-membership.service.js';
 import { ProjectsService } from '../../projects/projects.service.js';
 import { RulesetsService } from '../../rulesets/rulesets.service.js';
+import { WorksheetExportsService } from '../../worksheet-exports/worksheet-exports.service.js';
+import { WorksheetImportsService } from '../../worksheet-imports/worksheet-imports.service.js';
 import { WorksheetToolsService } from '../../worksheet-tools/worksheet-tools.service.js';
+import { WorksheetCatalogSnapshotsService } from '../../worksheet-catalog-snapshots/worksheet-catalog-snapshots.service.js';
 import { SavedViewsService } from '../../worksheets/saved-views.service.js';
 import { WorksheetRowsService } from '../../worksheets/worksheet-rows.service.js';
 import {
@@ -24,6 +31,24 @@ import type {
   ReadOperation,
   WriteOperation,
 } from './agent-operation.js';
+import { operationText, worksheetOf } from './agent-operation.js';
+import {
+  catalogSnapshotOperation,
+  createRulesetOperation,
+  previewRulesOperation,
+  requestEvaluationOperation,
+} from './catalog-rules-operations.js';
+import { projectActionOperations } from './project-action-operations.js';
+import {
+  findDuplicatesOperation,
+  prepareSheetEditsOperation,
+} from './sheet-edit-operations.js';
+import {
+  compareRevisionsOperation,
+  listWorkbooksOperation,
+  openChangesetOperation,
+  sheetHistoryOperation,
+} from './sheet-history-operations.js';
 import {
   CHANGE_PROPOSAL_SCHEMA,
   ChangeProposalInput,
@@ -43,47 +68,34 @@ import {
   RulesetRefInput,
   SELECT_ROWS_SCHEMA,
   SelectRowsInput,
+  SHEET_SCHEMA_SCHEMA,
+  SheetSchemaInput,
+  SHEET_CATALOG_SCHEMA,
+  SheetCatalogInput,
   SHEET_LAYOUT_SCHEMA,
   SheetLayoutInput,
   SUGGEST_VIEW_SCHEMA,
   SuggestViewInput,
   WORKBOOK_REF_SCHEMA,
-  WORKSHEET_REF_SCHEMA,
   WorkbookRefInput,
-  WorksheetRefInput,
 } from './operation-inputs.js';
 
 /**
- * Lo que el agente nunca puede hacer (ficha 05 de C7): aprobar, aplicar,
- * publicar, borrar, configurar el feed, gastar cuota, cambiar miembros o
- * roles, y lo que es solo de la persona. La prueba del catálogo comprueba que
- * ninguna operación lleva uno de estos nombres ni su efecto.
+ * Lo vital, que el agente nunca hace (ampliación del 2026-11-15): borrar,
+ * crear o reconfigurar el proyecto, cambiar miembros o roles, el perfil de la
+ * persona, gastar en reindexar y los secretos de entrega. El resto de acciones
+ * del proyecto son escrituras con confirmación. La prueba del catálogo
+ * comprueba que ninguna operación lleva uno de estos nombres.
  */
 export const FORBIDDEN_OPERATIONS = [
   'delete_project',
-  'delete_import',
-  'approve_export',
-  'decide_changeset',
-  'apply_changeset',
-  'approve_feed_policy',
-  'publish_feed',
-  'request_feed_refresh',
-  'create_feed',
-  'set_feed_source',
-  'set_feed_schedule',
-  'reindex_knowledge',
-  'update_me',
   'create_project',
   'update_project',
-  'reopen_changeset',
-  'cancel_changeset',
-  'archive_workbook',
-  'restore_workbook',
-  'archive_worksheet',
-  'restore_worksheet',
-  'delete_import_mapping',
-  'delete_saved_view',
+  'delete_organization',
   'manage_members',
+  'update_me',
+  'reindex_knowledge',
+  'rotate_delivery_token',
 ] as const;
 
 /**
@@ -109,21 +121,53 @@ export class AgentOperationCatalog {
     private readonly rows: WorksheetRowsService,
     private readonly tools: WorksheetToolsService,
     private readonly views: SavedViewsService,
+    private readonly worksheetCatalog: WorksheetCatalogSnapshotsService,
+    private readonly changesets: ChangesetsService,
+    private readonly worksheetImports: WorksheetImportsService,
+    private readonly worksheetExports: WorksheetExportsService,
+    private readonly catalogExports: ExportsService,
   ) {
     const all: AgentOperation[] = [
       this.projectOverview(),
+      catalogSnapshotOperation(this.imports),
+      listWorkbooksOperation(this.worksheets),
       this.listWorksheets(),
       this.sheetSchema(),
+      sheetHistoryOperation({
+        worksheets: this.worksheets,
+        changesets: this.changesets,
+        imports: this.worksheetImports,
+        exports: this.worksheetExports,
+      }),
+      openChangesetOperation(this.changesets),
+      compareRevisionsOperation(this.rows),
+      findDuplicatesOperation(this.rows),
       this.queryRows(),
       this.selectRows(),
       this.previewTransform(),
       this.evaluationReport(),
       this.ruleset(),
+      previewRulesOperation(this.evaluations),
       this.feedStatus(),
       this.feedProducts(),
+      createRulesetOperation(this.rulesets),
+      requestEvaluationOperation(this.imports, this.rulesets, this.evaluations),
+      this.sheetCatalog(),
       this.changeProposal(),
+      prepareSheetEditsOperation({
+        changesets: this.changesets,
+        worksheets: this.worksheets,
+      }),
       this.sheetLayout(),
       this.suggestView(),
+      ...projectActionOperations({
+        worksheets: this.worksheets,
+        changesets: this.changesets,
+        views: this.views,
+        evaluations: this.evaluations,
+        exports: this.catalogExports,
+        feeds: this.feeds,
+      }),
     ];
     this.operations = new Map(
       all.map((operation) => [operation.name, operation]),
@@ -146,6 +190,18 @@ export class AgentOperationCatalog {
       inputSchema,
       level,
     }));
+  }
+
+  async describeFor(identity: AuthenticatedIdentity, projectId: string) {
+    const { permissions } = await this.membership.resolveAccess(
+      identity,
+      projectId,
+    );
+    return this.describe(
+      this.all().filter((operation) =>
+        permissions.includes(operation.permission),
+      ),
+    );
   }
 
   private projectOverview(): ReadOperation<NoInput> {
@@ -233,7 +289,7 @@ export class AgentOperationCatalog {
         workbookId: input.workbookId ?? context.context.workbookId,
       }),
       execute: async ({ identity, scope, context }, input) => {
-        const workbookId = input.workbookId ?? context.workbookId;
+        const workbookId = workbookOf(input.workbookId ?? context.workbookId);
         const { items } = await this.worksheets.findWorksheets(
           identity,
           scope,
@@ -253,15 +309,15 @@ export class AgentOperationCatalog {
     };
   }
 
-  private sheetSchema(): ReadOperation<WorksheetRefInput> {
+  private sheetSchema(): ReadOperation<SheetSchemaInput> {
     return {
       name: 'get_sheet_schema',
       description:
-        'Columnas (id, nombre, tipo) y revisión vigente de una hoja. Úsalo antes de leer filas o transformar.',
+        'Columnas (id, nombre, tipo) y revisión vigente de una hoja; con revisionId, las columnas de esa revisión. Úsalo antes de leer filas o transformar.',
       level: 'read',
       permission: 'organization.read',
-      inputSchema: WORKSHEET_REF_SCHEMA,
-      parse: (input) => validateAs(WorksheetRefInput, input),
+      inputSchema: SHEET_SCHEMA_SCHEMA,
+      parse: (input) => validateAs(SheetSchemaInput, input),
       targetOf: (context, input) => ({
         worksheetId: worksheetOf(context, input.worksheetId),
       }),
@@ -272,11 +328,20 @@ export class AgentOperationCatalog {
           context.scope,
           worksheetId,
         );
+        const requested = input.revisionId
+          ? await this.rows.revisionSchema(
+              context.identity,
+              context.scope,
+              worksheetId,
+              input.revisionId,
+            )
+          : null;
         return {
           id: worksheet.id,
           name: worksheet.name,
           headRevision: worksheet.headRevision,
-          columns: worksheet.columns.map((column) => ({
+          revision: requested?.revision ?? null,
+          columns: (requested?.columns ?? worksheet.columns).map((column) => ({
             id: column.id,
             name: column.name,
             type: column.type,
@@ -299,21 +364,18 @@ export class AgentOperationCatalog {
       targetOf: (context, input) => ({
         worksheetId: worksheetOf(context, input.worksheetId),
       }),
-      execute: async (context, input) =>
-        this.rows.query(
-          context.identity,
-          context.scope,
-          worksheetOf(context, input.worksheetId),
-          {
-            revisionId: input.revisionId,
-            viewId: input.viewId,
-            filter: input.filter,
-            sort: input.sort,
-            columns: input.columns,
-            cursor: input.cursor,
-            limit: input.limit ?? 20,
-          },
-        ),
+      execute: async (context, input) => {
+        const worksheetId = worksheetOf(context, input.worksheetId);
+        return this.rows.query(context.identity, context.scope, worksheetId, {
+          revisionId: revisionOf(context, worksheetId, input.revisionId),
+          viewId: input.viewId,
+          filter: input.filter,
+          sort: input.sort,
+          columns: input.columns,
+          cursor: input.cursor,
+          limit: input.limit ?? 20,
+        });
+      },
     };
   }
 
@@ -321,7 +383,7 @@ export class AgentOperationCatalog {
     return {
       name: 'select_rows',
       description:
-        'Fija una selección de filas y columnas de la revisión vigente para transformarla después.',
+        'Fija una selección para transformarla después. Pasa el revisionId y los rowId devueltos por query_rows y los IDs de columna de get_sheet_schema para la misma hoja.',
       level: 'read',
       permission: 'ai.use',
       inputSchema: SELECT_ROWS_SCHEMA,
@@ -333,8 +395,7 @@ export class AgentOperationCatalog {
       execute: async (context, input) => {
         const worksheetId = worksheetOf(context, input.worksheetId);
         const revisionId =
-          input.revisionId ??
-          context.context.revisionId ??
+          revisionOf(context, worksheetId, input.revisionId) ??
           (
             await this.worksheets.findWorksheet(
               context.identity,
@@ -356,7 +417,7 @@ export class AgentOperationCatalog {
     return {
       name: 'preview_transform',
       description:
-        'Calcula sin guardar cómo quedaría una transformación (recortar, reemplazar, mapear o porcentaje exacto) sobre una selección.',
+        'Calcula sin guardar cómo quedaría una transformación (recortar, reemplazar un valor o un fragmento, mapear o porcentaje exacto) sobre una selección.',
       level: 'read',
       permission: 'ai.use',
       inputSchema: PREVIEW_TRANSFORM_SCHEMA,
@@ -396,11 +457,26 @@ export class AgentOperationCatalog {
       parse: (input) => validateAs(EvaluationRefInput, input),
       targetOf: (context, input) => ({
         projectId: context.scope.projectId,
-        evaluationId: input.evaluationId ?? null,
+        evaluationId:
+          input.evaluationId ?? context.context.evaluationId ?? null,
       }),
-      execute: async ({ identity, scope }, input) => {
+      resultTarget: (result) => {
+        if (result && typeof result === 'object' && 'evaluation' in result) {
+          const evaluation = result.evaluation;
+          if (
+            evaluation &&
+            typeof evaluation === 'object' &&
+            'id' in evaluation &&
+            typeof evaluation.id === 'string'
+          )
+            return { evaluationId: evaluation.id };
+        }
+        return {};
+      },
+      execute: async ({ identity, scope, context }, input) => {
         const evaluationId =
           input.evaluationId ??
+          context.evaluationId ??
           (
             await this.evaluations.findAll(identity, scope.projectId, {
               limit: 1,
@@ -437,13 +513,28 @@ export class AgentOperationCatalog {
       permission: 'organization.read',
       inputSchema: RULESET_REF_SCHEMA,
       parse: (input) => validateAs(RulesetRefInput, input),
-      targetOf: (context) => ({ projectId: context.scope.projectId }),
-      execute: async ({ identity, scope }, input) => {
-        if (input.revision !== undefined) {
+      targetOf: (context, input) => ({
+        projectId: context.scope.projectId,
+        rulesetRevision:
+          input.revision ?? context.context.rulesetRevision ?? null,
+      }),
+      resultTarget: (result) => {
+        if (
+          result &&
+          typeof result === 'object' &&
+          'revision' in result &&
+          typeof result.revision === 'number'
+        )
+          return { rulesetRevision: result.revision };
+        return {};
+      },
+      execute: async ({ identity, scope, context }, input) => {
+        const revision = input.revision ?? context.rulesetRevision;
+        if (revision !== undefined) {
           return this.rulesets.findRevision(
             identity,
             scope.projectId,
-            input.revision,
+            revision,
           );
         }
         const { items } = await this.rulesets.findAll(
@@ -451,7 +542,7 @@ export class AgentOperationCatalog {
           scope.projectId,
           { limit: 1, offset: 0 },
         );
-        return items[0] ?? null;
+        return items[0] ?? { ruleset: null };
       },
     };
   }
@@ -572,7 +663,11 @@ export class AgentOperationCatalog {
           worksheetId,
         );
         return {
-          summary: `Crear un borrador en la hoja «${worksheet.name}» con ${preview.affectedCells} cambios en ${preview.affectedRows} filas: ${input.explanation}`,
+          summary: operationText(
+            context,
+            `Crear un borrador en la hoja «${worksheet.name}» con ${preview.affectedCells} cambios en ${preview.affectedRows} filas: ${input.explanation}`,
+            `Create a draft in “${worksheet.name}” with ${preview.affectedCells} changes across ${preview.affectedRows} rows: ${input.explanation}`,
+          ),
           plan: {
             worksheetId,
             previewId: input.previewId,
@@ -597,6 +692,61 @@ export class AgentOperationCatalog {
     };
   }
 
+  private sheetCatalog(): WriteOperation<SheetCatalogInput> {
+    return {
+      name: 'propose_catalog_from_sheet',
+      description:
+        'Prepara una importación del catálogo a partir de una revisión de hoja. Usa get_sheet_schema para identificar la columna de identificadores únicos. Requiere confirmación humana.',
+      level: 'write',
+      permission: 'worksheet.write',
+      inputSchema: SHEET_CATALOG_SCHEMA,
+      parse: (input) => validateAs(SheetCatalogInput, input),
+      targetOf: (context, input) => ({
+        worksheetId: worksheetOf(context, input.worksheetId),
+      }),
+      prepare: async (context, input) => {
+        const { worksheetId: requestedSheet, ...source } = input;
+        const worksheetId = worksheetOf(context, requestedSheet);
+        const revisionId =
+          source.revisionId ??
+          (worksheetId === context.context.worksheetId
+            ? (context.context.revisionId ?? undefined)
+            : undefined);
+        const prepared = await this.worksheetCatalog.prepare(
+          context.identity,
+          context.scope,
+          worksheetId,
+          { ...source, revisionId },
+        );
+        return {
+          summary: operationText(
+            context,
+            `Crear una importación desde «${prepared.worksheetName}» usando «${prepared.idColumnName}» como identificador.`,
+            `Create an import from “${prepared.worksheetName}” using “${prepared.idColumnName}” as the ID column.`,
+          ),
+          plan: {
+            worksheetId,
+            source: asPlainJson({ ...source, revisionId: prepared.revisionId }),
+            jobId: randomUUID(),
+          },
+          target: { worksheetId },
+        };
+      },
+      confirm: async (context, plan, proposalId) => {
+        const source = await validateAs(SheetCatalogInput, plan.source);
+        const { snapshotId, jobId } = await this.worksheetCatalog.create(
+          context.identity,
+          context.scope,
+          String(plan.worksheetId),
+          source,
+          proposalId,
+          { snapshotId: proposalId, jobId: String(plan.jobId) },
+        );
+        return { snapshotId, jobId };
+      },
+    };
+  }
+
   private sheetLayout(): WriteOperation<SheetLayoutInput> {
     return {
       name: 'propose_sheet_layout',
@@ -610,7 +760,9 @@ export class AgentOperationCatalog {
         workbookId: input.workbookId ?? context.context.workbookId,
       }),
       prepare: async (context, input) => {
-        const workbookId = input.workbookId ?? context.context.workbookId;
+        const workbookId = workbookOf(
+          input.workbookId ?? context.context.workbookId,
+        );
         // Que el libro exista y se vea, con los 404 de siempre.
         await this.worksheets.findWorksheets(
           context.identity,
@@ -621,7 +773,11 @@ export class AgentOperationCatalog {
         const columns = asPlainJson(input.columns);
         const names = columns.map((column) => column.name).join(', ');
         return {
-          summary: `Crear la hoja vacía «${input.name}» con ${columns.length} columnas: ${names}.`,
+          summary: operationText(
+            context,
+            `Crear la hoja vacía «${input.name}» con ${columns.length} columnas: ${names}.`,
+            `Create the empty sheet “${input.name}” with ${columns.length} columns: ${names}.`,
+          ),
           plan: { workbookId, name: input.name, columns },
           target: { workbookId },
         };
@@ -663,7 +819,11 @@ export class AgentOperationCatalog {
         );
         const query = asPlainJson(input.query);
         return {
-          summary: `Guardar la vista personal «${input.name}» de la hoja «${worksheet.name}».`,
+          summary: operationText(
+            context,
+            `Guardar la vista personal «${input.name}» de la hoja «${worksheet.name}».`,
+            `Save the personal view “${input.name}” for the sheet “${worksheet.name}”.`,
+          ),
           plan: { worksheetId, name: input.name, query },
           target: { worksheetId },
         };
@@ -686,19 +846,22 @@ export class AgentOperationCatalog {
   }
 }
 
-/**
- * La hoja de la operación: la que pide el modelo o la de la conversación. Una
- * conversación de libro sin hoja necesita que el modelo diga cuál.
- */
-function worksheetOf(
-  context: OperationContext,
-  worksheetId: string | undefined,
-): string {
-  const resolved = worksheetId ?? context.context.worksheetId;
-  if (!resolved) {
-    throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
+function workbookOf(workbookId: string | null): string {
+  if (!workbookId) {
+    throw apiError(ErrorCodes.WORKBOOK_NOT_FOUND);
   }
-  return resolved;
+  return workbookId;
+}
+
+function revisionOf(
+  context: OperationContext,
+  worksheetId: string,
+  requestedRevisionId: string | undefined,
+): string | undefined {
+  if (requestedRevisionId) return requestedRevisionId;
+  if (worksheetId === context.context.worksheetId) {
+    return context.context.revisionId ?? undefined;
+  }
 }
 
 /** El plan se guarda como JSON: sin las clases del DTO que lo validó. */

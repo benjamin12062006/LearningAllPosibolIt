@@ -6,6 +6,7 @@ type AgentProposal {
   id: ID!
   operation: String!
   result: JSON
+  rulesetReview: JSON
   status: String!
   summary: String!
   target: JSON
@@ -34,7 +35,7 @@ type AgentRun {
 type AgentRunContext {
   revisionId: ID
   selectionId: ID
-  workbookId: ID!
+  workbookId: ID
   worksheetId: ID
 }
 
@@ -224,7 +225,7 @@ type Conversation {
   title: String!
   updatedAt: String!
   visibility: ConversationVisibility!
-  workbookId: ID!
+  workbookId: ID
   worksheetId: ID
 }
 
@@ -704,6 +705,7 @@ type Mutation {
   createFeed(projectId: ID!): CreatedFeed!
   createImportMapping(input: CreateImportMappingInput!, organizationId: ID!, projectId: ID!, worksheetId: ID!): ImportMapping!
   createProject(input: CreateProjectInput!): Project!
+  createProjectConversation(input: CreateConversationInput!, organizationId: ID!, projectId: ID!): Conversation!
   createRuleset(input: RulesetInput!, projectId: ID!): Ruleset!
   createWorkbook(input: CreateWorkbookInput!, organizationId: ID!, projectId: ID!): Workbook!
   createWorkbookConversation(input: CreateConversationInput!, organizationId: ID!, projectId: ID!, workbookId: ID!): Conversation!

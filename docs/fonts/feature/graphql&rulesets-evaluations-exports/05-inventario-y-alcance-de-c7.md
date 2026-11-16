@@ -147,6 +147,7 @@ E6.2 añade seis rutas de conversaciones y mensajes con equivalente GraphQL. Cob
 | `changesets` | `POST …/org/proyecto/changesets/:changesetId/apply` | Manager | `applyChangeset` | Nuxt | Añadir | Prohibido al agente (aplicar); conserva la idempotencia |
 | `changesets` | `POST …/org/proyecto/changesets/:changesetId/rebase` | Editor | `rebaseChangeset` | Ambos | Añadir |  |
 | `changesets` | `POST …/org/proyecto/revisions/:revisionId/revert-proposal` | Editor | `proposeRevert` | Ambos | Añadir | Crea un borrador, no aplica |
+| `conversations` | `POST …/org/proyecto/conversations` | Editor | `createProjectConversation` | Nuxt | Existe | Conversación privada del proyecto |
 | `conversations` | `POST …/org/proyecto/workbooks/:workbookId/conversations` | Editor | `createWorkbookConversation` | Nuxt | Existe | Conversación privada |
 | `conversations` | `POST …/org/proyecto/worksheets/:worksheetId/conversations` | Editor | `createWorksheetConversation` | Nuxt | Existe | Conversación privada |
 | `conversations` | `GET …/org/proyecto/conversations` | Miembro autor | `Project.conversations` | Nuxt | Existe | Lista privada por proyecto |
@@ -158,12 +159,25 @@ E6.2 añade seis rutas de conversaciones y mensajes con equivalente GraphQL. Cob
 | `worksheet-tools` | `GET …/org/proyecto/worksheets/:worksheetId/transform-previews/:previewId` | Editor con `ai.use` | `worksheetTransformPreview` | Ambos | Existe | H6: diff paginado |
 | `worksheet-tools` | `POST …/org/proyecto/worksheets/:worksheetId/change-proposals` | Editor con `ai.use` | `createWorksheetChangeProposal` | Ambos | Existe | H6: solo crea un borrador de origen `ai` |
 | `agent-runs` | `POST …/org/proyecto/conversations/:conversationId/runs` | Editor autor | `startAgentRun` | Nuxt | Existe | E6.3a: 202, ejecución en cola |
+| `agent-runs` | `GET …/org/proyecto/conversations/:conversationId/runs/latest` | Miembro autor | — | Nuxt | REST | Chat de proyecto: última ejecución al reabrir el panel |
 | `agent-runs` | `GET …/org/proyecto/ai-runs/:runId` | Miembro autor | `agentRun` | Nuxt | Existe | E6.3a: estado, respuesta y propuesta |
 | `agent-runs` | `POST …/org/proyecto/ai-runs/:runId/proposals/:proposalId/confirm` | Editor autor | `confirmAgentProposal` | Nuxt | Existe | E6.3a: solo la persona; prohibido al agente |
 | `agent-runs` | `POST …/org/proyecto/ai-runs/:runId/proposals/:proposalId/reject` | Editor autor | `rejectAgentProposal` | Nuxt | Existe | E6.3a: solo la persona |
 | `agent-runs` | `POST /internal/v1/agent-runs/:runId/operations/:name` | Credencial de la ejecución | — | Servicio de IA | HTTP | Pasarela interna del agente (A11) |
 | `agent-runs` | `POST …/org/proyecto/ai-runs/:runId/cancel` | Editor autor | `cancelAgentRun` | Nuxt | Existe | E6.4: la credencial deja de valer al momento |
 | `agent-runs` | `GET …/org/proyecto/ai-runs/:runId/events` | Miembro autor | — | Nuxt | HTTP | E6.4: SSE con `after` o `Last-Event-ID` |
+| `integrations` | `GET …/org/proyecto/integrations/credentials` | Miembro | — | Nuxt | REST | Metadatos paginados, sin secretos |
+| `integrations` | `POST …/org/proyecto/integrations/credentials` | Miembro | — | Nuxt | REST | Idempotencia y entrega puntual del secreto |
+| `integrations` | `POST …/org/proyecto/integrations/credentials/:credentialId/revoke` | Titular o gestor de miembros | — | Nuxt | REST | Revocación de una credencial del proyecto |
+| `integrations` | `GET …/org/proyecto/integrations/proposals/:proposalId` | Titular | — | Nuxt | REST | Revisión humana de una propuesta externa |
+| `integrations` | `POST …/org/proyecto/integrations/proposals/:proposalId/confirm` | Editor titular o superior | — | Nuxt | REST | Confirmación humana con el hash revisado |
+| `integrations` | `POST …/org/proyecto/integrations/proposals/:proposalId/reject` | Titular | — | Nuxt | REST | Rechazo humano con el hash revisado |
+| `integrations` | `GET /integrations/session` | Credencial CLI | — | CLI | REST | Ámbito y capacidades |
+| `integrations` | `GET /integrations/operations` | Credencial CLI | — | CLI | REST | Catálogo autorizado |
+| `integrations` | `POST /integrations/operations/:name` | Credencial CLI | — | CLI | REST | Lecturas y propuestas |
+| `integrations` | `GET /internal/v1/mcp-integrations/session` | Adaptador y delegación MCP | — | MCP | HTTP | Ámbito y capacidades vigentes |
+| `integrations` | `GET /internal/v1/mcp-integrations/operations` | Adaptador y delegación MCP | — | MCP | HTTP | Catálogo filtrado de la credencial |
+| `integrations` | `POST /internal/v1/mcp-integrations/operations/:name` | Adaptador y delegación MCP | — | MCP | HTTP | Lectura o preparación de propuesta |
 | `evaluations` | `POST …/proyecto/evaluations` | Editor | `requestEvaluation` | Ambos | Añadir |  |
 | `evaluations` | `POST …/proyecto/evaluations/preview` | Editor | `rulesPreview` (consulta) | Ambos | Añadir | No guarda nada: es una lectura |
 | `evaluations` | `GET …/proyecto/evaluations` | Miembro | `Project.evaluations` | Ambos | Añadir |  |

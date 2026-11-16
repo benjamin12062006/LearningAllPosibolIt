@@ -37,6 +37,21 @@ export class ConversationsResolver {
     return this.conversations.find(identity, { organizationId, projectId }, id);
   }
 
+  @Mutation(() => ConversationType, { name: 'createProjectConversation' })
+  createForProject(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @IdArg('organizationId') organizationId: string,
+    @IdArg('projectId') projectId: string,
+    @Args('input', { type: () => CreateConversationInput })
+    input: CreateConversationInput,
+  ) {
+    return this.conversations.createForProject(
+      identity,
+      { organizationId, projectId },
+      input,
+    );
+  }
+
   @Mutation(() => ConversationType, { name: 'createWorkbookConversation' })
   createForWorkbook(
     @CurrentIdentity() identity: AuthenticatedIdentity,

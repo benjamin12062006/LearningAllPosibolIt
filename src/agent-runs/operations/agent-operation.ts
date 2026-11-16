@@ -1,4 +1,6 @@
 import type { AuthenticatedIdentity } from '../../auth/authenticated-request.js';
+import { apiError } from '../../common/http/api-error.js';
+import { ErrorCodes } from '../../common/http/error-codes.js';
 import type { OrganizationPermission } from '../../organizations/organization-roles.js';
 import type { ProjectScope } from '../../worksheets/worksheets.types.js';
 import type { RunContext } from '../agent-runs.types.js';
@@ -43,6 +45,7 @@ export type ReadOperation<Input = unknown> = OperationBase<Input> &
   Readonly<{
     level: 'read';
     execute(context: OperationContext, input: Input): Promise<unknown>;
+    resultTarget?(result: unknown): Record<string, unknown>;
   }>;
 
 /**
@@ -61,6 +64,30 @@ export type WriteOperation<Input = unknown> = OperationBase<Input> &
   }>;
 
 export type AgentOperation = ReadOperation | WriteOperation;
+
+export function operationText(
+  { context }: OperationContext,
+  es: string,
+  en: string,
+) {
+  return context.language === 'en' ? en : es;
+}
+
+/**
+ * La hoja de la operación: la pedida o la de la conversación. Una
+ * conversación sin hoja y un cliente externo necesitan señalarla en los
+ * argumentos.
+ */
+export function worksheetOf(
+  { context }: OperationContext,
+  worksheetId: string | undefined,
+): string {
+  const resolved = worksheetId ?? context.worksheetId;
+  if (!resolved) {
+    throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
+  }
+  return resolved;
+}
 
 /** Lo que se le cuenta al agente de cada operación. */
 export type OperationDescription = Readonly<{

@@ -46,6 +46,7 @@ export type SyncedSource = CurrentSource & Readonly<{ syncedAt: string }>;
 
 export const KNOWLEDGE_OPTIONS = Symbol('KNOWLEDGE_OPTIONS');
 export type KnowledgeOptions = Readonly<{
+  syncEnabled?: boolean;
   autoStart: boolean;
   pollMs: number;
   shutdownMs: number;

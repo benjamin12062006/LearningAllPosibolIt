@@ -69,6 +69,26 @@ export class WorksheetCatalogSnapshotsService {
     private readonly imports: CatalogImportService,
   ) {}
 
+  async prepare(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    input: CreateWorksheetCatalogSnapshotDto,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    const { access, revision, plan } = await this.planOf(
+      user.id,
+      scope,
+      worksheetId,
+      input,
+    );
+    return {
+      revisionId: revision.id,
+      worksheetName: access.worksheetName,
+      idColumnName: plan.idColumn.name,
+    };
+  }
+
   /**
    * Escribe la revisión como CSV en `tmp/` comprobando lo que el catálogo
    * rechazaría, y la acepta como una importación con su procedencia en la
@@ -81,27 +101,30 @@ export class WorksheetCatalogSnapshotsService {
     worksheetId: string,
     input: CreateWorksheetCatalogSnapshotDto,
     requestId: string,
+    plannedIds?: PlannedImportIds,
   ) {
     const user = await this.usersService.findCurrent(identity);
-    const access = await this.repository.findAccess(
+    const { access, revision, query, plan } = await this.planOf(
       user.id,
       scope,
       worksheetId,
+      input,
     );
-    assertCanSendToCatalog(access);
-    const revision = await this.requireRevision(
-      user.id,
-      scope,
-      worksheetId,
-      input.revisionId ?? null,
-    );
-    const columns = await this.rows.findColumns(
-      scope,
-      worksheetId,
-      revision.schemaVersion,
-    );
-    const query = parseOrReject(input, columns);
-    const plan = csvPlanOf(columns, query, input.idColumnId);
+    if (plannedIds) {
+      const existing = await this.repository.find(
+        user.id,
+        scope,
+        plannedIds.snapshotId,
+      );
+      if (existing) {
+        return {
+          catalogSnapshot: existing,
+          ...plannedIds,
+          status: 'queued' as const,
+          statusUrl: `/api/v1/projects/${scope.projectId}/jobs/${plannedIds.jobId}`,
+        };
+      }
+    }
 
     const written = await this.writeCsv(
       scope,
@@ -110,7 +133,7 @@ export class WorksheetCatalogSnapshotsService {
       query,
       plan,
     );
-    const ids: PlannedImportIds = {
+    const ids = plannedIds ?? {
       snapshotId: randomUUID(),
       jobId: randomUUID(),
     };
@@ -145,6 +168,34 @@ export class WorksheetCatalogSnapshotsService {
       throw apiError(ErrorCodes.WORKSHEET_CATALOG_SNAPSHOT_NOT_FOUND);
     }
     return found;
+  }
+
+  private async planOf(
+    actorId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    input: CreateWorksheetCatalogSnapshotDto,
+  ) {
+    const access = await this.repository.findAccess(
+      actorId,
+      scope,
+      worksheetId,
+    );
+    assertCanSendToCatalog(access);
+    const revision = await this.requireRevision(
+      actorId,
+      scope,
+      worksheetId,
+      input.revisionId ?? null,
+    );
+    const columns = await this.rows.findColumns(
+      scope,
+      worksheetId,
+      revision.schemaVersion,
+    );
+    const query = parseOrReject(input, columns);
+    const plan = csvPlanOf(columns, query, input.idColumnId);
+    return { access, revision, query, plan };
   }
 
   /** Como al exportar: una revisión de otra hoja responde igual que una inexistente. */

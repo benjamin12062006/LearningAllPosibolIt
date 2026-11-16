@@ -57,6 +57,24 @@ export class AgentRunsController {
     return { run };
   }
 
+  @Get('conversations/:conversationId/runs/latest')
+  async latest(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+    @Param('conversationId', uuidParamPipe('conversationId'))
+    conversationId: string,
+  ) {
+    return {
+      run: await this.runs.latest(
+        identity,
+        { organizationId, projectId },
+        conversationId,
+      ),
+    };
+  }
+
   @Get('ai-runs/:runId')
   async find(
     @CurrentIdentity() identity: AuthenticatedIdentity,

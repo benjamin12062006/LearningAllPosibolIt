@@ -40,7 +40,7 @@ const MAX_MESSAGE_LENGTH = 16_000;
 @Injectable()
 export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(AgentRunWorker.name);
-  private readonly loop: WorkerLoop;
+  private readonly loops: readonly WorkerLoop[];
   /** Las llamadas al agente en curso en este proceso, para cancelarlas. */
   private readonly inFlight = new Map<string, AbortController>();
 
@@ -53,11 +53,14 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(AGENT_RUN_OPTIONS)
     private readonly options: AgentRunOptions,
   ) {
-    this.loop = new WorkerLoop(
-      { ...options, autoStart: options.autoStart && client !== null },
-      () => this.pass(),
-      () => this.logger.error({ code: 'AGENT_RUN_PASS_FAILED' }),
-    );
+    this.loops = Array.from({ length: options.parallelRuns }, (_, index) => {
+      const loop: WorkerLoop = new WorkerLoop(
+        { ...options, autoStart: options.autoStart && client !== null },
+        () => this.pass(loop, index === 0),
+        () => this.logger.error({ code: 'AGENT_RUN_PASS_FAILED' }),
+      );
+      return loop;
+    });
   }
 
   /** Si el agente está configurado: sin él, iniciar una ejecución es 503. */
@@ -66,15 +69,15 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   onApplicationBootstrap() {
-    this.loop.start();
+    for (const loop of this.loops) loop.start();
   }
 
   async onModuleDestroy() {
-    await this.loop.stop();
+    await Promise.all(this.loops.map((loop) => loop.stop()));
   }
 
   wake() {
-    this.loop.wake();
+    for (const loop of this.loops) loop.wake();
   }
 
   /** Corta la llamada al agente de una ejecución cancelada, si es de este proceso. */
@@ -83,15 +86,17 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /** Para las pruebas y el arranque manual: vacía la cola y vuelve. */
-  runUntilIdle() {
-    return this.loop.runUntilIdle();
+  async runUntilIdle() {
+    await Promise.all(this.loops.map((loop) => loop.runUntilIdle()));
   }
 
-  private async pass(): Promise<void> {
-    const now = this.options.clock();
-    await this.repository.expireStale(now);
-    await this.sheetTools.deleteExpired(now);
-    while (!this.loop.isStopping()) {
+  private async pass(loop: WorkerLoop, maintainsQueue: boolean): Promise<void> {
+    if (maintainsQueue) {
+      const now = this.options.clock();
+      await this.repository.expireStale(now);
+      await this.sheetTools.deleteExpired(now);
+    }
+    while (!loop.isStopping()) {
       const credential = newRunCredential();
       const run = await this.repository.claimNext(
         credentialHash(credential),
@@ -100,7 +105,7 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
       if (!run) {
         return;
       }
-      await this.loop.runJob((signal) => this.process(run, credential, signal));
+      await loop.runJob((signal) => this.process(run, credential, signal));
     }
   }
 
@@ -132,7 +137,10 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
           credential,
           message: prompt.message,
           history: prompt.history,
-          operations: this.catalog.describe(),
+          operations: await this.catalog.describeFor(
+            run.identity,
+            run.scope.projectId,
+          ),
           context: { ...run.context },
         },
         randomUUID(),
@@ -142,7 +150,7 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
       await this.repository.succeed(
         run,
         response.status,
-        answerText(response.answer),
+        answerText(response.answer, run.context.language),
         this.options.clock(),
       );
     } catch (error) {
@@ -161,7 +169,12 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
       // Si la cancelaron, `fail` no cambia nada: el reclamo ya no es el vigente.
       await this.repository.fail(
         run,
-        publicError(ErrorCodes.AGENT_RUN_FAILED),
+        publicError(
+          error instanceof AiServiceRejectedError &&
+            error.code === ErrorCodes.AGENT_MODEL_RATE_LIMITED
+            ? ErrorCodes.AGENT_MODEL_RATE_LIMITED
+            : ErrorCodes.AGENT_RUN_FAILED,
+        ),
         this.options.clock(),
       );
     } finally {
@@ -170,10 +183,9 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
   }
 }
 
-function answerText(answer: string) {
+function answerText(answer: string, language?: 'en' | 'es') {
   const trimmed = answer.trim();
-  return (trimmed.length > 0 ? trimmed : EMPTY_ANSWER).slice(
-    0,
-    MAX_MESSAGE_LENGTH,
-  );
+  const empty =
+    language === 'en' ? 'I have nothing else to add.' : EMPTY_ANSWER;
+  return (trimmed.length > 0 ? trimmed : empty).slice(0, MAX_MESSAGE_LENGTH);
 }

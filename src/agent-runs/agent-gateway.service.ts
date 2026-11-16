@@ -2,6 +2,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import {
+  AI_SERVICE_CLIENT,
+  AiServiceClient,
+} from '../knowledge/ai-service.client.js';
 import { AgentRunsRepository } from './agent-runs.repository.js';
 import {
   AGENT_RUN_LIMITS,
@@ -16,6 +20,11 @@ import type {
   WriteOperation,
 } from './operations/agent-operation.js';
 import { AgentOperationCatalog } from './operations/agent-operation-catalog.js';
+import {
+  knowledgeOperation,
+  SEARCH_KNOWLEDGE,
+} from './operations/knowledge-operation.js';
+import { AI_AUTO_CONFIRM, confirmationIdOf } from './auto-confirm.js';
 import { canonicalHash, credentialHash } from './run-credential.js';
 
 const BEARER = /^Bearer ([A-Za-z0-9_-]{16,256})$/;
@@ -25,15 +34,20 @@ const BEARER = /^Bearer ([A-Za-z0-9_-]{16,256})$/;
  * puede hacer en Nest. Autentica la credencial de la ejecución, busca la
  * operación en el catálogo, valida sus argumentos como REST y llama al
  * servicio con la identidad de la persona. Las lecturas se ejecutan; las
- * escrituras solo dejan una propuesta para que la persona la confirme.
+ * escrituras dejan una propuesta para que la persona la confirme, o se
+ * aplican al momento con `AI_AUTO_CONFIRM`.
  */
 @Injectable()
 export class AgentGatewayService {
   constructor(
     private readonly repository: AgentRunsRepository,
     private readonly catalog: AgentOperationCatalog,
+    @Inject(AI_SERVICE_CLIENT)
+    private readonly ai: AiServiceClient | null,
     @Inject(AGENT_RUN_OPTIONS)
     private readonly options: AgentRunOptions,
+    @Inject(AI_AUTO_CONFIRM)
+    private readonly autoConfirm: boolean,
   ) {}
 
   async call(
@@ -43,7 +57,10 @@ export class AgentGatewayService {
     body: GatewayCallDto,
   ): Promise<unknown> {
     const run = await this.authenticate(runId, authorization);
-    const operation = this.catalog.find(name);
+    const operation =
+      name === SEARCH_KNOWLEDGE
+        ? knowledgeOperation(this.ai)
+        : this.catalog.find(name);
     if (!operation) {
       throw apiError(ErrorCodes.AGENT_OPERATION_NOT_FOUND);
     }
@@ -82,9 +99,20 @@ export class AgentGatewayService {
       const result =
         operation.level === 'read'
           ? await this.execute(operation, context, input)
-          : await this.prepare(operation, run, context, input, repeated);
-      await this.repository.finishCall(run.id, callId, 'succeeded', target);
-      await this.completed(run.id, callId, name, 'succeeded', target);
+          : this.autoConfirm
+            ? await this.applyNow(operation, run, context, input, callId)
+            : await this.prepare(operation, run, context, input, repeated);
+      const resultTarget =
+        operation.level === 'read' && operation.resultTarget
+          ? { ...target, ...operation.resultTarget(result) }
+          : target;
+      await this.repository.finishCall(
+        run.id,
+        callId,
+        'succeeded',
+        resultTarget,
+      );
+      await this.completed(run.id, callId, name, 'succeeded', resultTarget);
       return result;
     } catch (error) {
       await this.repository.finishCall(run.id, callId, 'failed', target);
@@ -138,6 +166,29 @@ export class AgentGatewayService {
       throw apiError(ErrorCodes.AGENT_RESULT_TOO_LARGE);
     }
     return result ?? null;
+  }
+
+  /**
+   * Con la confirmación automática, la escritura se aplica en la llamada con
+   * el `confirm` de siempre: la persona ya no la confirma, pero sus permisos y
+   * las reglas del servicio siguen valiendo. No guarda propuesta, así que una
+   * ejecución puede encadenar varias escrituras; la clave idempotente sale de
+   * la llamada.
+   */
+  private async applyNow(
+    operation: WriteOperation,
+    run: RunningRun,
+    context: OperationContext,
+    input: unknown,
+    callId: string,
+  ) {
+    const prepared = await operation.prepare(context, input);
+    const result = await operation.confirm(
+      context,
+      prepared.plan,
+      confirmationIdOf(run.id, callId),
+    );
+    return { status: 'confirmed', summary: prepared.summary, result };
   }
 
   /**
