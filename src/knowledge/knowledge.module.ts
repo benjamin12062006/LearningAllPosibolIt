@@ -31,7 +31,13 @@ import { SourceDocuments } from './source-documents.js';
         return config ? new AiServiceClient(config) : null;
       },
     },
-    { provide: KNOWLEDGE_OPTIONS, useValue: KNOWLEDGE_DEFAULTS },
+    {
+      provide: KNOWLEDGE_OPTIONS,
+      useFactory: () => ({
+        ...KNOWLEDGE_DEFAULTS,
+        syncEnabled: process.env.AI_KNOWLEDGE_SYNC_ENABLED !== 'false',
+      }),
+    },
   ],
   // Lo usa la capa GraphQL, igual que el controlador REST.
   // El cliente del servicio de IA lo usan también las ejecuciones del agente.

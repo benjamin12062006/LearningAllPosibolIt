@@ -17,7 +17,14 @@ import {
   type QueryIssue,
   type RowQueryInput,
 } from './row-query.js';
+import {
+  comparableColumnIds,
+  compareRows,
+  compareSchemas,
+  countByChange,
+} from './revision-comparison.js';
 import { evaluateRow } from './row-evaluation.js';
+import { DuplicateFinder, type DuplicateCriterion } from './row-duplicates.js';
 import { orderSql, whereSql } from './row-query-sql.js';
 import {
   WorksheetRowsRepository,
@@ -32,6 +39,19 @@ import type { ProjectScope, WorksheetColumn } from './worksheets.types.js';
 /** Lo que lee una consulta de filas: la petición, o la vista que pide. */
 type RowsRequest = RowQueryInput &
   Readonly<{ revisionId?: string; cursor?: string; limit?: number }>;
+
+export type RevisionComparisonRequest = Readonly<{
+  fromRevisionId: string;
+  /** Sin ella, la revisión actual. */
+  toRevisionId?: string;
+  limit: number;
+}>;
+
+export type DuplicatesRequest = DuplicateCriterion &
+  Readonly<{ revisionId?: string; limit: number }>;
+
+/** Filas leídas por vuelta al buscar duplicados: como al exportar. */
+const DUPLICATE_SCAN_PAGE_SIZE = 1_000;
 
 export type RowItem = Readonly<{
   rowId: string;
@@ -109,6 +129,131 @@ export class WorksheetRowsService {
         : null,
       revisionId: revision.id,
       schemaVersion: revision.schemaVersion,
+    };
+  }
+
+  /** Las columnas de una revisión (sin ID, la actual), también de una antigua. */
+  async revisionSchema(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    revisionId: string | null,
+  ) {
+    const user = await this.usersService.findCurrent(identity);
+    await this.requireProjectAccess(user.id, scope);
+    const revision = await this.requireRevision(
+      user.id,
+      scope,
+      worksheetId,
+      revisionId,
+    );
+    const columns = await this.rows.findColumns(
+      scope,
+      worksheetId,
+      revision.schemaVersion,
+    );
+    return { revision, columns };
+  }
+
+  /**
+   * Qué cambió de una revisión a otra de la misma hoja (plan 09, etapa 1).
+   * Los recuentos salen de todas las filas cambiadas; `items` es una muestra
+   * de `limit` y `truncated` dice si hay más.
+   */
+  async compareRevisions(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    request: RevisionComparisonRequest,
+  ) {
+    const from = await this.revisionSchema(
+      identity,
+      scope,
+      worksheetId,
+      request.fromRevisionId,
+    );
+    const to = await this.revisionSchema(
+      identity,
+      scope,
+      worksheetId,
+      request.toRevisionId ?? null,
+    );
+
+    const changedRows = await this.rows.findRowsChangedBetween({
+      scope,
+      worksheetId,
+      fromSequence: from.revision.sequence,
+      toSequence: to.revision.sequence,
+    });
+    const differences = compareRows(
+      changedRows,
+      comparableColumnIds(from.columns, to.columns),
+    );
+
+    return {
+      worksheetId,
+      from: from.revision,
+      to: to.revision,
+      columns: compareSchemas(from.columns, to.columns),
+      rows: {
+        counts: countByChange(differences),
+        items: differences.slice(0, request.limit),
+        truncated: differences.length > request.limit,
+      },
+    };
+  }
+
+  /**
+   * Filas repetidas por la clave elegida en toda la revisión, recorrida por
+   * páginas en el orden de la hoja (plan 09, etapa 2). Los recuentos son de
+   * toda la hoja; `groups` es una muestra de `limit`.
+   */
+  async findDuplicates(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    request: DuplicatesRequest,
+  ) {
+    const { revision, columns } = await this.revisionSchema(
+      identity,
+      scope,
+      worksheetId,
+      request.revisionId ?? null,
+    );
+    const keyColumns = storedColumnsOrReject(columns, request.columnIds);
+
+    const finder = new DuplicateFinder(request);
+    const pages = this.rows.pagesAt({
+      scope,
+      worksheetId,
+      sequence: revision.sequence,
+      where: whereSql(null),
+      order: orderSql([]),
+      pageSize: DUPLICATE_SCAN_PAGE_SIZE,
+    });
+    for await (const page of pages) {
+      finder.add(page);
+    }
+    const { groups, rowsWithEmptyKey } = finder.result();
+
+    return {
+      worksheetId,
+      revision,
+      criterion: {
+        columns: keyColumns.map(({ id, name, type }) => ({ id, name, type })),
+        comparison: request.comparison,
+        keep: request.keep,
+      },
+      counts: {
+        groups: groups.length,
+        rowsToRemove: groups.reduce(
+          (total, group) => total + group.removeRowIds.length,
+          0,
+        ),
+        rowsWithEmptyKey,
+      },
+      groups: groups.slice(0, request.limit),
+      truncated: groups.length > request.limit,
     };
   }
 
@@ -238,4 +383,24 @@ function toItem(
       ...publicError(code),
     })),
   };
+}
+
+/**
+ * La clave usa columnas de esta revisión con celdas guardadas: una calculada
+ * no se puede comparar sin evaluar cada fila.
+ */
+function storedColumnsOrReject(
+  columns: readonly WorksheetColumn[],
+  columnIds: readonly string[],
+): WorksheetColumn[] {
+  const byId = new Map(columns.map((column) => [column.id, column]));
+  return columnIds.map((columnId) => {
+    const column = byId.get(columnId);
+    if (!column || column.type === 'calculated') {
+      throw apiError(ErrorCodes.VALIDATION_FAILED, [
+        { field: 'columnIds', ...publicError(ErrorCodes.VALIDATION_FAILED) },
+      ]);
+    }
+    return column;
+  });
 }

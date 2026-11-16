@@ -27,7 +27,7 @@ import {
 /** El mensaje que dispara una ejecución, en la conversación privada de su autor. */
 export type RunTrigger = Readonly<{
   conversationId: string;
-  workbookId: string;
+  workbookId: string | null;
   worksheetId: string | null;
   messageId: string;
 }>;
@@ -83,7 +83,7 @@ const RUN_COLUMNS = Prisma.sql`
   r.started_at AS "startedAt",
   r.finished_at AS "finishedAt"`;
 
-const PROPOSAL_COLUMNS = Prisma.sql`
+export const PROPOSAL_COLUMNS = Prisma.sql`
   p.id,
   p.run_id AS "runId",
   p.operation,
@@ -118,7 +118,7 @@ export class AgentRunsRepository {
     messageId: string,
   ): Promise<RunTrigger> {
     const conversations = await this.prisma.$queryRaw<
-      { workbookId: string; worksheetId: string | null }[]
+      Pick<RunTrigger, 'workbookId' | 'worksheetId'>[]
     >`
       SELECT c.workbook_id AS "workbookId", c.worksheet_id AS "worksheetId"
       FROM estadistica_forms.ai_conversations c
@@ -206,6 +206,24 @@ export class AgentRunsRepository {
   }
 
   /** La ejecución y su propuesta, solo para su autor (lo ajeno, 404). */
+  async latestForConversation(
+    scope: ProjectScope,
+    actorId: string,
+    conversationId: string,
+  ) {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT r.id
+      FROM estadistica_forms.ai_runs r
+      WHERE r.conversation_id = ${conversationId}
+        AND r.organization_id = ${scope.organizationId}
+        AND r.project_id = ${scope.projectId}
+        AND r.actor_id = ${actorId}
+      ORDER BY (r.status IN ('queued', 'running')) DESC, r.created_at DESC, r.id DESC
+      LIMIT 1`;
+    const latest = rows[0];
+    return latest ? this.findForActor(scope, actorId, latest.id) : null;
+  }
+
   async findForActor(
     scope: ProjectScope,
     actorId: string,
@@ -277,7 +295,7 @@ export class AgentRunsRepository {
           started_at = ${now.toISOString()}
       WHERE id = (
         SELECT id FROM estadistica_forms.ai_runs
-        WHERE status = 'queued'
+        WHERE status = 'queued' AND deadline_at > ${now.toISOString()}
         ORDER BY created_at, id
         LIMIT 1
         FOR UPDATE SKIP LOCKED
@@ -616,8 +634,13 @@ export class AgentRunsRepository {
    * Pasa una propuesta de `ready` a `confirming`: solo una confirmación a la
    * vez llega a ejecutar el efecto. Devuelve si la tomó.
    */
-  async beginConfirm(proposalId: string, hash: string, now: Date) {
-    const changed = await this.prisma.$executeRaw`
+  async beginConfirm(
+    proposalId: string,
+    hash: string,
+    now: Date,
+    db: Pick<Prisma.TransactionClient, '$executeRaw'> = this.prisma,
+  ) {
+    const changed = await db.$executeRaw`
       UPDATE estadistica_forms.ai_proposals
       SET status = 'confirming'
       WHERE id = ${proposalId} AND status = 'ready' AND hash = ${hash}
@@ -797,6 +820,9 @@ export function toProposalView(proposal: StoredProposal): ProposalView {
     id: proposal.id,
     operation: proposal.operation,
     summary: proposal.summary,
+    ...(proposal.operation === 'create_ruleset'
+      ? { rulesetReview: proposal.plan.ruleset }
+      : {}),
     hash: proposal.hash,
     status: proposal.status,
     target: proposal.target,

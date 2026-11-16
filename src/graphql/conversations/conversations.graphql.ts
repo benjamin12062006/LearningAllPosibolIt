@@ -36,7 +36,7 @@ export class ConversationType {
   @Field(() => ID) id!: string;
   @Field(() => ID) organizationId!: string;
   @Field(() => ID) projectId!: string;
-  @Field(() => ID) workbookId!: string;
+  @Field(() => ID, { nullable: true }) workbookId!: string | null;
   @Field(() => ID, { nullable: true }) worksheetId!: string | null;
   @Field(() => ID) createdBy!: string;
   @Field() title!: string;

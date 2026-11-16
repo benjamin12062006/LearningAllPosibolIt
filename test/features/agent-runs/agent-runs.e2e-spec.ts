@@ -13,10 +13,12 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Pool } from 'pg';
+import { AgentGatewayService } from '../../../src/agent-runs/agent-gateway.service.js';
 import { AgentRunWorker } from '../../../src/agent-runs/agent-run.worker.js';
 import {
   AGENT_RUN_OPTIONS,
   AGENT_RUN_DEFAULTS,
+  AGENT_RUN_LIMITS,
   type AgentRunQuota,
 } from '../../../src/agent-runs/agent-runs.types.js';
 import { FORBIDDEN_OPERATIONS } from '../../../src/agent-runs/operations/agent-operation-catalog.js';
@@ -29,6 +31,11 @@ import {
   KNOWLEDGE_OPTIONS,
 } from '../../../src/knowledge/knowledge.types.js';
 import {
+  CATALOG_RULESET,
+  catalogValues,
+  insertReadySnapshot,
+} from '../evaluations/support/snapshot-fixtures.js';
+import {
   clientsFor,
   seedTwoOrganizations,
   setRole,
@@ -38,14 +45,19 @@ import {
   columnIdsOf,
   FIXTURE_COLUMNS,
   ROW_IDS,
+  SECOND_REVISION_ID,
   seedTwoRevisions,
   type FixtureColumnIds,
 } from '../worksheets/support/row-fixtures.js';
+import { postgresTestUrl } from '../support/postgres-database.js';
 
 /** Los campos de cada evento SSE que promete el contrato de la web (E6.6). */
 const EVENT_KEYS = JSON.parse(
   readFileSync(resolve('contracts/chat/events.json'), 'utf8'),
 ) as Record<string, string[]>;
+const postgresUrl = postgresTestUrl();
+const hasPostgres = postgresUrl !== null;
+const itOnPostgres = hasPostgres ? it : it.skip;
 
 type SseEvent = Readonly<{ id: number; type: string; data: any }>;
 
@@ -162,7 +174,11 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
             response.end(JSON.stringify(reply.body));
             return;
           }
-          // El conocimiento no se prueba aquí.
+          if (request.url === '/v1/knowledge/search') {
+            response.writeHead(200, { 'content-type': 'application/json' });
+            response.end(JSON.stringify({ hits: [] }));
+            return;
+          }
           response.writeHead(200, { 'content-type': 'application/json' });
           response.end(
             JSON.stringify({ written: 0, unchanged: 0, removed: 0 }),
@@ -174,11 +190,14 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
     return `http://127.0.0.1:${(agent.address() as AddressInfo).port}`;
   }
 
-  /** Conversación de la hoja con un mensaje de Alice; devuelve sus IDs. */
-  async function conversationWithMessage(content = 'Sube un 5 % los precios') {
+  /** Conversación con un mensaje de Alice; devuelve sus IDs. */
+  async function conversationWithMessage(
+    content = 'Sube un 5 % los precios',
+    parent = `${base()}/worksheets/${worksheetId}`,
+  ) {
     const { rest } = client();
     const { body: created } = await rest()
-      .post(`${base()}/worksheets/${worksheetId}/conversations`)
+      .post(`${parent}/conversations`)
       .send({ title: 'Precios' })
       .expect(201);
     const { body: posted } = await rest()
@@ -215,8 +234,12 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
     return parseSse(response.body as string);
   }
 
-  async function runToEnd(context?: object) {
-    const { conversationId, messageId } = await conversationWithMessage();
+  async function runToEnd(
+    context?: object,
+    trigger?: Awaited<ReturnType<typeof conversationWithMessage>>,
+  ) {
+    const { conversationId, messageId } =
+      trigger ?? (await conversationWithMessage());
     const { body } = await client()
       .rest()
       .post(`${base()}/conversations/${conversationId}/runs`)
@@ -263,28 +286,32 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
 
   beforeAll(async () => {
     const agentUrl = await startAgent();
-    ({ app, pool, close } = await startGraphqlApp([], (builder) =>
-      builder
-        .overrideProvider(AI_SERVICE_CLIENT)
-        .useValue(
-          new AiServiceClient({
-            url: agentUrl,
-            token: SERVICE_TOKEN,
-            timeoutMs: 10_000,
+    ({ app, pool, close } = await startGraphqlApp(
+      [],
+      (builder) =>
+        builder
+          .overrideProvider(AI_SERVICE_CLIENT)
+          .useValue(
+            new AiServiceClient({
+              url: agentUrl,
+              token: SERVICE_TOKEN,
+              timeoutMs: 10_000,
+            }),
+          )
+          .overrideProvider(KNOWLEDGE_OPTIONS)
+          .useValue({ ...KNOWLEDGE_DEFAULTS, autoStart: false })
+          .overrideProvider(AGENT_RUN_OPTIONS)
+          .useValue({
+            ...AGENT_RUN_DEFAULTS,
+            parallelRuns: hasPostgres ? AGENT_RUN_DEFAULTS.parallelRuns : 1,
+            autoStart: false,
+            // Cada prueba puede bajar la cuota sin arrancar otra aplicación.
+            clock: () => new Date(Date.now() + clockAheadMs),
+            get quota() {
+              return quota;
+            },
           }),
-        )
-        .overrideProvider(KNOWLEDGE_OPTIONS)
-        .useValue({ ...KNOWLEDGE_DEFAULTS, autoStart: false })
-        .overrideProvider(AGENT_RUN_OPTIONS)
-        .useValue({
-          ...AGENT_RUN_DEFAULTS,
-          autoStart: false,
-          // Cada prueba puede bajar la cuota sin arrancar otra aplicación.
-          clock: () => new Date(Date.now() + clockAheadMs),
-          get quota() {
-            return quota;
-          },
-        }),
+      postgresUrl,
     ));
     await app.listen(0, '127.0.0.1');
     nestUrl = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`;
@@ -314,6 +341,290 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
   afterAll(async () => {
     await close?.();
     await new Promise((done) => agent?.close(done));
+  });
+
+  it('usa las herramientas de proyecto sin libro ni hoja y exige confirmar reglas y evaluaciones', async () => {
+    const { rest } = client();
+    const snapshotId = await insertReadySnapshot(pool, projectId, [
+      catalogValues('A1'),
+    ]);
+    const calls: GatewayReply[] = [];
+    const readAndPropose: Script = async (_request, call) => {
+      calls.push(await call('get_catalog_snapshot', 'execute', { snapshotId }));
+      calls.push(await call('get_ruleset', 'execute', {}));
+      calls.push(await call('get_evaluation_report', 'execute', {}));
+      calls.push(await call('get_feed_status', 'execute', {}));
+      const proposal = await call('create_ruleset', 'prepare', {
+        ...CATALOG_RULESET,
+        baseRevision: 0,
+      });
+      calls.push(proposal);
+      return {
+        status: 200,
+        body: {
+          status: 'confirmation_required',
+          answer: 'Revisa el mapeo y las reglas.',
+          proposalId: proposal.body.proposalId,
+        },
+      };
+    };
+    script = readAndPropose;
+    await setRole(pool, organizationId, bobId, 'viewer');
+    await rest('bob-session')
+      .post(`${base()}/conversations`)
+      .send({ title: 'Probar permiso' })
+      .expect(403);
+    const trigger = await conversationWithMessage('Prepara las reglas', base());
+    const { run, conversationId } = await runToEnd(undefined, trigger);
+    expect(received[0].context).toEqual({
+      workbookId: null,
+      worksheetId: null,
+      revisionId: null,
+      selectionId: null,
+    });
+    expect(calls.map(({ status }) => status)).toEqual([
+      200, 200, 200, 200, 200,
+    ]);
+    expect(calls[0].body).toMatchObject({ id: snapshotId, status: 'ready' });
+    expect(run.proposal.rulesetReview).toEqual(CATALOG_RULESET);
+    await rest('bob-session')
+      .get(`${base()}/conversations/${conversationId}`)
+      .expect(404);
+    const history = await rest()
+      .get(`${base()}/conversations/${conversationId}/messages`)
+      .expect(200);
+    expect(
+      history.body.items.map((message: { role: string }) => message.role),
+    ).toEqual(['user', 'assistant']);
+    expect(
+      await pool.query(
+        'SELECT id FROM estadistica_forms.ruleset_versions WHERE project_id = $1',
+        [projectId],
+      ),
+    ).toMatchObject({ rowCount: 0 });
+
+    async function confirm(active: typeof run) {
+      const path = `${base()}/ai-runs/${active.id}/proposals/${active.proposal.id}/confirm`;
+      const { body } = await rest()
+        .post(path)
+        .send({ proposalHash: active.proposal.hash })
+        .expect(200);
+      return body.proposal.result;
+    }
+
+    expect(await confirm(run)).toEqual({ rulesetRevision: 1 });
+    expect(await confirm(run)).toEqual({ rulesetRevision: 1 });
+
+    let preview: GatewayReply | undefined;
+    script = async (_request, call) => {
+      preview = await call('preview_rules', 'execute', {
+        ...CATALOG_RULESET,
+        snapshotId,
+        baseRevision: 1,
+      });
+      const proposal = await call('request_evaluation', 'prepare', {
+        snapshotId,
+        rulesetRevision: 1,
+      });
+      return {
+        status: 200,
+        body: {
+          status: 'confirmation_required',
+          answer: 'Revisa la evaluación.',
+          proposalId: proposal.body.proposalId,
+        },
+      };
+    };
+    const next = await conversationWithMessage(
+      'Prueba la revisión y lanza la evaluación',
+      base(),
+    );
+    const { run: evaluationRun } = await runToEnd(undefined, next);
+    expect(preview).toMatchObject({
+      status: 200,
+      body: { baseRevision: 1, changedProducts: 0 },
+    });
+    expect(
+      await pool.query(
+        'SELECT id FROM estadistica_forms.evaluations WHERE project_id = $1',
+        [projectId],
+      ),
+    ).toMatchObject({ rowCount: 0 });
+    const result = await confirm(evaluationRun);
+    expect(result).toEqual({ evaluationId: evaluationRun.proposal.id });
+    expect(await confirm(evaluationRun)).toEqual(result);
+    expect(
+      await pool.query(
+        'SELECT id FROM estadistica_forms.evaluations WHERE project_id = $1',
+        [projectId],
+      ),
+    ).toMatchObject({ rowCount: 1 });
+  });
+
+  itOnPostgres(
+    'atiende dos conversaciones aunque la primera siga esperando al modelo',
+    async () => {
+      function gate() {
+        let resolve!: () => void;
+        const promise = new Promise<void>((release) => {
+          resolve = release;
+        });
+        return { promise, resolve };
+      }
+      const first = await conversationWithMessage('Primera tarea', base());
+      const second = await conversationWithMessage('Segunda tarea', base());
+      const release = gate();
+      const secondStarted = gate();
+      script = async (request) => {
+        if (request.message === 'Primera tarea') await release.promise;
+        if (request.message === 'Segunda tarea') secondStarted.resolve();
+        return {
+          status: 200,
+          body: { status: 'answered', answer: 'Listo.', calls: [] },
+        };
+      };
+      const { rest } = client();
+      const accepted = await Promise.all(
+        [first, second].map(({ conversationId, messageId }) =>
+          rest()
+            .post(`${base()}/conversations/${conversationId}/runs`)
+            .send({ messageId })
+            .expect(202),
+        ),
+      );
+      const work = app.get(AgentRunWorker).runUntilIdle();
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          secondStarted.promise,
+          new Promise<never>((_, reject) => {
+            deadline = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    'La segunda conversación quedó esperando a la primera.',
+                  ),
+                ),
+              4_000,
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(deadline);
+        release.resolve();
+        await work;
+      }
+      for (const response of accepted) {
+        const { body } = await rest()
+          .get(`${base()}/ai-runs/${response.body.run.id}`)
+          .expect(200);
+        expect(body.run.status).toBe('succeeded');
+      }
+    },
+  );
+
+  it('mantiene la conversación al cambiar el contexto y prepara un catálogo con actividad en vivo', async () => {
+    const trigger = await conversationWithMessage(
+      'Lleva SKU al catálogo',
+      base(),
+    );
+    const path = `${base()}/conversations/${trigger.conversationId}`;
+    const { rest } = client();
+    const empty = await rest().get(`${path}/runs/latest`).expect(200);
+    expect(empty.body.run).toBeNull();
+    const selection = await rest()
+      .post(`${base()}/worksheets/${worksheetId}/selections`)
+      .send({
+        revisionId: SECOND_REVISION_ID,
+        columnIds: [col.sku],
+        rows: { kind: 'selectedRows', rowIds: [ROW_IDS.a] },
+      })
+      .expect(201);
+    const calls: GatewayReply[] = [];
+    script = async (_run, call) => {
+      calls.push(
+        await call('search_knowledge', 'execute', {
+          query: 'catálogo de prueba',
+        }),
+      );
+      calls.push(
+        await call('propose_catalog_from_sheet', 'prepare', {
+          idColumnId: col.sku,
+          columns: [col.sku],
+        }),
+      );
+      return {
+        status: 200,
+        body: {
+          status: 'confirmation_required',
+          answer: 'Revisa la importación.',
+          calls: [],
+        },
+      };
+    };
+    const { run } = await runToEnd(
+      {
+        section: 'worksheets',
+        language: 'en',
+        worksheetId,
+        revisionId: SECOND_REVISION_ID,
+        selectionId: selection.body.selectionId,
+      },
+      trigger,
+    );
+    expect(received[0].context).toMatchObject({
+      section: 'worksheets',
+      language: 'en',
+      worksheetId,
+      selectionId: selection.body.selectionId,
+    });
+    expect(calls.map(({ status }) => status)).toEqual([200, 200]);
+    const events = await eventsOf(run.id);
+    expect(
+      events
+        .filter(({ type }) => type === 'tool.completed')
+        .map(({ data }) => data.operation),
+    ).toEqual(['search_knowledge', 'propose_catalog_from_sheet']);
+    const restored = await rest().get(`${path}/runs/latest`).expect(200);
+    expect(restored.body.run.proposal).toMatchObject({
+      id: run.proposal.id,
+      status: 'ready',
+      summary: expect.stringContaining('Create an import'),
+    });
+    const catalogPath = `/api/v1/projects/${projectId}/imports/${run.proposal.id}`;
+    await rest().get(catalogPath).expect(404);
+    const confirmPath = `${base()}/ai-runs/${run.id}/proposals/${run.proposal.id}/confirm`;
+    const confirm = () =>
+      rest().post(confirmPath).send({ proposalHash: run.proposal.hash });
+    const result = await confirm().expect(200);
+    expect(result.body.proposal.result).toMatchObject({
+      snapshotId: run.proposal.id,
+    });
+    expect((await confirm().expect(200)).body.proposal.result).toEqual(
+      result.body.proposal.result,
+    );
+    await rest().get(catalogPath).expect(200);
+
+    const next = await rest()
+      .post(`${path}/messages`)
+      .send({
+        clientMessageId: randomUUID(),
+        content: 'Ahora revisa las reglas',
+      })
+      .expect(201);
+    script = async () => ({
+      status: 200,
+      body: { status: 'answered', answer: 'Reglas consultadas.', calls: [] },
+    });
+    await runToEnd(
+      { section: 'rules' },
+      { ...trigger, messageId: next.body.message.id },
+    );
+    expect(received[1].context).toMatchObject({
+      section: 'rules',
+      worksheetId: null,
+      selectionId: null,
+    });
   });
 
   it('el agente lee y prepara; la persona confirma y solo entonces nace el borrador', async () => {
@@ -437,7 +748,7 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
         'x'.repeat(43),
       );
       replies.unknown = await call('borrar_todo', 'execute', {});
-      replies.forbidden = await call('publish_feed', 'prepare', {});
+      replies.forbidden = await call('delete_project', 'prepare', {});
       replies.readAsPrepare = await call('get_sheet_schema', 'prepare', {});
       replies.writeAsExecute = await call('create_change_proposal', 'execute', {
         previewId: randomUUID(),
@@ -508,7 +819,7 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
       replies.push(
         await call('suggest_view', 'prepare', { name: 'Otra', query: {} }),
       );
-      for (let index = 0; index < 7; index += 1) {
+      for (let index = 0; index < AGENT_RUN_LIMITS.calls - 1; index += 1) {
         replies.push(await call('get_sheet_schema', 'execute', {}));
       }
       return {
@@ -521,11 +832,14 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
 
     expect(replies[0].status).toBe(200);
     expect(replies[1].body.code).toBe('AGENT_PROPOSAL_EXISTS');
-    // 2 preparaciones + 6 lecturas = 8; la novena llamada se rechaza.
-    expect(replies.slice(2, 8).every((reply) => reply.status === 200)).toBe(
-      true,
+    expect(
+      replies
+        .slice(2, AGENT_RUN_LIMITS.calls)
+        .every((reply) => reply.status === 200),
+    ).toBe(true);
+    expect(replies[AGENT_RUN_LIMITS.calls].body.code).toBe(
+      'AGENT_RUN_CALL_LIMIT',
     );
-    expect(replies[8].body.code).toBe('AGENT_RUN_CALL_LIMIT');
     expect(run.answer).toBe('No tengo nada más que añadir.');
 
     // Confirmar la vista la guarda como personal de Alice.
@@ -984,6 +1298,54 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
     const daily = await start(third);
     expect(daily.status).toBe(429);
     expect(daily.body.code).toBe('AGENT_QUOTA_EXCEEDED');
+  });
+
+  it('con AI_AUTO_CONFIRM, el chat encadena escrituras y las aplica', async () => {
+    const gateway = app.get(AgentGatewayService) as unknown as {
+      autoConfirm: boolean;
+    };
+    gateway.autoConfirm = true;
+    try {
+      const replies: GatewayReply[] = [];
+      script = async (_request, call) => {
+        const schema = await call('get_sheet_schema', 'execute', {});
+        const price = schema.body.columns.find(
+          (column: { name: string }) => column.name === 'Precio',
+        ).id;
+        const draft = await call('prepare_sheet_edits', 'prepare', {
+          explanation: 'Subir A',
+          operations: [
+            {
+              type: 'set_cell',
+              rowId: ROW_IDS.a,
+              columnId: price,
+              value: '11.00',
+            },
+          ],
+        });
+        replies.push(draft);
+        replies.push(
+          await call('apply_changeset', 'prepare', {
+            changesetId: draft.body.result.changesetId,
+          }),
+        );
+        return {
+          status: 200,
+          body: { status: 'answered', answer: 'Aplicado.', calls: [] },
+        };
+      };
+      const { run } = await runToEnd();
+      expect(replies.map(({ status }) => status)).toEqual([200, 200]);
+      expect(replies[0].body).toMatchObject({ status: 'confirmed' });
+      expect(replies[1].body).toMatchObject({
+        status: 'confirmed',
+        result: { sequence: 3 },
+      });
+      expect(run.status).toBe('succeeded');
+      expect(run.proposal).toBeNull();
+    } finally {
+      gateway.autoConfirm = false;
+    }
   });
 });
 

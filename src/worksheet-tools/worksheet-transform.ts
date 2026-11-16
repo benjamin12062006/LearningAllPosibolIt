@@ -26,8 +26,18 @@ const RATE_PATTERN = /^-?\d{1,9}(?:\.\d{1,6})?$/;
 const ONE = parseDecimal('1');
 const ONE_HUNDRED = parseDecimal('100');
 
+/** Dónde se busca el fragmento en `replace_text`. */
+export const TEXT_MATCHES = ['contains', 'prefix', 'suffix'] as const;
+export type TextMatch = (typeof TEXT_MATCHES)[number];
+
 export type Transform =
   | Readonly<{ kind: 'trim_text' }>
+  | Readonly<{
+      kind: 'replace_text';
+      find: string;
+      replace: string;
+      match: TextMatch;
+    }>
   | Readonly<{
       kind: 'replace_exact';
       from: CellLiteral | null;
@@ -60,6 +70,8 @@ export function planTransform(
       return column.type === 'text'
         ? (value) => (typeof value === 'string' ? value.trim() : value)
         : null;
+    case 'replace_text':
+      return column.type === 'text' ? replaceText(transform) : null;
     case 'replace_exact':
       return replacements(column, [transform]);
     case 'map_values':
@@ -84,6 +96,32 @@ function replacements(
   return (value) => {
     const replacement = changes.get(value);
     return replacement === undefined ? value : replacement;
+  };
+}
+
+/**
+ * Cambia un fragmento del texto y conserva el resto: `59.99 USD` con sufijo
+ * `USD` → `BOB` da `59.99 BOB`. Distingue mayúsculas, como `replace_exact`.
+ */
+function replaceText({
+  find,
+  replace,
+  match,
+}: Extract<Transform, { kind: 'replace_text' }>): CellTransform {
+  return (value) => {
+    if (typeof value !== 'string') return value;
+    switch (match) {
+      case 'contains':
+        return value.replaceAll(find, replace);
+      case 'prefix':
+        return value.startsWith(find)
+          ? replace + value.slice(find.length)
+          : value;
+      case 'suffix':
+        return value.endsWith(find)
+          ? value.slice(0, value.length - find.length) + replace
+          : value;
+    }
   };
 }
 

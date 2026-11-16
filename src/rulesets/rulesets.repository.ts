@@ -54,9 +54,15 @@ export class RulesetsRepository {
     actorId: string,
     projectId: string,
     ruleset: Ruleset,
+    proposal?: { id: string; baseRevision: number },
   ): Promise<RulesetVersion> {
     try {
-      return await this.insertNextRevision(actorId, projectId, ruleset);
+      return await this.insertNextRevision(
+        actorId,
+        projectId,
+        ruleset,
+        proposal,
+      );
     } catch (error) {
       throw asRevisionConflict(error);
     }
@@ -93,16 +99,26 @@ export class RulesetsRepository {
     actorId: string,
     projectId: string,
     ruleset: Ruleset,
+    proposal?: { id: string; baseRevision: number },
   ) {
     return this.prisma.$transaction(async (tx) => {
       await lockConfiguredProject(tx, actorId, projectId);
+      if (proposal) {
+        const existing = await tx.rulesetVersion.findFirst({
+          where: { id: proposal.id, projectId },
+        });
+        if (existing) return toRulesetVersion(existing);
+      }
       const revision = await this.nextRevision(tx, projectId);
+      if (proposal && revision !== proposal.baseRevision + 1) {
+        throw apiError(ErrorCodes.RULESET_REVISION_CONFLICT);
+      }
 
       // Con la API del modelo, una clave repetida llega como P2002; con
       // `$queryRaw` llegaría como P2010 (experimento 04 de la ficha de fuentes).
       const row = await tx.rulesetVersion.create({
         data: {
-          id: randomUUID(),
+          id: proposal?.id ?? randomUUID(),
           projectId,
           revision,
           mapping: ruleset.mapping,

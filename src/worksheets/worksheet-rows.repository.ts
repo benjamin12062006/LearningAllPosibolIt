@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { PageRequest } from '../common/http/pagination.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import type { RowAtBothRevisions } from './revision-comparison.js';
 import { findColumnsIn } from './worksheets.repository.js';
 import type { ProjectScope, WorksheetColumn } from './worksheets.types.js';
 
@@ -24,6 +25,13 @@ export type RowsAtRevision = Readonly<{
   where: Prisma.Sql;
   order: Prisma.Sql;
   page: PageRequest;
+}>;
+
+export type RowsBetweenRevisions = Readonly<{
+  scope: ProjectScope;
+  worksheetId: string;
+  fromSequence: number;
+  toSequence: number;
 }>;
 
 /** Todas las filas de una revisión que cumplen la consulta, leídas por páginas. */
@@ -105,6 +113,40 @@ export class WorksheetRowsRepository {
     }
   }
 
+  /**
+   * Cada fila que tuvo una versión nueva entre las dos revisiones, con su
+   * estado en una y en otra (`null` si no vivía). Toda escritura de fila,
+   * también un borrado, abre una versión con `from_sequence` en ese tramo:
+   * por eso basta buscar ahí. Sirve en los dos sentidos.
+   */
+  async findRowsChangedBetween(
+    request: RowsBetweenRevisions,
+  ): Promise<RowAtBothRevisions[]> {
+    const { scope, worksheetId, fromSequence, toSequence } = request;
+    const lower = Math.min(fromSequence, toSequence);
+    const upper = Math.max(fromSequence, toSequence);
+    return this.prisma.$queryRaw<RowAtBothRevisions[]>(Prisma.sql`
+      WITH changed AS (
+        SELECT DISTINCT v.row_id
+        FROM estadistica_forms.worksheet_row_versions v
+        WHERE v.worksheet_id = ${worksheetId}
+          AND v.organization_id = ${scope.organizationId}
+          AND v.from_sequence > ${lower}
+          AND v.from_sequence <= ${upper}
+      )
+      SELECT
+        c.row_id AS "rowId",
+        b.cell_values AS "before",
+        a.cell_values AS "after"
+      FROM changed c
+      LEFT JOIN estadistica_forms.worksheet_row_versions b
+        ON ${liveVersionAt('b', worksheetId, fromSequence)}
+      LEFT JOIN estadistica_forms.worksheet_row_versions a
+        ON ${liveVersionAt('a', worksheetId, toSequence)}
+      ORDER BY COALESCE(a.sort_key, b.sort_key), c.row_id
+    `);
+  }
+
   async findRows(request: RowsAtRevision): Promise<StoredRow[]> {
     return this.prisma.$queryRaw<StoredRow[]>(Prisma.sql`
       SELECT
@@ -121,4 +163,23 @@ export class WorksheetRowsRepository {
       LIMIT ${request.page.limit} OFFSET ${request.page.offset}
     `);
   }
+}
+
+/**
+ * La versión viva de la fila de `changed` en una revisión, con el mismo
+ * criterio que `findRows`. `alias` es siempre una letra fija de esta consulta.
+ */
+function liveVersionAt(
+  alias: 'a' | 'b',
+  worksheetId: string,
+  sequence: number,
+) {
+  const v = Prisma.raw(alias);
+  return Prisma.sql`
+    ${v}.worksheet_id = ${worksheetId}
+    AND ${v}.row_id = c.row_id
+    AND ${v}.from_sequence <= ${sequence}
+    AND (${v}.to_sequence IS NULL OR ${v}.to_sequence > ${sequence})
+    AND NOT ${v}.is_deleted
+  `;
 }

@@ -1121,6 +1121,11 @@ export const API_MESSAGES = {
     'El asistente no pudo terminar la respuesta.',
     'The assistant could not finish its answer.',
   ),
+  [ErrorCodes.AGENT_MODEL_RATE_LIMITED]: entry(
+    429,
+    'Gemini está limitando las solicitudes. Vuelve a intentarlo en unos minutos.',
+    'Gemini is rate-limiting requests. Try again in a few minutes.',
+  ),
   [ErrorCodes.AGENT_RESULT_TOO_LARGE]: entry(
     422,
     'El resultado es demasiado grande para el asistente. Pide menos filas o columnas.',
@@ -1135,5 +1140,70 @@ export const API_MESSAGES = {
     409,
     'La ejecución ya terminó: no se puede cancelar.',
     'The run already finished: it cannot be cancelled.',
+  ),
+  [ErrorCodes.INTEGRATION_CREDENTIAL_NOT_FOUND]: entry(
+    404,
+    'No encontramos esa credencial de integración.',
+    'We could not find that integration credential.',
+  ),
+  [ErrorCodes.INTEGRATION_CREDENTIAL_LIMIT]: entry(
+    409,
+    'Ya tienes el máximo de credenciales activas en este proyecto. Revoca alguna antes de crear otra.',
+    'You already have the maximum number of active credentials in this project. Revoke one before creating another.',
+  ),
+  [ErrorCodes.INTEGRATION_CREDENTIAL_INVALID]: entry(
+    401,
+    'La credencial de integración no es válida, caducó o fue revocada.',
+    'The integration credential is not valid, has expired or was revoked.',
+  ),
+  [ErrorCodes.INTEGRATION_CAPABILITY_REQUIRED]: entry(
+    403,
+    'Esta credencial solo puede leer: no puede preparar cambios.',
+    'This credential is read-only: it cannot prepare changes.',
+  ),
+  [ErrorCodes.INTEGRATION_ADAPTER_INVALID]: entry(
+    401,
+    'El adaptador de integraciones no está autorizado.',
+    'The integrations adapter is not authorized.',
+  ),
+  [ErrorCodes.INTEGRATIONS_UNAVAILABLE]: entry(
+    503,
+    'Las integraciones externas no están configuradas en este entorno.',
+    'External integrations are not configured in this environment.',
+  ),
+  [ErrorCodes.INTEGRATION_CREDENTIAL_ALREADY_ISSUED]: entry(
+    409,
+    'Ya se emitió una credencial con esa clave. Si perdiste el secreto, revoca la credencial y crea otra.',
+    'A credential was already issued with that key. If you lost the secret, revoke the credential and create another.',
+  ),
+  [ErrorCodes.INTEGRATION_EXPIRY_INVALID]: entry(
+    400,
+    'La credencial debe vencer después de ahora y en un plazo de hasta 7 días.',
+    'The credential must expire in the future and within 7 days.',
+  ),
+  [ErrorCodes.INTEGRATION_QUOTA_EXCEEDED]: entry(
+    429,
+    'Alcanzaste el límite de integraciones de este proyecto. Inténtalo más tarde.',
+    'You reached this project’s integration limit. Try again later.',
+  ),
+  [ErrorCodes.INTEGRATION_CURSOR_INVALID]: entry(
+    400,
+    'El cursor de credenciales no es válido para este listado.',
+    'The credential cursor is not valid for this list.',
+  ),
+  [ErrorCodes.INTEGRATION_OAUTH_SCOPE_REQUIRED]: entry(
+    403,
+    'Autoriza el permiso de lectura en Descope.',
+    'Authorize the read scope in Descope.',
+  ),
+  [ErrorCodes.INTEGRATION_OAUTH_GRANT_REQUIRED]: entry(
+    403,
+    'Activa el acceso MCP OAuth desde Integraciones.',
+    'Enable MCP OAuth access in Integrations.',
+  ),
+  [ErrorCodes.INTEGRATION_OAUTH_GRANT_EXISTS]: entry(
+    409,
+    'Ya tienes acceso MCP OAuth activo para este recurso.',
+    'You already have active MCP OAuth access to this resource.',
   ),
 } satisfies Record<ErrorCode, { status: number; message: LocalizedMessage }>;

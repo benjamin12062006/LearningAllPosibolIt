@@ -24,6 +24,7 @@ import { UsersService } from '../../../../src/users/users.service.js';
 import { WORKSHEET_EXPORT_OPTIONS } from '../../../../src/worksheet-exports/worksheet-exports.types.js';
 import { alice, bob, projectInput } from '../../support/project-fixtures.js';
 import { createTestDatabase } from '../../support/test-database.js';
+import { createPostgresDatabase } from '../../support/postgres-database.js';
 
 export type GraphQLBody = {
   data?: Record<string, any> | null;
@@ -45,8 +46,11 @@ export async function startGraphqlApp(
   configure: (builder: TestingModuleBuilder) => TestingModuleBuilder = (
     builder,
   ) => builder,
+  postgresUrl?: URL | null,
 ) {
-  const database = await createTestDatabase();
+  const database = await (postgresUrl
+    ? createPostgresDatabase(postgresUrl)
+    : createTestDatabase());
   const root = await mkdtemp(join(tmpdir(), 'graphql-c7-'));
   const idle = { autoStart: false, pollMs: 1000, shutdownMs: 1000 };
   const builder = Test.createTestingModule({

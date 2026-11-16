@@ -38,7 +38,7 @@ export type SyncOutcome = Readonly<{
  * compara las huellas con lo ya mandado y manda solo lo que cambió. No toca
  * ningún módulo existente ni necesita eventos en sus transacciones.
  *
- * Sin servicio de IA configurado no arranca (D14).
+ * La sincronización se puede pausar mientras el servicio de IA sigue atendiendo el chat.
  */
 @Injectable()
 export class KnowledgeSyncWorker
@@ -56,7 +56,7 @@ export class KnowledgeSyncWorker
     private readonly options: KnowledgeOptions,
   ) {
     this.loop = new WorkerLoop(
-      { ...options, autoStart: options.autoStart && client !== null },
+      { ...options, autoStart: options.autoStart && this.enabled },
       async () => {
         await this.syncOnce();
       },
@@ -65,7 +65,7 @@ export class KnowledgeSyncWorker
   }
 
   get enabled(): boolean {
-    return this.client !== null;
+    return this.client !== null && this.options.syncEnabled !== false;
   }
 
   onApplicationBootstrap() {
@@ -82,7 +82,7 @@ export class KnowledgeSyncWorker
 
   /** Una pasada completa; las pruebas la llaman directamente. */
   async syncOnce(): Promise<SyncOutcome> {
-    if (!this.client) {
+    if (!this.client || !this.enabled) {
       return emptyOutcome(false);
     }
     const plan = planSync(

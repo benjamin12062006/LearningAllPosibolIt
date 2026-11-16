@@ -2,7 +2,7 @@
 
 Fecha de creación: 2026-11-09  
 Última actualización: 2026-11-13
-Estado: En curso. V1, E6.0, E6.1a (2026-11-09) y E6.1b.1 (2026-11-12) hechas y verificadas; E6.3b verificada en FastAPI con el contrato de Nest simulado. Quedan E6.1b.2, E6.2, E6.3a, la integración de E6.3 y E6.4–E6.7. El orden de lo que falta, junto con hojas y la extensión del visor, está en el [plan 02 de cierre](../cierre-backend/02-plan-terminar-hojas-visor-y-agente.md).
+Estado: Chat y MCP local verificados con Nest, FastAPI y Qdrant 1.19.1. La [bitácora 12](../../../../bitacora-construccion/feature/ai-assistant/12-acceso-mcp-desde-nest.md) recoge el resultado y el [plan 02 de cierre](../cierre-backend/02-plan-terminar-hojas-visor-y-agente.md) conserva las comprobaciones pendientes.
 Ámbito: la API Nest (`LearningAllPosibolIt`) y el servicio de IA nuevo (`LearningAllPosibolIt-ai`), hasta el límite con E7 (la web Nuxt la lleva otra sesión).  
 Relacionada con: [fuentes 01](../../../fonts/feature/ai-assistant/01-fuentes-del-visor-qdrant-y-llamaindex.md), [revisión 02 de LlamaIndex](../../../fonts/feature/ai-assistant/02-revision-de-llamaindex-para-la-api.md), [plan del servicio de IA](../../../../../LearningAllPosibolIt-ai/docs/plans/feature/base-del-servicio/01-plan-servicio-de-ia.md), [ampliación de la visión](../../../../../docs-diagrams/fuentes/2026-11-09-ampliacion-visor-qdrant-llamaindex.md), [15](../../../../../docs-diagrams/15-chat-ia-herramientas-y-propuestas.md), [16](../../../../../docs-diagrams/16-nuxt-tabla-central-chat-y-contratos.md), [18](../../../../../docs-diagrams/18-secuencia-de-entregas-y-matriz-de-aceptacion.md).  
 Revisión de referencia: `feature/cierre-backend` `b219b30`.
@@ -71,7 +71,7 @@ Cada etapa sigue el flujo de siempre en el repositorio que toca: bitácora «En 
 6. **E6.4 — Eventos, cancelación y cuotas** (los dos). Streaming Python → Nest, SSE Nest → web con `after=<seq>`, cancelar y límites de 15. T21–T22.
 7. **E6.5 — Modelo real con evaluación** (D10): Gemini por Vertex AI. Requiere que el usuario active Vertex AI en el proyecto.
 8. **E6.6 — Endurecimiento, contrato para Nuxt y plan de despliegue** (Cloud Run con el servicio de IA privado).
-9. **E6.7 — (opcional) Servidor MCP** con las mismas herramientas, si el usuario lo quiere.
+9. ✅ **E6.7 local — Servidor MCP por `stdio`** con el catálogo autorizado, credenciales por proyecto y confirmación humana. Consultar el [contrato de Integraciones](../../../../contracts/integrations/README.md) y el [plan de acceso alojado](../../../../../LearningAllPosibolIt-ai/docs/plans/feature/agente/04-plan-servidor-mcp-local.md).
 
 ## Comprobación prevista
 
@@ -82,4 +82,4 @@ Al cerrar E6.3 y E6.6: recorrido completo con dos organizaciones (importar → e
 - La pantalla del visor y la del chat son de E7 (Nuxt); aquí solo las APIs y su contrato.
 - Nada de esto cambia rutas existentes de Nest.
 - No se suben datos reales a proveedores externos hasta E6.5 y con la política que decida el usuario.
-- C7 se evalúa primero y se construye antes de retomar E6.1b.2. Para las herramientas seleccionadas se reutiliza el cliente GraphQL validado en C7. En E6.3, Nest aplica el mismo catálogo, identidad, alcance y token por ejecución a esas operaciones. La ruta interna del catálogo cubre las demás. Ver [23, plan C7](../../../../../docs-diagrams/23-graphql-nest-para-fastapi-y-nuxt.md).
+- C7 conserva el esquema GraphQL y las operaciones predefinidas comprobadas con Nest. El agente y el MCP llaman a sus pasarelas HTTP internas con las credenciales de cada flujo. Los resolvers de GraphQL y las pasarelas reutilizan los servicios de Nest. [Plan C7](../../../../../docs-diagrams/23-graphql-nest-para-fastapi-y-nuxt.md)

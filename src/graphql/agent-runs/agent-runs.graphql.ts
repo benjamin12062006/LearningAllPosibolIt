@@ -9,7 +9,7 @@ import { JsonScalar } from '../common/json.scalar.js';
 
 @ObjectType('AgentRunContext')
 export class AgentRunContextType {
-  @Field(() => ID) workbookId!: string;
+  @Field(() => ID, { nullable: true }) workbookId!: string | null;
   @Field(() => ID, { nullable: true }) worksheetId!: string | null;
   @Field(() => ID, { nullable: true }) revisionId!: string | null;
   @Field(() => ID, { nullable: true }) selectionId!: string | null;
@@ -21,6 +21,7 @@ export class AgentProposalType {
   @Field(() => ID) id!: string;
   @Field() operation!: string;
   @Field() summary!: string;
+  @Field(() => JsonScalar, { nullable: true }) rulesetReview?: unknown;
   /** Se manda al confirmar o rechazar: prueba que se vio esta propuesta. */
   @Field() hash!: string;
   /** `ready`, `confirming`, `confirmed` o `rejected`. */

@@ -166,9 +166,9 @@ export class EvaluationsRepository {
    * Registra la evaluación en cola con el snapshot y la revisión fijados, o la
    * rechaza. Si otra evaluación activa entró a la vez, responde 409.
    */
-  async accept(request: EvaluationRequest) {
+  async accept(request: EvaluationRequest, idempotent = false) {
     try {
-      await this.insertQueued(request);
+      await this.insertQueued(request, idempotent);
     } catch (error) {
       throw asAlreadyActive(error);
     }
@@ -533,11 +533,25 @@ export class EvaluationsRepository {
     });
   }
 
-  private insertQueued(request: EvaluationRequest) {
+  private insertQueued(request: EvaluationRequest, idempotent: boolean) {
     return this.prisma.$transaction(async (tx) => {
       await lockProjectForEvaluation(tx, request.ownerId, request.projectId);
       const headers = await readReadySnapshotHeaders(tx, request);
       const ruleset = await readRuleset(tx, request);
+      if (
+        idempotent &&
+        (await tx.evaluation.findFirst({
+          where: {
+            id: request.evaluationId,
+            projectId: request.projectId,
+            snapshotId: request.snapshotId,
+            rulesetVersionId: ruleset.id,
+          },
+          select: { id: true },
+        }))
+      ) {
+        return;
+      }
       assertColumnsExist(ruleset.mapping, headers);
       if (await hasActiveEvaluation(tx, request.projectId)) {
         throw apiError(ErrorCodes.EVALUATION_ALREADY_ACTIVE);

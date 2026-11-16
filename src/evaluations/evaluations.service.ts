@@ -92,14 +92,17 @@ export class EvaluationsService {
    * del feed, D9 de feeds&publications). Mismas comprobaciones que `accept`; el
    * propietario ya está resuelto.
    */
-  async acceptPlanned(request: {
-    evaluationId: string;
-    ownerId: string;
-    projectId: string;
-    snapshotId: string;
-    rulesetRevision: number;
-  }) {
-    await this.repository.accept(request);
+  async acceptPlanned(
+    request: {
+      evaluationId: string;
+      ownerId: string;
+      projectId: string;
+      snapshotId: string;
+      rulesetRevision: number;
+    },
+    idempotent = false,
+  ) {
+    await this.repository.accept(request, idempotent);
     this.worker.wake();
   }
 

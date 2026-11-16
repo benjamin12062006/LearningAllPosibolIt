@@ -33,9 +33,16 @@ export function configureHttp(app: INestApplication) {
   app.useGlobalPipes(new ValidationPipe(VALIDATION_OPTIONS));
   // La URL pública del feed se sirve en `/feeds/<token>.tsv`, fuera de `/api`;
   // su controlador además es neutral a la versión (plan feeds&publications, D7).
-  // Fuera de `/api`: el feed público y la pasarela interna del agente (A11).
+  // Fuera de `/api`: el feed público, la pasarela interna del agente (A11) y
+  // la de los clientes MCP (plan 07).
   app.setGlobalPrefix('api', {
-    exclude: ['feeds/:file', 'internal/v1/agent-runs/:runId/operations/:name'],
+    exclude: [
+      'feeds/:file',
+      'internal/v1/agent-runs/:runId/operations/:name',
+      'internal/v1/mcp-integrations/session',
+      'internal/v1/mcp-integrations/operations',
+      'internal/v1/mcp-integrations/operations/:name',
+    ],
   });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.enableCors({

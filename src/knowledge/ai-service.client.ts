@@ -124,6 +124,29 @@ export class AiServiceClient {
     );
   }
 
+  async searchKnowledge(
+    scope: { organizationId: string; projectId: string },
+    query: string,
+    limit: number,
+    requestId: string,
+  ): Promise<unknown> {
+    const { organizationId, projectId } = scope;
+    const response = await this.send(
+      'POST',
+      '/v1/knowledge/search',
+      { organizationId, projectIds: [projectId], query, limit },
+      requestId,
+      { timeoutMs: 20_000 },
+    );
+    const result: unknown = await response.json();
+    if (!hasScopedHits(result, projectId, limit)) {
+      throw new AiServiceUnavailableError(
+        'Respuesta de conocimiento inesperada.',
+      );
+    }
+    return result;
+  }
+
   /**
    * Una ejecución del agente (E6.3a). Tarda lo que tarde el modelo: tiene su
    * propio plazo y la señal del worker para cortarla al apagar.
@@ -189,6 +212,7 @@ export class AiServiceClient {
     try {
       return await fetch(new URL(path, this.config.url), {
         method,
+        redirect: 'error',
         headers: await this.headersFor(requestId),
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: limits.signal
@@ -226,6 +250,30 @@ export class AiServiceClient {
       'X-Serverless-Authorization': `Bearer ${identityToken}`,
     };
   }
+}
+
+function hasScopedHits(
+  result: unknown,
+  projectId: string,
+  limit: number,
+): boolean {
+  if (!result || typeof result !== 'object' || !('hits' in result)) {
+    return false;
+  }
+  const { hits } = result;
+  return (
+    Array.isArray(hits) &&
+    hits.length <= limit &&
+    hits.every(
+      (hit: unknown) =>
+        hit !== null &&
+        typeof hit === 'object' &&
+        'projectId' in hit &&
+        hit.projectId === projectId &&
+        'text' in hit &&
+        typeof hit.text === 'string',
+    )
+  );
 }
 
 function projectPath(organizationId: string, projectId: string) {

@@ -2,7 +2,8 @@
 
 Fecha de creación: 2026-11-14  
 Última actualización: 2026-11-14  
-Estado: Plan.  
+Estado: API de acceso MCP local implementada y verificada. El cliente CLI y el acceso alojado conservan sus etapas propias.
+
 Ámbito: Nest, contrato de Integraciones para Nuxt y cliente CLI. La adaptación MCP corresponde a E6.7.  
 Relacionada con: [fuentes 09](../../../fonts/feature/ai-assistant/09-fuentes-de-acceso-externo-y-cli.md), [plan maestro](../cierre-backend/02-plan-terminar-hojas-visor-y-agente.md), [H6](04-plan-herramientas-de-hoja-del-agente.md), [E6.3a](05-plan-catalogo-ejecuciones-y-confirmaciones.md), [E6.6](06-plan-eventos-cuotas-y-contrato-del-chat.md).  
 Revisión de partida: Nest `7be788b`, FastAPI `d9f00fd`, más el trabajo local de E6.1b.2 y E6.2.
@@ -101,3 +102,10 @@ Una prueba MCP local con `stdio` sirve para ese cliente y entorno. La conexión 
 2. Montar la frontera delegada y su catálogo. Probar credencial CLI en ruta MCP y viceversa, token de servicio sin delegación, cuerpo extra, cambio de alcance pese a presentar una credencial válida, operación prohibida, reintento, cuotas, vencimiento durante la ejecución y ausencia de secretos en registros. Comprobar la ruta `prepare` y confirmación humana concurrente sin duplicar efectos. Correr defectos deliberados para revocación, audiencia, aislamiento y omisión de confirmación.
 3. Conectar el CLI local a Nest real con PGlite y datos sintéticos. Comprobar instalación, `auth status`, descubrimiento, lectura, preparación y confirmación en navegador con sesión de prueba. Retirar la credencial y comprobar que el CLI falla con un error útil. La sesión web verifica su pantalla Integraciones sobre las rutas humanas y las dos salidas de configuración con marcadores.
 4. Integrar el MCP de E6.7 contra la frontera Nest y registrar por separado los clientes probados, sus versiones, su transporte y su autenticación. El chat de la aplicación, CLI y MCP tienen cada uno una prueba de inicio y funcionamiento. Los datos sintéticos permiten estas verificaciones locales sin depender de Vertex AI.
+
+## Ajustes del acceso MCP local
+
+- La [bitácora 12](../../../../bitacora-construccion/feature/ai-assistant/12-acceso-mcp-desde-nest.md) conserva las comprobaciones de emisión, permisos, cuota y propuestas de Nest. Las seis rutas humanas quedan en el [contrato REST de Integraciones](../../../../contracts/integrations/README.md).
+- La emisión requiere `Idempotency-Key`. El POST devuelve el token una vez y los reintentos devuelven 409. La pasarela de preparación también recibe un `callId` para recuperar una propuesta ya registrada.
+- Para buscar, Nest fija un solo proyecto, llama a la API interna de conocimiento y vuelve a comprobar delegación y membresía antes de responder. FastAPI reutiliza LlamaIndex y los filtros del índice existente.
+- La pasarela y GraphQL llaman a los servicios de Nest. La credencial MCP se presenta a la pasarela HTTP de este contrato.

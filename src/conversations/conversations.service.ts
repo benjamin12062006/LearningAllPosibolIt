@@ -26,6 +26,15 @@ export class ConversationsService {
     private readonly repository: ConversationsRepository,
   ) {}
 
+  async createForProject(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    input: CreateConversationDto,
+  ) {
+    const actor = await this.users.findCurrent(identity);
+    return this.repository.create(actor.id, scope, null, input.title);
+  }
+
   async createForWorkbook(
     identity: AuthenticatedIdentity,
     scope: ProjectScope,

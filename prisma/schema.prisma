@@ -33,13 +33,14 @@ model AppUser {
   worksheetExports     WorksheetExport[]
   worksheetSnapshots   WorksheetSnapshot[]
 
-  importMappings      WorksheetImportMapping[]
-  savedViews          WorksheetSavedView[]
-  aiConversations     AiConversation[]
-  aiMessages          AiMessage[]
-  aiRuns              AiRun[]
-  aiProposals         AiProposal[]
-  transformSelections WorksheetTransformSelection[]
+  importMappings         WorksheetImportMapping[]
+  savedViews             WorksheetSavedView[]
+  aiConversations        AiConversation[]
+  aiMessages             AiMessage[]
+  aiRuns                 AiRun[]
+  aiProposals            AiProposal[]
+  integrationCredentials IntegrationCredential[]
+  transformSelections    WorksheetTransformSelection[]
 
   @@unique([identityIssuer, identitySubject])
   @@map("app_users")
@@ -47,22 +48,25 @@ model AppUser {
 }
 
 model Project {
-  id             String            @id
-  name           String
-  ownerId        String            @map("owner_id")
-  createdAt      String            @map("created_at")
-  country        String?
-  currency       String?
-  channelProfile String?           @map("channel_profile")
+  id                     String                  @id
+  name                   String
+  ownerId                String                  @map("owner_id")
+  createdAt              String                  @map("created_at")
+  country                String?
+  currency               String?
+  channelProfile         String?                 @map("channel_profile")
   /// Obligatoria desde C6 (E1.2): el acceso se decide por la membresía en
   /// ella. `ownerId` queda como procedencia de quien lo creó.
-  organizationId String            @map("organization_id")
-  owner          AppUser           @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  snapshots      CatalogSnapshot[]
-  rulesets       RulesetVersion[]
-  feed           Feed?
-  workbooks      Workbook[]
+  organizationId         String                  @map("organization_id")
+  owner                  AppUser                 @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  snapshots              CatalogSnapshot[]
+  rulesets               RulesetVersion[]
+  feed                   Feed?
+  workbooks              Workbook[]
+  aiConversations        AiConversation[]
+  integrationCredentials IntegrationCredential[]
+  integrationUsage       IntegrationUsage[]
 
   @@unique([organizationId, id])
   @@index([ownerId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_projects_owner_created")
@@ -454,12 +458,12 @@ model Worksheet {
   @@schema("estadistica_forms")
 }
 
-/// Conversación privada de un libro o de una hoja en ese mismo libro.
+/// Conversación privada del proyecto, de un libro o de una hoja de ese libro.
 model AiConversation {
   id             String      @id
   organizationId String      @map("organization_id")
   projectId      String      @map("project_id")
-  workbookId     String      @map("workbook_id")
+  workbookId     String?     @map("workbook_id")
   worksheetId    String?     @map("worksheet_id")
   createdBy      String      @map("created_by")
   title          String
@@ -467,7 +471,8 @@ model AiConversation {
   status         String      @default("active")
   createdAt      String      @map("created_at")
   updatedAt      String      @map("updated_at")
-  workbook       Workbook    @relation(fields: [organizationId, projectId, workbookId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  project        Project     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction)
+  workbook       Workbook?   @relation(fields: [organizationId, projectId, workbookId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
   worksheet      Worksheet?  @relation(fields: [workbookId, worksheetId], references: [workbookId, id], onDelete: Restrict, onUpdate: NoAction)
   creator        AppUser     @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: NoAction)
   messages       AiMessage[]
@@ -565,12 +570,14 @@ model AiRunEvent {
 
 /// Lo que el agente o un cliente externo preparó y espera la confirmación de la persona.
 model AiProposal {
-  id             String  @id
-  organizationId String  @map("organization_id")
-  projectId      String  @map("project_id")
-  actorId        String  @map("actor_id")
-  runId          String? @unique @map("run_id")
-  credentialId   String? @map("credential_id")
+  id             String                 @id
+  organizationId String                 @map("organization_id")
+  projectId      String                 @map("project_id")
+  actorId        String                 @map("actor_id")
+  runId          String?                @unique @map("run_id")
+  credentialId   String?                @map("credential_id")
+  callId         String?                @map("call_id")
+  argumentsHash  String?                @map("arguments_hash")
   operation      String
   plan           Json
   target         Json?
@@ -578,13 +585,55 @@ model AiProposal {
   hash           String
   status         String
   result         Json?
-  expiresAt      String  @map("expires_at")
-  createdAt      String  @map("created_at")
-  decidedAt      String? @map("decided_at")
-  run            AiRun?  @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  actor          AppUser @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  expiresAt      String                 @map("expires_at")
+  createdAt      String                 @map("created_at")
+  decidedAt      String?                @map("decided_at")
+  run            AiRun?                 @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  actor          AppUser                @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  credential     IntegrationCredential? @relation(fields: [credentialId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@unique([credentialId, callId])
   @@map("ai_proposals")
+  @@schema("estadistica_forms")
+}
+
+model IntegrationCredential {
+  id             String       @id
+  organizationId String       @map("organization_id")
+  projectId      String       @map("project_id")
+  ownerId        String       @map("owner_id")
+  label          String
+  audience       String
+  canPrepare     Boolean      @map("can_prepare")
+  secretHash     String       @unique @map("secret_hash")
+  issueKey       String       @map("issue_key")
+  resourceUrl    String?      @map("resource_url")
+  createdAt      String       @map("created_at")
+  expiresAt      String       @map("expires_at")
+  revokedAt      String?      @map("revoked_at")
+  revokedBy      String?      @map("revoked_by")
+  lastUsedAt     String?      @map("last_used_at")
+  project        Project      @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction)
+  owner          AppUser      @relation(fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  proposals      AiProposal[]
+
+  @@unique([projectId, ownerId, issueKey])
+  @@index([projectId, ownerId], map: "idx_integration_credentials_project_owner")
+  @@index([projectId, ownerId, audience], map: "idx_integration_credentials_oauth_owner")
+  @@index([projectId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_integration_credentials_project_created")
+  @@map("integration_credentials")
+  @@schema("estadistica_forms")
+}
+
+model IntegrationUsage {
+  projectId String  @map("project_id")
+  subject   String
+  minute    String
+  used      Int
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([projectId, subject])
+  @@map("integration_usage")
   @@schema("estadistica_forms")
 }
 

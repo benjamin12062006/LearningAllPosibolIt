@@ -18,6 +18,7 @@ import {
   SavedViewQueryDto,
 } from '../../worksheets/worksheets.dto.js';
 import type { JsonSchema } from './agent-operation.js';
+import { CreateWorksheetCatalogSnapshotDto } from '../../worksheet-catalog-snapshots/worksheet-catalog-snapshots.dto.js';
 
 /*
  * Los argumentos de cada operación del agente. Se validan con los mismos
@@ -28,7 +29,7 @@ import type { JsonSchema } from './agent-operation.js';
 
 const UUID_SCHEMA = { type: 'string', format: 'uuid' } as const;
 
-function objectSchema(
+export function objectSchema(
   properties: Record<string, unknown>,
   required: readonly string[] = [],
 ): JsonSchema {
@@ -60,6 +61,33 @@ export class WorksheetRefInput {
   worksheetId?: string;
 }
 export const WORKSHEET_REF_SCHEMA = objectSchema({ worksheetId: UUID_SCHEMA });
+
+/** Sin revisión, las columnas vigentes; con ella, las de esa revisión. */
+export class SheetSchemaInput extends WorksheetRefInput {
+  @IsOptional()
+  @IsUUID()
+  revisionId?: string;
+}
+export const SHEET_SCHEMA_SCHEMA = objectSchema({
+  worksheetId: UUID_SCHEMA,
+  revisionId: UUID_SCHEMA,
+});
+
+export class SheetCatalogInput extends CreateWorksheetCatalogSnapshotDto {
+  @IsOptional()
+  @IsUUID()
+  worksheetId?: string;
+}
+
+export const SHEET_CATALOG_SCHEMA = objectSchema(
+  {
+    worksheetId: UUID_SCHEMA,
+    idColumnId: UUID_SCHEMA,
+    revisionId: UUID_SCHEMA,
+    columns: { type: 'array', items: UUID_SCHEMA, minItems: 1 },
+  },
+  ['idColumnId'],
+);
 
 /** `rows/query` con una página más corta: lo que vuelve al modelo cuesta. */
 export class QueryRowsInput extends QueryRowsDto {
@@ -149,7 +177,7 @@ export const PREVIEW_TRANSFORM_SCHEMA = objectSchema(
     transform: {
       type: 'object',
       description:
-        'trim_text, replace_exact { from, to }, map_values { pairs } o percentage { rate, scale, rounding }.',
+        'trim_text; replace_text { find, replace, match: contains|prefix|suffix } cambia un fragmento y conserva el resto (p. ej. el sufijo de moneda, sin convertir el importe); replace_exact { from, to } cambia el valor completo; map_values { pairs }; percentage { rate, scale, rounding }.',
     },
   },
   ['columnIds', 'transform'],

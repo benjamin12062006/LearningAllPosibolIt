@@ -1,4 +1,6 @@
 import { Type } from 'class-transformer';
+import { ASSISTANT_SECTIONS } from './agent-runs.types.js';
+import type { AssistantSection } from './agent-runs.types.js';
 import {
   IsIn,
   IsInt,
@@ -6,6 +8,7 @@ import {
   IsOptional,
   IsUUID,
   Matches,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -14,6 +17,36 @@ const SHA256_HEX = /^[a-f0-9]{64}$/;
 
 /** Lo que la persona fija del contexto: revisión y selección de H6. */
 export class RunContextDto {
+  @IsOptional()
+  @IsIn(['en', 'es'])
+  language?: 'en' | 'es';
+
+  @IsOptional()
+  @IsIn(ASSISTANT_SECTIONS)
+  section?: AssistantSection;
+
+  @IsOptional()
+  @IsUUID()
+  workbookId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  worksheetId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  catalogSnapshotId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  evaluationId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2_147_483_647)
+  rulesetRevision?: number;
+
   @IsOptional()
   @IsUUID()
   revisionId?: string;

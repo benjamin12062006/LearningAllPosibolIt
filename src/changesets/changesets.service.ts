@@ -57,6 +57,33 @@ const IF_MATCH_PATTERN = /^"(\d+)"$/;
 const BLOCKING_PROBLEMS = new Set(['CELL_REQUIRED', 'CELL_VALUE_INVALID']);
 
 /** Lo que una persona ve antes de enviar o aprobar (D4). */
+export type EditsRequest = Readonly<{
+  changesetId?: string;
+  operations: readonly unknown[];
+}>;
+
+/** El borrador que se continúa, tal como estaba al preparar. */
+type DraftPointer = Readonly<{
+  id: string;
+  title: string;
+  draftVersion: number;
+}>;
+
+export type CheckedEdits = Readonly<{
+  changeset: DraftPointer | null;
+  baseRevisionId: string;
+  previousOperationCount: number;
+  /** Todas las del borrador resultante, ya normalizadas. */
+  operations: readonly Operation[];
+}>;
+
+export type ConfirmedEdits = Readonly<{
+  changeset: DraftPointer | null;
+  baseRevisionId: string;
+  title: string;
+  operations: readonly unknown[];
+}>;
+
 export type ChangesetReview = Readonly<{
   baseRevisionId: string;
   headRevisionId: string;
@@ -341,7 +368,117 @@ export class ChangesetsService {
     });
   }
 
+  /**
+   * Lo que prepara el asistente (plan 09 del asistente, etapa 2). Con
+   * `changesetId`, las operaciones nuevas van detrás de las que ya tiene el
+   * borrador y se validan juntas, como al guardar; sin él, sobre la revisión
+   * actual. No escribe nada.
+   */
+  async checkEdits(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    request: EditsRequest,
+  ): Promise<CheckedEdits> {
+    const user = await this.usersService.findCurrent(identity);
+    if (!request.changesetId) {
+      const head = await this.requireHead(user.id, scope, worksheetId);
+      return {
+        changeset: null,
+        baseRevisionId: head.id,
+        previousOperationCount: 0,
+        operations: await this.normalizeOrReject(
+          scope,
+          worksheetId,
+          head,
+          request.operations,
+        ),
+      };
+    }
+
+    const changeset = await this.requireEditableDraft(
+      user.id,
+      scope,
+      worksheetId,
+      request.changesetId,
+    );
+    return {
+      changeset: {
+        id: changeset.id,
+        title: changeset.title,
+        draftVersion: changeset.draftVersion,
+      },
+      baseRevisionId: changeset.baseRevisionId,
+      previousOperationCount: changeset.operations.length,
+      operations: await this.normalizeOrReject(
+        scope,
+        worksheetId,
+        baseOf(changeset),
+        [...changeset.operations, ...request.operations],
+      ),
+    };
+  }
+
+  /**
+   * Guarda lo que la persona confirmó de `checkEdits`. En un borrador
+   * existente, con la versión que vio (412 si otro guardó después). En uno
+   * nuevo, sobre la misma revisión que vio: si la hoja avanzó, 409 y se
+   * prepara otra vez.
+   */
+  async saveEdits(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    worksheetId: string,
+    edits: ConfirmedEdits,
+  ): Promise<Changeset> {
+    if (edits.changeset) {
+      return this.saveOperations(
+        identity,
+        scope,
+        edits.changeset.id,
+        `"${edits.changeset.draftVersion}"`,
+        edits.operations,
+      );
+    }
+
+    const user = await this.usersService.findCurrent(identity);
+    const head = await this.requireHead(user.id, scope, worksheetId);
+    if (head.id !== edits.baseRevisionId) {
+      throw apiError(ErrorCodes.CHANGESET_BASE_OUTDATED);
+    }
+    const operations = await this.normalizeOrReject(
+      scope,
+      worksheetId,
+      head,
+      edits.operations,
+    );
+    return this.repository.create(user.id, scope, {
+      worksheetId,
+      title: edits.title,
+      source: 'ai',
+      base: head,
+      operations,
+    });
+  }
+
   // ── Pasos internos ──
+
+  /** Solo un borrador sin enviar admite operaciones, y debe ser de esta hoja. */
+  private async requireEditableDraft(
+    userId: string,
+    scope: ProjectScope,
+    worksheetId: string,
+    changesetId: string,
+  ): Promise<Changeset> {
+    const changeset = await this.requireChangeset(userId, scope, changesetId);
+    if (changeset.worksheetId !== worksheetId) {
+      throw apiError(ErrorCodes.CHANGESET_NOT_FOUND);
+    }
+    if (changeset.status !== 'draft') {
+      throw apiError(ErrorCodes.CHANGESET_STATE_INVALID);
+    }
+    return changeset;
+  }
 
   private async requireChangeset(
     userId: string,

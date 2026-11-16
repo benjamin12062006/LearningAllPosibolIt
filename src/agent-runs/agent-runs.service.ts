@@ -1,14 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
+import { CatalogImportService } from '../catalog-import/catalog-import.service.js';
 import { apiError } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import { EvaluationsService } from '../evaluations/evaluations.service.js';
 import { ProjectsService } from '../projects/projects.service.js';
+import { RulesetsService } from '../rulesets/rulesets.service.js';
 import { WorksheetToolsService } from '../worksheet-tools/worksheet-tools.service.js';
+import { WorksheetRowsRepository } from '../worksheets/worksheet-rows.repository.js';
+import { WorksheetsRepository } from '../worksheets/worksheets.repository.js';
 import type { ProjectScope } from '../worksheets/worksheets.types.js';
 import { AgentRunWorker } from './agent-run.worker.js';
 import {
   AgentRunsRepository,
-  toProposalView,
+  type RunTrigger,
 } from './agent-runs.repository.js';
 import {
   AGENT_RUN_OPTIONS,
@@ -19,8 +24,8 @@ import {
   type ProposalView,
   type RunContext,
 } from './agent-runs.types.js';
-import type { StartAgentRunDto } from './agent-runs.dto.js';
-import { AgentOperationCatalog } from './operations/agent-operation-catalog.js';
+import type { RunContextDto, StartAgentRunDto } from './agent-runs.dto.js';
+import { ProposalDecisions } from './proposal-decisions.js';
 
 /**
  * Lo que hace la persona con el agente (E6.3a): iniciar una ejecución a partir
@@ -32,7 +37,12 @@ export class AgentRunsService {
     private readonly repository: AgentRunsRepository,
     private readonly projects: ProjectsService,
     private readonly tools: WorksheetToolsService,
-    private readonly catalog: AgentOperationCatalog,
+    private readonly worksheets: WorksheetsRepository,
+    private readonly worksheetRows: WorksheetRowsRepository,
+    private readonly catalog: CatalogImportService,
+    private readonly evaluations: EvaluationsService,
+    private readonly rulesets: RulesetsService,
+    private readonly decisions: ProposalDecisions,
     private readonly worker: AgentRunWorker,
     @Inject(AGENT_RUN_OPTIONS)
     private readonly options: AgentRunOptions,
@@ -62,17 +72,13 @@ export class AgentRunsService {
     if (!this.worker.enabled) {
       throw apiError(ErrorCodes.AGENT_UNAVAILABLE);
     }
-    const context: RunContext = {
-      workbookId: trigger.workbookId,
-      worksheetId: trigger.worksheetId,
-      revisionId: input.context?.revisionId ?? null,
-      selectionId: await this.checkedSelection(
-        identity,
-        scope,
-        trigger.worksheetId,
-        input.context?.selectionId,
-      ),
-    };
+    const context = await this.resolveContext(
+      identity,
+      scope,
+      actorId,
+      trigger,
+      input.context,
+    );
     const runId = await this.repository.enqueue(
       scope,
       actorId,
@@ -98,11 +104,26 @@ export class AgentRunsService {
     return this.repository.findForActor(scope, actorId, runId);
   }
 
+  async latest(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    conversationId: string,
+  ) {
+    const { actorId } = await this.projects.requireAccess(
+      identity,
+      scope.projectId,
+      'organization.read',
+    );
+    return this.repository.latestForConversation(
+      scope,
+      actorId,
+      conversationId,
+    );
+  }
+
   /**
-   * Confirma lo que preparó el agente (plan 05, «Confirmación humana»). Se
-   * ejecuta el plan guardado, nunca lo que dijo el modelo, con la identidad de
-   * la persona y los servicios de siempre. Repetir la confirmación devuelve el
-   * mismo resultado; el hash tiene que ser el de la propuesta que vio.
+   * Confirma lo que preparó el agente. Una ejecución cancelada o vencida no
+   * publica lo que preparó (plan 05, D6).
    */
   async confirm(
     identity: AuthenticatedIdentity,
@@ -116,70 +137,24 @@ export class AgentRunsService {
       scope.projectId,
       'ai.use',
     );
-    const proposal = await this.repository.findActorProposal(
-      scope,
-      actorId,
-      runId,
-      proposalId,
-    );
-    if (proposal.hash !== proposalHash) {
-      throw apiError(ErrorCodes.AGENT_PROPOSAL_STALE);
-    }
-    if (proposal.status === 'confirmed') {
-      return toProposalView(proposal);
-    }
-    if (proposal.status === 'rejected') {
-      throw apiError(ErrorCodes.AGENT_PROPOSAL_DECIDED);
-    }
-    if (proposal.status === 'confirming') {
-      throw apiError(ErrorCodes.AGENT_PROPOSAL_IN_PROGRESS);
-    }
-    // Una ejecución cancelada o vencida no publica lo que preparó (plan 05, D6).
+    const load = () =>
+      this.repository.findActorProposal(scope, actorId, runId, proposalId);
+    await load();
     const run = await this.repository.findForActor(scope, actorId, runId);
-    if (run.status !== 'succeeded') {
-      throw apiError(ErrorCodes.AGENT_PROPOSAL_EXPIRED);
-    }
-    const operation = this.catalog.find(proposal.operation);
-    if (operation?.level !== 'write') {
-      throw apiError(ErrorCodes.AGENT_OPERATION_NOT_FOUND);
-    }
-    const now = this.options.clock();
-    if (!(await this.repository.beginConfirm(proposal.id, proposalHash, now))) {
-      // Caducó entre la lectura y el cambio de estado, o la tomó otra petición.
-      const current = await this.repository.findActorProposal(
-        scope,
-        actorId,
-        runId,
-        proposalId,
-      );
-      throw apiError(
-        current.status === 'ready'
-          ? ErrorCodes.AGENT_PROPOSAL_EXPIRED
-          : ErrorCodes.AGENT_PROPOSAL_IN_PROGRESS,
-      );
-    }
-    try {
-      const result = await operation.confirm(
-        { identity, actorId, scope, context: run.context },
-        proposal.plan,
-        proposal.id,
-      );
-      await this.repository.completeConfirm(
-        proposal.id,
-        result,
-        this.options.clock(),
-      );
-    } catch (error) {
-      await this.repository.abortConfirm(proposal.id);
-      throw error;
-    }
-    return toProposalView(
-      await this.repository.findActorProposal(
-        scope,
-        actorId,
-        runId,
-        proposalId,
-      ),
+    return this.decisions.confirm(
+      { identity, actorId, scope, context: run.context },
+      load,
+      proposalHash,
+      (proposal) => {
+        if (run.status !== 'succeeded') {
+          throw apiError(ErrorCodes.AGENT_PROPOSAL_EXPIRED);
+        }
+        return this.repository.beginConfirm(
+          proposal.id,
+          proposal.hash,
+          this.options.clock(),
+        );
+      },
     );
   }
 
@@ -195,34 +170,10 @@ export class AgentRunsService {
       scope.projectId,
       'ai.use',
     );
-    const proposal = await this.repository.findActorProposal(
-      scope,
-      actorId,
-      runId,
-      proposalId,
-    );
-    if (proposal.hash !== proposalHash) {
-      throw apiError(ErrorCodes.AGENT_PROPOSAL_STALE);
-    }
-    if (proposal.status === 'rejected') {
-      return toProposalView(proposal);
-    }
-    if (
-      !(await this.repository.reject(
-        proposal.id,
-        proposalHash,
-        this.options.clock(),
-      ))
-    ) {
-      throw apiError(ErrorCodes.AGENT_PROPOSAL_DECIDED);
-    }
-    return toProposalView(
-      await this.repository.findActorProposal(
-        scope,
-        actorId,
-        runId,
-        proposalId,
-      ),
+    return this.decisions.reject(
+      () =>
+        this.repository.findActorProposal(scope, actorId, runId, proposalId),
+      proposalHash,
     );
   }
 
@@ -278,6 +229,91 @@ export class AgentRunsService {
       yield null;
       await new Promise((resolve) => setTimeout(resolve, limits.pollMs));
     }
+  }
+
+  private async resolveContext(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    actorId: string,
+    trigger: RunTrigger,
+    input?: RunContextDto,
+  ): Promise<RunContext> {
+    // Los clientes anteriores siguen usando el recurso original de su conversación.
+    const followsWorkspace = Boolean(
+      input?.section || input?.worksheetId || input?.workbookId,
+    );
+    const worksheetId =
+      input?.worksheetId ?? (followsWorkspace ? null : trigger.worksheetId);
+    let workbookId =
+      input?.workbookId ?? (followsWorkspace ? null : trigger.workbookId);
+    const revisionId = input?.revisionId ?? null;
+    if (worksheetId && followsWorkspace) {
+      const worksheet = await this.worksheets.findWorksheet(
+        actorId,
+        scope,
+        worksheetId,
+      );
+      if (!worksheet || (workbookId && workbookId !== worksheet.workbookId)) {
+        throw apiError(ErrorCodes.WORKSHEET_NOT_FOUND);
+      }
+      workbookId = worksheet.workbookId;
+    } else if (workbookId && followsWorkspace) {
+      if (!(await this.worksheets.workbookExists(actorId, scope, workbookId))) {
+        throw apiError(ErrorCodes.WORKBOOK_NOT_FOUND);
+      }
+    }
+    if (
+      followsWorkspace &&
+      revisionId &&
+      (!worksheetId ||
+        !(await this.worksheetRows.findRevision(
+          actorId,
+          scope,
+          worksheetId,
+          revisionId,
+        )))
+    ) {
+      throw apiError(ErrorCodes.WORKSHEET_REVISION_NOT_FOUND);
+    }
+    const selectionId = await this.checkedSelection(
+      identity,
+      scope,
+      worksheetId,
+      input?.selectionId,
+    );
+    if (input?.catalogSnapshotId)
+      await this.catalog.findSnapshot(
+        identity,
+        scope.projectId,
+        input.catalogSnapshotId,
+      );
+    if (input?.evaluationId)
+      await this.evaluations.findSummary(
+        identity,
+        scope.projectId,
+        input.evaluationId,
+      );
+    if (input?.rulesetRevision)
+      await this.rulesets.findRevision(
+        identity,
+        scope.projectId,
+        input.rulesetRevision,
+      );
+    return {
+      ...(input?.language ? { language: input.language } : {}),
+      ...(input?.section ? { section: input.section } : {}),
+      ...(input?.catalogSnapshotId
+        ? { catalogSnapshotId: input.catalogSnapshotId }
+        : {}),
+      ...(input?.evaluationId ? { evaluationId: input.evaluationId } : {}),
+      ...(input?.rulesetRevision
+        ? { rulesetRevision: input.rulesetRevision }
+        : {}),
+      workbookId,
+      worksheetId,
+      revisionId,
+      selectionId,
+    };
   }
 
   /** Una selección de H6 solo vale si es de esta persona y de esta hoja. */

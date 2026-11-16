@@ -23,7 +23,12 @@ import {
   type RoundingMode,
 } from '../worksheets/exact-decimal.js';
 import { WORKSHEET_LIMITS } from '../worksheets/worksheet-columns.js';
-import { TRANSFORM_LIMITS, type Transform } from './worksheet-transform.js';
+import {
+  TEXT_MATCHES,
+  TRANSFORM_LIMITS,
+  type TextMatch,
+  type Transform,
+} from './worksheet-transform.js';
 
 export class CreateWorksheetSelectionDto {
   @IsUUID()
@@ -105,6 +110,21 @@ export function transformOf(input: Record<string, unknown>): Transform {
   switch (input.kind) {
     case 'trim_text':
       if (hasKeys(input, ['kind'])) return { kind: 'trim_text' };
+      break;
+    case 'replace_text':
+      if (
+        hasKeys(input, ['kind', 'find', 'replace', 'match']) &&
+        isTextFragment(input.find, 1) &&
+        isTextFragment(input.replace, 0) &&
+        isTextMatch(input.match)
+      ) {
+        return {
+          kind: 'replace_text',
+          find: input.find,
+          replace: input.replace,
+          match: input.match,
+        };
+      }
       break;
     case 'replace_exact':
       if (
@@ -191,4 +211,16 @@ function isReplacement(
 
 function isRounding(input: unknown): input is RoundingMode {
   return ROUNDING_MODES.some((mode) => mode === input);
+}
+
+function isTextFragment(value: unknown, minLength: number): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= minLength &&
+    value.length <= MAX_TEXT_LENGTH
+  );
+}
+
+function isTextMatch(value: unknown): value is TextMatch {
+  return TEXT_MATCHES.some((match) => match === value);
 }
