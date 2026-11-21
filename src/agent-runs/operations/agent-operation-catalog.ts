@@ -8,14 +8,18 @@ import { apiError } from '../../common/http/api-error.js';
 import { ErrorCodes } from '../../common/http/error-codes.js';
 import { validateAs } from '../../common/http/validation-options.js';
 import { EvaluationsService } from '../../evaluations/evaluations.service.js';
+import { FeedRefreshesService } from '../../feed-refreshes/feed-refreshes.service.js';
+import { cliFeedOperations } from './cli-feed-operations.js';
 import { FeedViewerService } from '../../feed-viewer/feed-viewer.service.js';
 import { FeedsService } from '../../feeds/feeds.service.js';
 import { ProjectMembershipService } from '../../projects/project-membership.service.js';
 import { ProjectsService } from '../../projects/projects.service.js';
 import { RulesetsService } from '../../rulesets/rulesets.service.js';
 import { WorksheetExportsService } from '../../worksheet-exports/worksheet-exports.service.js';
+import { ImportMappingsService } from '../../worksheet-imports/import-mappings.service.js';
 import { WorksheetImportsService } from '../../worksheet-imports/worksheet-imports.service.js';
 import { WorksheetToolsService } from '../../worksheet-tools/worksheet-tools.service.js';
+import { CatalogWorksheetService } from '../../worksheet-catalog-snapshots/catalog-worksheet.service.js';
 import { WorksheetCatalogSnapshotsService } from '../../worksheet-catalog-snapshots/worksheet-catalog-snapshots.service.js';
 import { SavedViewsService } from '../../worksheets/saved-views.service.js';
 import { WorksheetRowsService } from '../../worksheets/worksheet-rows.service.js';
@@ -38,7 +42,10 @@ import {
   previewRulesOperation,
   requestEvaluationOperation,
 } from './catalog-rules-operations.js';
+import { catalogFeedOperations } from './catalog-feed-operations.js';
+import { changesetReviewOperations } from './changeset-review-operations.js';
 import { projectActionOperations } from './project-action-operations.js';
+import { sheetManagementOperations } from './sheet-management-operations.js';
 import {
   findDuplicatesOperation,
   prepareSheetEditsOperation,
@@ -108,6 +115,7 @@ export const FORBIDDEN_OPERATIONS = [
 @Injectable()
 export class AgentOperationCatalog {
   private readonly operations: ReadonlyMap<string, AgentOperation>;
+  private readonly cliOperations: ReadonlyMap<string, AgentOperation>;
 
   constructor(
     private readonly projects: ProjectsService,
@@ -116,6 +124,7 @@ export class AgentOperationCatalog {
     private readonly rulesets: RulesetsService,
     private readonly evaluations: EvaluationsService,
     private readonly feeds: FeedsService,
+    private readonly feedRefreshes: FeedRefreshesService,
     private readonly viewer: FeedViewerService,
     private readonly worksheets: WorksheetsService,
     private readonly rows: WorksheetRowsService,
@@ -126,6 +135,8 @@ export class AgentOperationCatalog {
     private readonly worksheetImports: WorksheetImportsService,
     private readonly worksheetExports: WorksheetExportsService,
     private readonly catalogExports: ExportsService,
+    private readonly importMappings: ImportMappingsService,
+    private readonly catalogWorksheets: CatalogWorksheetService,
   ) {
     const all: AgentOperation[] = [
       this.projectOverview(),
@@ -168,18 +179,33 @@ export class AgentOperationCatalog {
         exports: this.catalogExports,
         feeds: this.feeds,
       }),
+      // Plan 10, D8: lo que faltaba de Hojas, Catálogo y Feed.
+      ...changesetReviewOperations({ changesets: this.changesets }),
+      ...sheetManagementOperations({
+        worksheets: this.worksheets,
+        views: this.views,
+        mappings: this.importMappings,
+        exports: this.worksheetExports,
+        catalogWorksheets: this.catalogWorksheets,
+        imports: this.imports,
+      }),
+      ...catalogFeedOperations({ imports: this.imports, feeds: this.feeds }),
     ];
     this.operations = new Map(
       all.map((operation) => [operation.name, operation]),
     );
+    const cli = cliFeedOperations(this.feeds, this.feedRefreshes);
+    this.cliOperations = new Map(cli.map((operation) => [operation.name, operation]));
   }
 
-  find(name: string): AgentOperation | undefined {
-    return this.operations.get(name);
+  find(name: string, includeCli = false): AgentOperation | undefined {
+    return this.operations.get(name) ?? (includeCli ? this.cliOperations.get(name) : undefined);
   }
 
-  all(): AgentOperation[] {
-    return [...this.operations.values()];
+  all(includeCli = false): AgentOperation[] {
+    const operations = [...this.operations.values()];
+    if (includeCli) operations.push(...this.cliOperations.values());
+    return operations;
   }
 
   /** Lo que se le cuenta al agente: sin servicios ni funciones. */
@@ -802,7 +828,7 @@ export class AgentOperationCatalog {
     return {
       name: 'suggest_view',
       description:
-        'Prepara una vista personal (filtro, orden y columnas) de una hoja. La persona la confirma y entonces se guarda.',
+        'Prepara una vista guardada (filtro, orden y columnas) de una hoja: personal por defecto o de equipo (visibility: team, que pide permiso de escritura). La persona la confirma y entonces se guarda.',
       level: 'write',
       permission: 'organization.read',
       inputSchema: SUGGEST_VIEW_SCHEMA,
@@ -818,20 +844,26 @@ export class AgentOperationCatalog {
           worksheetId,
         );
         const query = asPlainJson(input.query);
+        const visibility = input.visibility ?? 'personal';
         return {
           summary: operationText(
             context,
-            `Guardar la vista personal «${input.name}» de la hoja «${worksheet.name}».`,
-            `Save the personal view “${input.name}” for the sheet “${worksheet.name}”.`,
+            visibility === 'team'
+              ? `Guardar la vista de equipo «${input.name}» de la hoja «${worksheet.name}».`
+              : `Guardar la vista personal «${input.name}» de la hoja «${worksheet.name}».`,
+            visibility === 'team'
+              ? `Save the team view “${input.name}” for the sheet “${worksheet.name}”.`
+              : `Save the personal view “${input.name}” for the sheet “${worksheet.name}”.`,
           ),
-          plan: { worksheetId, name: input.name, query },
+          plan: { worksheetId, name: input.name, visibility, query },
           target: { worksheetId },
         };
       },
       confirm: async (context, plan) => {
         const body = await validateAs(SaveViewDto, {
           name: plan.name,
-          visibility: 'personal',
+          // Las propuestas anteriores al plan 10 no guardaban la visibilidad.
+          visibility: plan.visibility ?? 'personal',
           query: plan.query,
         });
         const view = await this.views.create(

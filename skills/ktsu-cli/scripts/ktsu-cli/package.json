@@ -1,0 +1,19 @@
+{
+  "name": "@ktsu/cli",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ktsu": "./bin/ktsu.mjs"
+  },
+  "files": [
+    "bin/ktsu.mjs",
+    "lib/"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "ktsu": "node ./bin/ktsu.mjs"
+  }
+}

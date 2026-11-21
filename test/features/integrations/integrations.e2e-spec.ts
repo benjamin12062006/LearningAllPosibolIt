@@ -9,6 +9,12 @@ import {
 import type { INestApplication } from '@nestjs/common';
 import { randomUUID, createHash } from 'node:crypto';
 import { createServer } from 'node:http';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join, relative, resolve } from 'node:path';
+import { promisify } from 'node:util';
+import { CLI_OAUTH_CONFIG } from '../../../src/integrations/cli-oauth-config.js';
 import type { AddressInfo } from 'node:net';
 import type { Pool } from 'pg';
 import request from 'supertest';
@@ -46,6 +52,9 @@ const AI_TOKEN = 'servicio_ia_de_pruebas_0123456789abcdef';
 const MCP = '/internal/v1/mcp-integrations';
 const START_TIME = '2026-11-14T15:00:00.000Z';
 const RESOURCE = 'https://mcp.ktsu.example/mcp';
+const CLI_RESOURCE = 'https://api.ktsu.example/api/v1/integrations';
+const CLI_ISSUER = 'https://api.descope.com/v1/apps/Ptest';
+const CLI_CLIENT = 'CliTestPublicClient';
 const ISSUER = 'https://api.descope.com/v1/apps/agentic/Ptest/MStest';
 
 type Scope = { organizationId: string; projectId: string };
@@ -118,6 +127,12 @@ describe('E6.7: credenciales, catálogo y confirmación MCP', () => {
       [IntegrationsModule],
       (builder) =>
         builder
+          .overrideProvider(CLI_OAUTH_CONFIG)
+          .useValue({
+            clientId: CLI_CLIENT,
+            issuer: CLI_ISSUER,
+            resource: CLI_RESOURCE,
+          })
           .overrideProvider(MCP_OAUTH_CONFIG)
           .useValue({
             resource: RESOURCE,
@@ -142,6 +157,33 @@ describe('E6.7: credenciales, catálogo y confirmación MCP', () => {
                   iss: identity.issuer,
                   email: identity.email,
                 },
+              };
+            },
+            validateIntegrationAccess(
+              jwt: string,
+              audience: string,
+              issuer: string,
+            ) {
+              expect(audience).toBe(CLI_RESOURCE);
+              expect(issuer).toBe(CLI_ISSUER);
+              const kind = jwt.split('.')[2];
+              if (!jwt.startsWith('cli.alice.') || kind === 'wrongissuer')
+                throw new Error('JWT inválido');
+              return {
+                sub: alice.subject,
+                iss: alice.issuer,
+                azp: kind === 'wrongclient' ? 'otro-cliente' : CLI_CLIENT,
+                aud: [kind === 'wrongaudience' ? RESOURCE : CLI_RESOURCE],
+                scope:
+                  kind === 'wrongscope'
+                    ? 'ktsu:mcp:read'
+                    : kind === 'read'
+                      ? 'ktsu:cli:read'
+                      : 'ktsu:cli:read ktsu:cli:prepare',
+                iat: Date.parse(START_TIME) / 1000,
+                exp:
+                  Date.parse(START_TIME) / 1000 +
+                  (kind === 'expired' ? 0 : 600),
               };
             },
             async validateMcpAccess(
@@ -391,6 +433,178 @@ describe('E6.7: credenciales, catálogo y confirmación MCP', () => {
       .send({ proposalHash: review.body.proposal.hash })
       .expect(409);
     expect(await numberOfCreatedSheets()).toBe(0);
+  });
+
+  it('CLI OAuth separa recurso, cliente, ámbito, rol y revocación', async () => {
+    const endpoint = '/api/v1/integrations';
+    const status = (
+      kind: string,
+      projectId = first.projectId,
+      path = '/session',
+    ) =>
+      http()
+        .get(`${endpoint}${path}`)
+        .auth(`cli.alice.${kind}`, { type: 'bearer' })
+        .set('X-Ktsu-Cli-Project', projectId);
+    await http()
+      .get(`${endpoint}/oauth`)
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          issuer: CLI_ISSUER,
+          clientId: CLI_CLIENT,
+          resource: CLI_RESOURCE,
+        }),
+      );
+    await status('read').expect(403);
+    const grant = await rest()
+      .post(`${integrations()}/credentials`)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        label: 'Terminal OAuth',
+        audience: 'cli_oauth',
+        capabilities: ['read', 'prepare'],
+      })
+      .expect(201);
+    expect(grant.body.token).toBeUndefined();
+    await status('read')
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          projectId: first.projectId,
+          audience: 'cli',
+          authentication: 'oauth',
+          capabilities: ['read'],
+        }),
+      );
+    await status('prepare')
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body.capabilities).toEqual(['read', 'prepare']),
+      );
+    const grantList = await rest()
+      .get(`${integrations()}/credentials`)
+      .expect(200);
+    expect(
+      grantList.body.items.map((item: { id: string }) => item.id),
+    ).toContain(grant.body.credential.id);
+    const prepared = await http()
+      .post(`${endpoint}/operations/propose_sheet_layout`)
+      .auth('cli.alice.prepare', { type: 'bearer' })
+      .set('X-Ktsu-Cli-Project', first.projectId)
+      .send({ callId: randomUUID(), mode: 'prepare', arguments: layout() })
+      .expect(200);
+    const reviewPath = `${integrations()}/proposals/${prepared.body.proposalId}`;
+    const { body: preview } = await rest().get(reviewPath).expect(200);
+    await rest()
+      .post(`${reviewPath}/confirm`)
+      .send({ proposalHash: preview.proposal.hash })
+      .expect(200)
+      .expect(({ body }) => expect(body.proposal.status).toBe('confirmed'));
+    await status('prepare', sibling.projectId).expect(403);
+    await status('prepare', outside.projectId).expect(403);
+    for (const rejection of [
+      'wrongissuer',
+      'wrongclient',
+      'wrongaudience',
+      'expired',
+    ]) {
+      await status(rejection).expect(401);
+    }
+    await status('wrongscope').expect(403);
+    await http()
+      .get(`${endpoint}/session`)
+      .auth('cli.alice.read', { type: 'bearer' })
+      .expect(401);
+    await rest('cli.alice.read')
+      .get(`${integrations()}/credentials`)
+      .expect(401);
+    await rest()
+      .post(`${integrations()}/credentials/${grant.body.credential.id}/revoke`)
+      .expect(204);
+    await status('prepare').expect(403);
+  });
+
+  it('sirve la skill exacta al miembro del proyecto y rechaza usuarios ajenos', async () => {
+    const path = `${integrations()}/cli-skill`;
+    await http().get(path).expect(401);
+    await rest('bob-session').get(path).expect(404);
+    const { body } = await rest()
+      .get(path)
+      .expect('Cache-Control', 'no-store')
+      .expect(200);
+    expect(body.name).toBe('ktsu-cli');
+    // La lista servida debe cubrir todos los archivos de la carpeta: si se
+    // añade uno a la skill sin publicarlo, la copia desde la web quedaría incompleta.
+    const onDisk = (
+      await readdir('skills/ktsu-cli', { recursive: true, withFileTypes: true })
+    )
+      .filter((entry) => entry.isFile())
+      .map((entry) =>
+        relative('skills/ktsu-cli', join(entry.parentPath, entry.name)),
+      )
+      .sort();
+    expect(
+      (body.files as { path: string }[]).map((file) => file.path).sort(),
+    ).toEqual(onDisk);
+    for (const file of body.files as { path: string; content: string }[]) {
+      expect(file.content).toBe(
+        await readFile(`skills/ktsu-cli/${file.path}`, 'utf8'),
+      );
+    }
+  });
+
+  it('ejecuta la CLI incluida en la skill contra Nest con un perfil aislado', async () => {
+    const { body } = await rest()
+      .post(`${integrations()}/credentials`)
+      .set('Idempotency-Key', randomUUID())
+      .send({ label: 'CLI incluida', audience: 'cli', capabilities: ['read'] })
+      .expect(201);
+    const folder = await mkdtemp(join(tmpdir(), 'ktsu-skill-profile-'));
+    const profile = join(folder, 'config.json');
+    const address = app.getHttpServer().address() as AddressInfo;
+    const cli = resolve('skills/ktsu-cli/scripts/ktsu-cli/bin/ktsu.mjs');
+    const env = {
+      PATH: process.env.PATH,
+      KTSU_CONFIG_PATH: profile,
+      KTSU_TOKEN: body.token as string,
+    };
+    const run = async (...args: string[]) => {
+      const { stdout } = await promisify(execFile)(
+        process.execPath,
+        [cli, ...args, '--json'],
+        { env },
+      );
+      expect(stdout).not.toContain(body.token);
+      return JSON.parse(stdout);
+    };
+    try {
+      await run(
+        'config',
+        'set',
+        '--api-url',
+        `http://127.0.0.1:${address.port}`,
+      );
+      expect(await run('auth', 'status')).toMatchObject({
+        projectId: first.projectId,
+        capabilities: ['read'],
+      });
+      expect(
+        (await run('operations', 'list')).operations.map(
+          (item: { name: string }) => item.name,
+        ),
+      ).toContain('list_feed_versions');
+      expect(
+        (await run('operations', 'describe', 'list_feed_versions')).inputSchema
+          .required,
+      ).toContain('feedId');
+      expect((await run('read', 'get_project_overview')).project.id).toBe(
+        first.projectId,
+      );
+      expect(await readFile(profile, 'utf8')).not.toContain(body.token);
+    } finally {
+      await rm(folder, { force: true, recursive: true });
+    }
   });
 
   it('eliminar un proyecto elimina también su delegación', async () => {

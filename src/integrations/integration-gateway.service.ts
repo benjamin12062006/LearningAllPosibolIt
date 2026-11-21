@@ -11,7 +11,10 @@ import type {
   WriteOperation,
 } from '../agent-runs/operations/agent-operation.js';
 import { AgentOperationCatalog } from '../agent-runs/operations/agent-operation-catalog.js';
-import type { StoredProposal } from '../agent-runs/agent-runs.repository.js';
+import {
+  toProposalView,
+  type StoredProposal,
+} from '../agent-runs/agent-runs.repository.js';
 import { AI_AUTO_CONFIRM } from '../agent-runs/auto-confirm.js';
 import { ProposalDecisions } from '../agent-runs/proposal-decisions.js';
 import {
@@ -44,6 +47,7 @@ import {
   type Delegation,
 } from './integrations.types.js';
 
+import { CliOAuthAccess } from './cli-oauth-access.js';
 import { McpOAuthAccess } from './mcp-oauth-access.js';
 
 type RequestedIntegration = Readonly<{
@@ -51,7 +55,7 @@ type RequestedIntegration = Readonly<{
   requestId: string | undefined;
 }> &
   (
-    | Readonly<{ channel: 'cli' }>
+    | Readonly<{ channel: 'cli'; project?: string }>
     | Readonly<{
         channel?: 'mcp';
         delegation: string | undefined;
@@ -105,6 +109,43 @@ const DELEGATED_OPERATIONS = new Map<string, readonly string[]>([
   ['publish_feed', []],
 ]);
 
+// Los clientes CLI señalan la entidad cuando el chat podría inferirla.
+const CLI_OPERATIONS = new Map<string, readonly string[]>([
+  ['submit_changeset', ['changesetId']],
+  ['reopen_changeset', ['changesetId']],
+  ['reject_changeset', ['changesetId']],
+  ['rebase_changeset', ['changesetId']],
+  ['propose_revert', ['revisionId']],
+  ['duplicate_worksheet', ['worksheetId']],
+  ['open_catalog_as_worksheet', ['snapshotId', 'workbookId']],
+  ['export_worksheet', ['worksheetId']],
+  ['list_saved_views', ['worksheetId']],
+  ['update_saved_view', ['viewId']],
+  ['list_import_mappings', ['worksheetId']],
+  ['create_import_mapping', ['worksheetId']],
+  ['delete_import_mapping', ['mappingId']],
+  ['list_catalog_imports', []],
+  ['delete_catalog_import', ['snapshotId']],
+  ['set_feed_source', ['feedId']],
+  ['set_feed_schedule', ['feedId']],
+  ['approve_feed_policy', ['feedId']],
+  ['create_feed', []],
+  ['list_feed_versions', ['feedId']],
+  ['get_feed_delivery_status', ['feedId']],
+  ['get_feed_configuration', ['feedId']],
+  ['get_feed_refresh', ['feedId', 'refreshId']],
+  ['refresh_feed', ['feedId']],
+  ['republish_feed_version', ['feedId', 'versionId']],
+  ['disable_feed_delivery', ['feedId']],
+]);
+
+function selectorsOf(name: string, cli: boolean) {
+  return (
+    (cli ? CLI_OPERATIONS.get(name) : undefined) ??
+    DELEGATED_OPERATIONS.get(name)
+  );
+}
+
 @Injectable()
 export class IntegrationGatewayService {
   private readonly logger = new Logger(IntegrationGatewayService.name);
@@ -113,6 +154,7 @@ export class IntegrationGatewayService {
     private readonly repository: IntegrationsRepository,
     private readonly catalog: AgentOperationCatalog,
     private readonly oauth: McpOAuthAccess,
+    private readonly cliOAuth: CliOAuthAccess,
     @Inject(MCP_ADAPTER_TOKEN)
     private readonly adapterToken: string | null,
     @Inject(AI_SERVICE_CLIENT)
@@ -134,6 +176,8 @@ export class IntegrationGatewayService {
     return {
       credentialId: delegation.credentialId,
       audience: audienceOf(headers),
+      ...(headers.channel === 'cli' &&
+        headers.project && { authentication: 'oauth' }),
       organizationId: delegation.scope.organizationId,
       projectId: delegation.scope.projectId,
       capabilities,
@@ -145,18 +189,22 @@ export class IntegrationGatewayService {
     headers: RequestedIntegration,
   ): Promise<{ operations: OperationDescription[] }> {
     const access = await this.authorizeRequest(headers);
+    const cli = headers.channel === 'cli';
     const allowed = this.catalog
-      .all()
+      .all(cli)
       .filter(
         (operation) =>
-          DELEGATED_OPERATIONS.has(operation.name) && canUse(access, operation),
+          selectorsOf(operation.name, cli) !== undefined &&
+          canUse(access, operation),
       );
     const knowledge = knowledgeOperation(this.ai, headers.requestId);
     if (knowledge) {
       allowed.push(knowledge);
     }
     return {
-      operations: this.catalog.describe(allowed).map(withRequiredSelectors),
+      operations: this.catalog
+        .describe(allowed)
+        .map((item) => withRequiredSelectors(item, cli)),
     };
   }
 
@@ -166,20 +214,23 @@ export class IntegrationGatewayService {
     body: IntegrationCallDto,
   ): Promise<unknown> {
     const access = await this.authorizeRequest(headers);
+    const cli = headers.channel === 'cli';
+    const selectors = selectorsOf(name, cli);
     const operation =
       name === SEARCH_KNOWLEDGE
         ? knowledgeOperation(this.ai, headers.requestId)
-        : this.findDelegatedOperation(name);
+        : selectors && this.catalog.find(name, cli);
     if (!operation) {
       throw apiError(ErrorCodes.AGENT_OPERATION_NOT_FOUND);
     }
 
     try {
-      assertCallAllowed(access, operation, body);
+      assertCallAllowed(access, operation, body, selectors ?? []);
       const result = await this.runOperation(
         access.delegation,
         operation,
         body,
+        !cli && this.autoConfirm,
       );
       // Entre la autorización inicial y el resultado pudo cambiar la membresía
       // o revocarse el secreto, en particular durante la búsqueda remota.
@@ -190,6 +241,35 @@ export class IntegrationGatewayService {
       this.audit(access.delegation, name, 'failed', headers);
       throw error;
     }
+  }
+
+  async cliProposalAccess(
+    headers: Extract<RequestedIntegration, { channel: 'cli' }>,
+    proposalId: string,
+  ) {
+    const access = await this.authorizeRequest(headers);
+    const stored = await this.repository.findOwnerProposal(
+      access.delegation.scope,
+      access.delegation.actorId,
+      proposalId,
+      access.delegation.credentialId,
+    );
+    const operation = this.catalog.find(stored.operation, true);
+    if (!operation || !canUse(access, operation)) {
+      throw apiError(ErrorCodes.AGENT_PROPOSAL_NOT_FOUND);
+    }
+    const proposal = toProposalView(stored);
+    const status =
+      proposal.status === 'ready' &&
+      Date.parse(proposal.expiresAt) <= this.options.clock().getTime()
+        ? 'expired'
+        : proposal.status;
+    const { hash: _hash, ...view } = proposal;
+    return { delegation: access.delegation, proposal: { ...view, status } };
+  }
+
+  async cliReader(headers: Extract<RequestedIntegration, { channel: 'cli' }>) {
+    return (await this.authorizeRequest(headers)).delegation;
   }
 
   private async authorizeRequest(
@@ -205,7 +285,13 @@ export class IntegrationGatewayService {
   ): Promise<AuthorizedDelegation> {
     const stored =
       headers.channel === 'cli'
-        ? await this.authenticateOpaque(headers.authorization, 'cli')
+        ? headers.project === undefined
+          ? await this.authenticateOpaque(headers.authorization, 'cli')
+          : await this.cliOAuth.authenticate(
+              headers.authorization,
+              headers.project,
+              this.options.clock(),
+            )
         : await this.authenticateMcp(headers);
     const access = await this.repository.requireMember(
       stored.scope,
@@ -257,14 +343,11 @@ export class IntegrationGatewayService {
     return stored;
   }
 
-  private findDelegatedOperation(name: string) {
-    return DELEGATED_OPERATIONS.has(name) ? this.catalog.find(name) : undefined;
-  }
-
   private async runOperation(
     delegation: Delegation,
     operation: AgentOperation,
     body: IntegrationCallDto,
+    autoConfirm: boolean,
   ) {
     const input = await operation.parse(body.arguments);
     const context: OperationContext = {
@@ -280,7 +363,14 @@ export class IntegrationGatewayService {
       }
       return result;
     }
-    return this.prepare(operation, delegation, context, input, body);
+    return this.prepare(
+      operation,
+      delegation,
+      context,
+      input,
+      body,
+      autoConfirm,
+    );
   }
 
   private async prepare(
@@ -289,6 +379,7 @@ export class IntegrationGatewayService {
     context: OperationContext,
     input: unknown,
     body: IntegrationCallDto,
+    autoConfirm: boolean,
   ) {
     const call = {
       id: body.callId,
@@ -299,7 +390,7 @@ export class IntegrationGatewayService {
     const proposal =
       existing ??
       (await this.prepareNew(operation, delegation, context, input, call));
-    if (this.autoConfirm) {
+    if (autoConfirm) {
       const confirmed = await this.confirmNow(delegation, context, proposal);
       return {
         proposalId: confirmed.id,
@@ -394,6 +485,7 @@ function assertCallAllowed(
   access: AuthorizedDelegation,
   operation: AgentOperation,
   body: IntegrationCallDto,
+  selectors: readonly string[],
 ) {
   assertOperationAccess(access, operation);
   const expectedMode = operation.level === 'read' ? 'execute' : 'prepare';
@@ -403,7 +495,6 @@ function assertCallAllowed(
   if (jsonBytes(body.arguments) > INTEGRATION_LIMITS.argumentsBytes) {
     throw apiError(ErrorCodes.PAYLOAD_TOO_LARGE);
   }
-  const selectors = DELEGATED_OPERATIONS.get(operation.name) ?? [];
   if (selectors.some((name) => body.arguments[name] == null)) {
     throw apiError(ErrorCodes.VALIDATION_FAILED);
   }
@@ -434,8 +525,9 @@ function canUse(access: AuthorizedDelegation, operation: AgentOperation) {
 
 function withRequiredSelectors(
   operation: OperationDescription,
+  cli: boolean,
 ): OperationDescription {
-  const selectors = DELEGATED_OPERATIONS.get(operation.name);
+  const selectors = selectorsOf(operation.name, cli);
   if (!selectors?.length) {
     return operation;
   }

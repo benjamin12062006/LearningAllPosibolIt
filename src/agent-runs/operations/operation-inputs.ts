@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsObject,
@@ -16,6 +17,8 @@ import {
   CreateWorksheetDto,
   QueryRowsDto,
   SavedViewQueryDto,
+  VIEW_VISIBILITIES,
+  type ViewVisibility,
 } from '../../worksheets/worksheets.dto.js';
 import type { JsonSchema } from './agent-operation.js';
 import { CreateWorksheetCatalogSnapshotDto } from '../../worksheet-catalog-snapshots/worksheet-catalog-snapshots.dto.js';
@@ -317,6 +320,10 @@ export class SuggestViewInput {
   @IsUUID()
   worksheetId?: string;
 
+  @IsOptional()
+  @IsIn(VIEW_VISIBILITIES)
+  visibility?: ViewVisibility;
+
   @Transform(trim)
   @IsString()
   @IsNotEmpty()
@@ -332,6 +339,7 @@ export const SUGGEST_VIEW_SCHEMA = objectSchema(
   {
     worksheetId: UUID_SCHEMA,
     name: { type: 'string', minLength: 1, maxLength: 200 },
+    visibility: { type: 'string', enum: [...VIEW_VISIBILITIES] },
     query: {
       type: 'object',
       description: 'Lo mismo que rows/query: { filter?, sort?, columns? }.',

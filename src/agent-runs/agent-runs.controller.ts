@@ -102,14 +102,14 @@ export class AgentRunsController {
     @Param('proposalId', uuidParamPipe('proposalId')) proposalId: string,
     @Body() body: ProposalDecisionDto,
   ) {
-    const proposal = await this.runs.confirm(
+    // `{ proposal, continuation, continuationError }` (plan 10, D7).
+    return this.runs.confirm(
       identity,
       { organizationId, projectId },
       runId,
       proposalId,
       body.proposalHash,
     );
-    return { proposal };
   }
 
   @Post('ai-runs/:runId/proposals/:proposalId/reject')

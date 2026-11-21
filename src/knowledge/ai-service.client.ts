@@ -39,7 +39,13 @@ export type AgentRunRequest = Readonly<{
   scope: Readonly<{ organizationId: string; projectIds: readonly string[] }>;
   credential: string;
   message: string;
-  history: readonly Readonly<{ role: 'user' | 'assistant'; content: string }>[];
+  /** Los del asistente llevan la actividad de su ejecución (plan 10, D1). */
+  history: readonly Readonly<{
+    role: 'user' | 'assistant';
+    content: string;
+    activity?: Readonly<Record<string, unknown>>;
+  }>[];
+  omittedMessages: number;
   operations: readonly Readonly<{
     name: string;
     description: string;
@@ -47,6 +53,8 @@ export type AgentRunRequest = Readonly<{
     level: 'read' | 'write';
   }>[];
   context: Readonly<Record<string, unknown>>;
+  /** La ficha del proyecto (plan 10, D5); nula si no se pudo armar. */
+  project: unknown;
 }>;
 
 /** El desenlace que devuelve el agente; Nest lo valida antes de guardarlo. */

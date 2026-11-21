@@ -1,6 +1,7 @@
 type AgentProposal {
   createdAt: String!
   decidedAt: String
+  error: ApiError
   expiresAt: String!
   hash: String!
   id: ID!

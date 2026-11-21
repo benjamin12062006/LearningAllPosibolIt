@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { AuthenticatedIdentity } from '../auth/authenticated-request.js';
 import { CatalogImportService } from '../catalog-import/catalog-import.service.js';
-import { apiError } from '../common/http/api-error.js';
+import { apiError, rejectionOf } from '../common/http/api-error.js';
 import { ErrorCodes } from '../common/http/error-codes.js';
+import type { PublicError } from '../common/http/public-error.js';
+import { ConversationsService } from '../conversations/conversations.service.js';
 import { EvaluationsService } from '../evaluations/evaluations.service.js';
 import { ProjectsService } from '../projects/projects.service.js';
 import { RulesetsService } from '../rulesets/rulesets.service.js';
@@ -25,7 +27,18 @@ import {
   type RunContext,
 } from './agent-runs.types.js';
 import type { RunContextDto, StartAgentRunDto } from './agent-runs.dto.js';
+import { confirmationIdOf } from './auto-confirm.js';
 import { ProposalDecisions } from './proposal-decisions.js';
+
+/**
+ * Lo que responde confirmar desde el chat (plan 10, D7): la propuesta y la
+ * ejecución que continúa la tarea, o por qué no pudo continuar.
+ */
+export type ConfirmedProposal = Readonly<{
+  proposal: ProposalView;
+  continuation: AgentRunView | null;
+  continuationError: PublicError | null;
+}>;
 
 /**
  * Lo que hace la persona con el agente (E6.3a): iniciar una ejecución a partir
@@ -43,6 +56,7 @@ export class AgentRunsService {
     private readonly evaluations: EvaluationsService,
     private readonly rulesets: RulesetsService,
     private readonly decisions: ProposalDecisions,
+    private readonly conversations: ConversationsService,
     private readonly worker: AgentRunWorker,
     @Inject(AGENT_RUN_OPTIONS)
     private readonly options: AgentRunOptions,
@@ -122,8 +136,11 @@ export class AgentRunsService {
   }
 
   /**
-   * Confirma lo que preparó el agente. Una ejecución cancelada o vencida no
-   * publica lo que preparó (plan 05, D6).
+   * Confirma lo que preparó el agente y deja que siga solo (plan 10, D7): la
+   * persona queda como autora del mensaje «Confirmé: …» y una ejecución nueva
+   * continúa la tarea. Si el efecto falla con un error conocido, la propuesta
+   * queda `failed` y la continuación recibe el motivo. Una ejecución cancelada
+   * o vencida no publica lo que preparó (plan 05, D6).
    */
   async confirm(
     identity: AuthenticatedIdentity,
@@ -131,7 +148,7 @@ export class AgentRunsService {
     runId: string,
     proposalId: string,
     proposalHash: string,
-  ): Promise<ProposalView> {
+  ): Promise<ConfirmedProposal> {
     const { actorId } = await this.projects.requireAccess(
       identity,
       scope.projectId,
@@ -141,7 +158,7 @@ export class AgentRunsService {
       this.repository.findActorProposal(scope, actorId, runId, proposalId);
     await load();
     const run = await this.repository.findForActor(scope, actorId, runId);
-    return this.decisions.confirm(
+    const proposal = await this.decisions.confirm(
       { identity, actorId, scope, context: run.context },
       load,
       proposalHash,
@@ -155,7 +172,12 @@ export class AgentRunsService {
           this.options.clock(),
         );
       },
+      'record',
     );
+    return {
+      proposal,
+      ...(await this.continueAfter(identity, scope, actorId, run, proposal)),
+    };
   }
 
   async reject(
@@ -228,6 +250,63 @@ export class AgentRunsService {
       }
       yield null;
       await new Promise((resolve) => setTimeout(resolve, limits.pollMs));
+    }
+  }
+
+  /**
+   * Guarda el mensaje de la persona sobre su decisión y pone en cola la
+   * ejecución que sigue. Es idempotente: el mensaje tiene un ID estable por
+   * propuesta y la ejecución, una por mensaje. Si la cuota, otra ejecución
+   * activa o una hoja archivada lo impiden, la confirmación vale igual.
+   */
+  private async continueAfter(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    actorId: string,
+    run: AgentRunView,
+    proposal: ProposalView,
+  ): Promise<Omit<ConfirmedProposal, 'proposal'>> {
+    if (!this.worker.enabled) {
+      return { continuation: null, continuationError: null };
+    }
+    try {
+      const message = await this.conversations.appendMessage(
+        identity,
+        scope,
+        run.conversationId,
+        {
+          clientMessageId: confirmationIdOf(proposal.id, 'continuation'),
+          content: continuationText(proposal, run.context.language),
+        },
+      );
+      const trigger = await this.repository.findTrigger(
+        scope,
+        actorId,
+        run.conversationId,
+        message.id,
+      );
+      const runId = await this.repository.enqueue(
+        scope,
+        actorId,
+        trigger,
+        run.context,
+        this.options.quota,
+        this.options.clock(),
+      );
+      this.worker.wake();
+      const continuation = await this.repository.findForActor(
+        scope,
+        actorId,
+        runId,
+      );
+      return { continuation, continuationError: null };
+    } catch (error) {
+      // Cuota, otra ejecución activa u hoja archivada: la confirmación vale igual.
+      const rejection = rejectionOf(error);
+      if (!rejection) {
+        throw error;
+      }
+      return { continuation: null, continuationError: rejection };
     }
   }
 
@@ -337,4 +416,21 @@ export class AgentRunsService {
     );
     return selectionId;
   }
+}
+
+/**
+ * El mensaje que la persona deja al decidir: lo ve en el chat y es lo que lee
+ * el agente al continuar. El resultado con sus IDs le llega en la actividad.
+ */
+function continuationText(proposal: ProposalView, language?: 'en' | 'es') {
+  const english = language === 'en';
+  if (proposal.status === 'failed' && proposal.error) {
+    const { code, message } = proposal.error;
+    return english
+      ? `It could not be applied: ${proposal.summary} Reason (${code}): ${message.en}`
+      : `No se pudo aplicar: ${proposal.summary} Motivo (${code}): ${message.es}`;
+  }
+  return english
+    ? `I confirmed: ${proposal.summary}`
+    : `Confirmé: ${proposal.summary}`;
 }

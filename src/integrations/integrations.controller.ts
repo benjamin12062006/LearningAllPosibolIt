@@ -29,6 +29,17 @@ import { IntegrationsService } from './integrations.service.js';
 export class IntegrationsController {
   constructor(private readonly integrations: IntegrationsService) {}
 
+  @Get('cli-skill')
+  @Header('Cache-Control', 'no-store')
+  cliSkill(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+  ) {
+    return this.integrations.cliSkill(identity, { organizationId, projectId });
+  }
+
   @Get('credentials')
   list(
     @CurrentIdentity() identity: AuthenticatedIdentity,

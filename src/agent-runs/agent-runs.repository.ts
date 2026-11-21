@@ -32,13 +32,37 @@ export type RunTrigger = Readonly<{
   messageId: string;
 }>;
 
+/**
+ * Lo que hizo la ejecución que respondió un mensaje (plan 10, D1): sus llamadas,
+ * con los IDs que tocaron, y la propuesta con su estado y lo que creó.
+ */
+export type RunActivity = Readonly<{
+  calls: readonly Readonly<{
+    operation: string;
+    status: string;
+    target: unknown;
+  }>[];
+  proposal: Readonly<{
+    operation: string;
+    status: string;
+    result: unknown;
+    error: unknown;
+  }> | null;
+}>;
+
+/** Un mensaje anterior; los del asistente llevan la actividad de su ejecución. */
+export type HistoryMessage = Readonly<{
+  role: 'user' | 'assistant';
+  content: string;
+  activity?: RunActivity;
+}>;
+
 /** Lo que el worker manda al agente además de la operación. */
 export type RunPrompt = Readonly<{
   message: string;
-  history: readonly Readonly<{
-    role: 'user' | 'assistant';
-    content: string;
-  }>[];
+  history: readonly HistoryMessage[];
+  /** Mensajes anteriores que no caben: el agente sabe que existen. */
+  omittedMessages: number;
 }>;
 
 /** Una propuesta lista para guardar (plan 05, D6). */
@@ -50,9 +74,35 @@ export type NewProposal = Readonly<{
   hash: string;
 }>;
 
-/** La propuesta con lo que necesita su confirmación. */
-export type StoredProposal = ProposalView &
-  Readonly<{ runId: string | null; plan: Record<string, unknown> }>;
+/** La propuesta con lo que necesita su confirmación; `error` como se guardó. */
+export type StoredProposal = Omit<ProposalView, 'error'> &
+  Readonly<{
+    runId: string | null;
+    plan: Record<string, unknown>;
+    error: unknown;
+  }>;
+
+type HistoryRow = Readonly<{
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sequence: number;
+}>;
+
+type ActivityCallRow = Readonly<{
+  messageId: string;
+  operation: string;
+  status: string;
+  target: unknown;
+}>;
+
+type ActivityProposalRow = Readonly<{
+  messageId: string;
+  operation: string;
+  status: string;
+  result: unknown;
+  error: unknown;
+}>;
 
 type RunRow = Readonly<{
   id: string;
@@ -93,6 +143,7 @@ export const PROPOSAL_COLUMNS = Prisma.sql`
   p.hash,
   p.status,
   p.result,
+  p.error,
   p.expires_at AS "expiresAt",
   p.created_at AS "createdAt",
   p.decided_at AS "decidedAt"`;
@@ -329,12 +380,37 @@ export class AgentRunsRepository {
     return claimToken ? this.findRunning(runId, claimToken) : null;
   }
 
-  /** El mensaje que disparó la ejecución y el historial anterior, acotado. */
-  async promptOf(run: RunningRun): Promise<RunPrompt> {
-    const rows = await this.prisma.$queryRaw<
-      { role: 'user' | 'assistant'; content: string; sequence: number }[]
-    >`
-      SELECT m.role, m.content, m.sequence
+  /**
+   * El mensaje que disparó la ejecución y el historial anterior, acotado. Cada
+   * respuesta del asistente lleva lo que hizo su ejecución: así el agente
+   * recuerda los IDs que encontró y si la persona confirmó (plan 10, D1).
+   */
+  async promptOf(run: RunningRun, now: Date): Promise<RunPrompt> {
+    const [trigger, ...newestFirst] = await this.recentMessages(run);
+    const previous = newestFirst.reverse();
+    const activities = await this.activitiesOf(
+      previous.filter(isAssistantMessage).map((message) => message.id),
+      now,
+    );
+    const history = boundedHistory(
+      previous.map((message) => withActivity(message, activities)),
+    );
+    const earlier = await this.countEarlierMessages(run, trigger.sequence);
+    return {
+      message: trigger.content,
+      history,
+      omittedMessages: earlier - history.length,
+    };
+  }
+
+  /** El mensaje que disparó la ejecución y los anteriores, del más nuevo al más viejo. */
+  private recentMessages(run: RunningRun) {
+    return this.prisma.$queryRaw<HistoryRow[]>`
+      SELECT
+        m.id,
+        m.role,
+        m.content,
+        m.sequence
       FROM estadistica_forms.ai_messages m
       JOIN estadistica_forms.ai_messages t
         ON t.id = ${run.userMessageId} AND t.conversation_id = m.conversation_id
@@ -342,11 +418,68 @@ export class AgentRunsRepository {
         AND m.sequence <= t.sequence
       ORDER BY m.sequence DESC
       LIMIT ${AGENT_RUN_LIMITS.historyMessages + 1}`;
-    const [trigger, ...previous] = rows;
-    return {
-      message: trigger.content,
-      history: boundedHistory(previous.reverse()),
-    };
+  }
+
+  private async countEarlierMessages(run: RunningRun, sequence: number) {
+    const rows = await this.prisma.$queryRaw<{ total: number }[]>`
+      SELECT count(*)::int AS total
+      FROM estadistica_forms.ai_messages
+      WHERE conversation_id = ${run.conversationId}
+        AND sequence < ${sequence}`;
+    return rows[0]?.total ?? 0;
+  }
+
+  /**
+   * La actividad de las ejecuciones que respondieron estos mensajes. Una
+   * propuesta lista que ya venció se cuenta como `expired`: el agente no debe
+   * esperar que la confirmen.
+   */
+  private async activitiesOf(
+    answerMessageIds: readonly string[],
+    now: Date,
+  ): Promise<Map<string, RunActivity>> {
+    const activities = new Map<string, RunActivity>();
+    if (answerMessageIds.length === 0) {
+      return activities;
+    }
+    const answers = Prisma.join(answerMessageIds);
+    const calls = await this.prisma.$queryRaw<ActivityCallRow[]>`
+      SELECT
+        r.answer_message_id AS "messageId",
+        c.operation,
+        c.status,
+        c.target
+      FROM estadistica_forms.ai_runs r
+      JOIN estadistica_forms.ai_run_calls c ON c.run_id = r.id
+      WHERE r.answer_message_id IN (${answers})
+      ORDER BY c.created_at, c.call_id`;
+    const proposals = await this.prisma.$queryRaw<ActivityProposalRow[]>`
+      SELECT
+        r.answer_message_id AS "messageId",
+        p.operation,
+        CASE
+          WHEN p.status = 'ready' AND p.expires_at <= ${now.toISOString()}
+            THEN 'expired'
+          ELSE p.status
+        END AS status,
+        p.result,
+        p.error
+      FROM estadistica_forms.ai_runs r
+      JOIN estadistica_forms.ai_proposals p ON p.run_id = r.id
+      WHERE r.answer_message_id IN (${answers})`;
+
+    for (const { messageId, ...call } of calls) {
+      const activity = activities.get(messageId) ?? emptyActivity();
+      activities.set(messageId, {
+        ...activity,
+        calls: [...activity.calls, call],
+      });
+    }
+    for (const { messageId, ...proposal } of proposals) {
+      const activity = activities.get(messageId) ?? emptyActivity();
+      activities.set(messageId, { ...activity, proposal });
+    }
+    return activities;
   }
 
   /**
@@ -656,6 +789,18 @@ export class AgentRunsRepository {
       WHERE id = ${proposalId} AND status = 'confirming'`;
   }
 
+  /**
+   * El efecto falló con un error conocido: la propuesta queda `failed` con ese
+   * error y el agente lo recibe al continuar (plan 10, D7).
+   */
+  async failConfirm(proposalId: string, error: PublicError, now: Date) {
+    await this.prisma.$executeRaw`
+      UPDATE estadistica_forms.ai_proposals
+      SET status = 'failed', error = ${JSON.stringify(error)}::jsonb,
+          decided_at = ${now.toISOString()}
+      WHERE id = ${proposalId} AND status = 'confirming'`;
+  }
+
   /** El efecto falló: la propuesta vuelve a estar lista para reintentar. */
   async abortConfirm(proposalId: string) {
     await this.prisma.$executeRaw`
@@ -769,23 +914,45 @@ async function holdsClaim(
   return rows.length > 0;
 }
 
-/** Lo más reciente primero hasta el límite de bytes; luego, en orden. */
-function boundedHistory(
-  messages: readonly Readonly<{
-    role: 'user' | 'assistant';
-    content: string;
-  }>[],
-) {
-  const kept: { role: 'user' | 'assistant'; content: string }[] = [];
+/**
+ * Lo más reciente primero hasta el límite de bytes, contando la actividad;
+ * luego, en orden. Exportada para probar el recorte sin cientos de ejecuciones.
+ */
+export function boundedHistory(messages: readonly HistoryMessage[]) {
+  const kept: HistoryMessage[] = [];
   let bytes = 0;
-  for (const { role, content } of [...messages].reverse()) {
-    bytes += Buffer.byteLength(content, 'utf8');
+  for (const message of [...messages].reverse()) {
+    bytes += sizeOf(message);
     if (bytes > AGENT_RUN_LIMITS.historyBytes) {
       break;
     }
-    kept.unshift({ role, content });
+    kept.unshift(message);
   }
   return kept;
+}
+
+function sizeOf({ content, activity }: HistoryMessage) {
+  const activityBytes = activity
+    ? Buffer.byteLength(JSON.stringify(activity), 'utf8')
+    : 0;
+  return Buffer.byteLength(content, 'utf8') + activityBytes;
+}
+
+function isAssistantMessage(message: HistoryRow) {
+  return message.role === 'assistant';
+}
+
+/** El mensaje como lo ve el agente: con su actividad, si su ejecución hizo algo. */
+function withActivity(
+  { id, role, content }: HistoryRow,
+  activities: ReadonlyMap<string, RunActivity>,
+): HistoryMessage {
+  const activity = activities.get(id);
+  return activity ? { role, content, activity } : { role, content };
+}
+
+function emptyActivity(): RunActivity {
+  return { calls: [], proposal: null };
 }
 
 function sameContext(left: RunContext, right: RunContext) {
@@ -827,6 +994,7 @@ export function toProposalView(proposal: StoredProposal): ProposalView {
     status: proposal.status,
     target: proposal.target,
     result: proposal.result,
+    error: localizeStoredError(proposal.error),
     expiresAt: proposal.expiresAt,
     createdAt: proposal.createdAt,
     decidedAt: proposal.decidedAt,

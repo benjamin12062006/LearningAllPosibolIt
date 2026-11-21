@@ -605,6 +605,14 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
     );
     await rest().get(catalogPath).expect(200);
 
+    script = async () => ({
+      status: 200,
+      body: { status: 'answered', answer: 'Reglas consultadas.', calls: [] },
+    });
+    // Confirmar deja en cola la ejecución que continúa (plan 10, D7): termina
+    // antes de que la persona escriba otra cosa.
+    expect(result.body.continuation.status).toBe('queued');
+    await app.get(AgentRunWorker).runUntilIdle();
     const next = await rest()
       .post(`${path}/messages`)
       .send({
@@ -612,15 +620,11 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
         content: 'Ahora revisa las reglas',
       })
       .expect(201);
-    script = async () => ({
-      status: 200,
-      body: { status: 'answered', answer: 'Reglas consultadas.', calls: [] },
-    });
     await runToEnd(
       { section: 'rules' },
       { ...trigger, messageId: next.body.message.id },
     );
-    expect(received[1].context).toMatchObject({
+    expect(received.at(-1)?.context).toMatchObject({
       section: 'rules',
       worksheetId: null,
       selectionId: null,
@@ -1346,6 +1350,373 @@ describe('E6.3a: ejecuciones del agente, pasarela y confirmación', () => {
     } finally {
       gateway.autoConfirm = false;
     }
+  });
+
+  /** Otro mensaje de Alice en la misma conversación; devuelve su ID. */
+  async function followUp(conversationId: string, content: string) {
+    const { body } = await client()
+      .rest()
+      .post(`${base()}/conversations/${conversationId}/messages`)
+      .send({ clientMessageId: randomUUID(), content })
+      .expect(201);
+    return body.message.id as string;
+  }
+
+  const answers =
+    (answer: string): Script =>
+    async () => ({
+      status: 200,
+      body: { status: 'answered', answer, calls: [] },
+    });
+
+  it('E2: el historial lleva lo que hizo cada ejecución, con sus IDs y la propuesta decidida', async () => {
+    const first = await runToEnd();
+    await client()
+      .rest()
+      .post(
+        `${base()}/ai-runs/${first.run.id}/proposals/${first.run.proposal.id}/reject`,
+      )
+      .send({ proposalHash: first.run.proposal.hash })
+      .expect(200);
+    script = answers('De acuerdo.');
+
+    const messageId = await followUp(
+      first.conversationId,
+      '¿Qué selección usaste?',
+    );
+    await runToEnd(undefined, {
+      conversationId: first.conversationId,
+      messageId,
+    });
+
+    const request = received[1];
+    expect(request.message).toBe('¿Qué selección usaste?');
+    expect(request.omittedMessages).toBe(0);
+    expect(request.history.map((m: { role: string }) => m.role)).toEqual([
+      'user',
+      'assistant',
+    ]);
+    expect(request.history[0]).toEqual({
+      role: 'user',
+      content: 'Sube un 5 % los precios',
+    });
+    const { activity } = request.history[1];
+    expect(
+      activity.calls.map((c: { operation: string }) => c.operation),
+    ).toEqual([
+      'get_sheet_schema',
+      'select_rows',
+      'preview_transform',
+      'create_change_proposal',
+    ]);
+    expect(
+      activity.calls.every((c: { status: string }) => c.status === 'succeeded'),
+    ).toBe(true);
+    // Los IDs que tocó cada llamada, nunca valores de celdas.
+    expect(activity.calls[0].target).toMatchObject({ worksheetId });
+    expect(activity.calls[3].target).toMatchObject({
+      worksheetId,
+      previewId: expect.any(String),
+    });
+    expect(activity.proposal).toEqual({
+      operation: 'create_change_proposal',
+      status: 'rejected',
+      result: null,
+      error: null,
+    });
+    expect(JSON.stringify(request.history)).not.toContain('11.03');
+    // Lo rechazado no es una acción hecha: la ficha no lo cuenta.
+    expect(request.project.recentActions).toEqual([]);
+  });
+
+  it('E2: una propuesta que nadie confirmó a tiempo llega como vencida', async () => {
+    const first = await runToEnd();
+    script = answers('Vale.');
+    clockAheadMs = AGENT_RUN_LIMITS.proposalTtlMs + 1_000;
+
+    const messageId = await followUp(first.conversationId, '¿Sigue en pie?');
+    await runToEnd(undefined, {
+      conversationId: first.conversationId,
+      messageId,
+    });
+
+    expect(received[1].history[1].activity.proposal).toMatchObject({
+      operation: 'create_change_proposal',
+      status: 'expired',
+    });
+  });
+
+  it('E2: el historial se recorta por bytes, por lo más viejo, y dice cuántos mensajes faltan', async () => {
+    script = answers('Leído.');
+    const { conversationId } = await conversationWithMessage(
+      'x'.repeat(16_000),
+    );
+    const kept = Math.floor(AGENT_RUN_LIMITS.historyBytes / 16_000);
+    for (let index = 0; index < kept; index += 1) {
+      await followUp(conversationId, String(index % 10).repeat(16_000));
+    }
+    const messageId = await followUp(conversationId, '¿Qué te mandé?');
+
+    await runToEnd(undefined, { conversationId, messageId });
+
+    const request = received[0];
+    expect(request.history).toHaveLength(kept);
+    expect(request.omittedMessages).toBe(1);
+    // Lo que se omite es lo más viejo: el primer mensaje, el de las «x».
+    expect(
+      request.history.some((m: { content: string }) =>
+        m.content.startsWith('x'),
+      ),
+    ).toBe(false);
+  });
+
+  it('E3: cada ejecución lleva la ficha del proyecto, sin hojas archivadas ni ajenas', async () => {
+    const { rest } = client();
+    const { body: workbooks } = await rest()
+      .get(`${base()}/workbooks`)
+      .expect(200);
+    const workbookId = workbooks.workbooks[0].id as string;
+    const { body: archived } = await rest()
+      .post(`${base()}/workbooks/${workbookId}/worksheets`)
+      .send({ name: 'Vieja', columns: [] })
+      .expect(201);
+    await rest()
+      .post(`${base()}/worksheets/${archived.worksheet.id}/archive`)
+      .expect(200);
+    const { body: oldBook } = await rest()
+      .post(`${base()}/workbooks`)
+      .send({ name: 'Libro viejo' })
+      .expect(201);
+    await rest()
+      .post(`${base()}/workbooks/${oldBook.workbook.id}/worksheets`)
+      .send({ name: 'En libro archivado', columns: [] })
+      .expect(201);
+    await rest()
+      .post(`${base()}/workbooks/${oldBook.workbook.id}/archive`)
+      .expect(200);
+    // Columnas de otra versión del esquema: la ficha solo da las vigentes.
+    await pool.query(
+      `INSERT INTO estadistica_forms.worksheet_column_versions
+         (organization_id, worksheet_id, schema_version, column_id, name,
+          name_normalized, type, position, required)
+       SELECT organization_id, id, schema_version + 1, gen_random_uuid()::text,
+              'Fantasma', 'fantasma', 'text', 1, false
+       FROM estadistica_forms.worksheets WHERE id = $1`,
+      [worksheetId],
+    );
+
+    await runToEnd();
+
+    const { project } = received[0];
+    expect(project.overview.project).toMatchObject({ id: projectId });
+    expect(project.sheets).toEqual([
+      expect.objectContaining({
+        id: worksheetId,
+        workbookId,
+        name: 'Precios',
+        revisionId: SECOND_REVISION_ID,
+        openDrafts: 0,
+      }),
+    ]);
+    expect(
+      project.columns.map((column: { name: string }) => column.name),
+    ).toEqual(FIXTURE_COLUMNS.map((column) => column.name));
+    expect(project.columns[0]).toMatchObject({ sheetId: worksheetId });
+    expect(project.omitted).toEqual({ sheets: false, columns: false });
+    expect(project.recentActions).toEqual([]);
+  });
+
+  it('E3: un chat nuevo sabe lo que la persona confirmó en otro', async () => {
+    const first = await runToEnd();
+    await client()
+      .rest()
+      .post(
+        `${base()}/ai-runs/${first.run.id}/proposals/${first.run.proposal.id}/confirm`,
+      )
+      .send({ proposalHash: first.run.proposal.hash })
+      .expect(200);
+    script = answers('Hola de nuevo.');
+
+    const other = await conversationWithMessage('¿Qué hicimos antes?');
+    await runToEnd(undefined, other);
+
+    const request = received.at(-1);
+    expect(request?.message).toBe('¿Qué hicimos antes?');
+    expect(request?.project.recentActions).toEqual([
+      {
+        operation: 'create_change_proposal',
+        summary: expect.stringContaining('2 cambios en 2 filas'),
+        confirmedAt: expect.any(String),
+      },
+    ]);
+    // El borrador que dejó la confirmación cuenta como abierto en la hoja.
+    expect(request?.project.sheets[0].openDrafts).toBe(1);
+  });
+
+  /** Lo que el agente de mentira hace en cada ejecución que continúa. */
+  const proposesSheet =
+    (name: string): Script =>
+    async (_request, call) => {
+      const prepared = await call('propose_sheet_layout', 'prepare', {
+        name,
+        columns: [{ name: 'Código', type: 'text' }],
+      });
+      return {
+        status: 200,
+        body: {
+          status: 'confirmation_required',
+          answer: prepared.body.summary,
+          calls: [],
+        },
+      };
+    };
+
+  async function messagesOf(conversationId: string) {
+    const { body } = await client()
+      .rest()
+      .get(`${base()}/conversations/${conversationId}/messages`)
+      .expect(200);
+    return body.items as { role: string; content: string }[];
+  }
+
+  it('E4: confirmar deja «Confirmé: …» de la persona y una ejecución que sigue con el resultado', async () => {
+    const first = await runToEnd();
+    const confirmPath = `${base()}/ai-runs/${first.run.id}/proposals/${first.run.proposal.id}/confirm`;
+
+    const { body } = await client()
+      .rest()
+      .post(confirmPath)
+      .send({ proposalHash: first.run.proposal.hash })
+      .expect(200);
+
+    expect(body.proposal.status).toBe('confirmed');
+    expect(body.continuationError).toBeNull();
+    expect(body.continuation).toMatchObject({
+      status: 'queued',
+      conversationId: first.conversationId,
+      context: first.run.context,
+    });
+    const messages = await messagesOf(first.conversationId);
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+    expect(messages[2].content).toBe(`Confirmé: ${first.run.proposal.summary}`);
+
+    // Repetir la confirmación no duplica ni el mensaje ni la ejecución.
+    const { body: again } = await client()
+      .rest()
+      .post(confirmPath)
+      .send({ proposalHash: first.run.proposal.hash })
+      .expect(200);
+    expect(again.continuation.id).toBe(body.continuation.id);
+    expect(await messagesOf(first.conversationId)).toHaveLength(3);
+
+    script = answers('Listo: el borrador está creado.');
+    await app.get(AgentRunWorker).runUntilIdle();
+
+    const request = received.at(-1);
+    expect(request?.message).toBe(messages[2].content);
+    expect(request?.history.at(-1).activity.proposal).toMatchObject({
+      status: 'confirmed',
+      result: { changesetId: body.proposal.result.changesetId },
+    });
+    const { body: done } = await client()
+      .rest()
+      .get(`${base()}/ai-runs/${body.continuation.id}`)
+      .expect(200);
+    expect(done.run).toMatchObject({
+      status: 'succeeded',
+      answer: 'Listo: el borrador está creado.',
+    });
+  });
+
+  it('E4: si aplicar falla con un error conocido, la propuesta queda fallida y la IA sigue con el motivo', async () => {
+    script = proposesSheet('Duplicada');
+    const first = await runToEnd();
+    // Alguien crea a mano una hoja con ese nombre antes de confirmar.
+    await client()
+      .rest()
+      .post(`${base()}/workbooks/${first.run.context.workbookId}/worksheets`)
+      .send({ name: 'Duplicada', columns: [] })
+      .expect(201);
+    const confirmPath = `${base()}/ai-runs/${first.run.id}/proposals/${first.run.proposal.id}/confirm`;
+
+    const { body } = await client()
+      .rest()
+      .post(confirmPath)
+      .send({ proposalHash: first.run.proposal.hash })
+      .expect(200);
+
+    expect(body.proposal).toMatchObject({
+      status: 'failed',
+      error: { code: expect.any(String) },
+      result: null,
+    });
+    const code = body.proposal.error.code as string;
+    const messages = await messagesOf(first.conversationId);
+    expect(messages.at(-1)?.content).toBe(
+      `No se pudo aplicar: ${first.run.proposal.summary} Motivo (${code}): ${body.proposal.error.message.es}`,
+    );
+    expect(body.continuation.status).toBe('queued');
+
+    // Repetir devuelve la misma fallida; ya no se puede rechazar.
+    const { body: again } = await client()
+      .rest()
+      .post(confirmPath)
+      .send({ proposalHash: first.run.proposal.hash })
+      .expect(200);
+    expect(again.proposal.status).toBe('failed');
+    const late = await client()
+      .rest()
+      .post(
+        `${base()}/ai-runs/${first.run.id}/proposals/${first.run.proposal.id}/reject`,
+      )
+      .send({ proposalHash: first.run.proposal.hash })
+      .expect(409);
+    expect(late.body.code).toBe('AGENT_PROPOSAL_DECIDED');
+
+    script = answers('Ese nombre ya existe; propongo otro.');
+    await app.get(AgentRunWorker).runUntilIdle();
+    expect(received.at(-1)?.history.at(-1).activity.proposal).toMatchObject({
+      status: 'failed',
+      error: { code },
+    });
+  });
+
+  it('E4: rechazar no continúa', async () => {
+    const first = await runToEnd();
+
+    const { body } = await client()
+      .rest()
+      .post(
+        `${base()}/ai-runs/${first.run.id}/proposals/${first.run.proposal.id}/reject`,
+      )
+      .send({ proposalHash: first.run.proposal.hash })
+      .expect(200);
+
+    expect(body).toEqual({
+      proposal: expect.objectContaining({ status: 'rejected' }),
+    });
+    expect(await messagesOf(first.conversationId)).toHaveLength(2);
+  });
+
+  it('E4: con la cuota del día agotada, la confirmación vale y dice por qué no siguió', async () => {
+    const first = await runToEnd();
+    quota = { activeRuns: 3, dailyRuns: 1 };
+
+    const { body } = await client()
+      .rest()
+      .post(
+        `${base()}/ai-runs/${first.run.id}/proposals/${first.run.proposal.id}/confirm`,
+      )
+      .send({ proposalHash: first.run.proposal.hash })
+      .expect(200);
+
+    expect(body.proposal.status).toBe('confirmed');
+    expect(body.continuation).toBeNull();
+    expect(body.continuationError.code).toBe('AGENT_QUOTA_EXCEEDED');
+    // El mensaje queda: el próximo turno sabrá que la persona confirmó.
+    expect((await messagesOf(first.conversationId)).at(-1)?.content).toMatch(
+      /^Confirmé: /,
+    );
   });
 });
 

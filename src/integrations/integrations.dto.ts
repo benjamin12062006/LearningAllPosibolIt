@@ -17,9 +17,10 @@ import {
   Min,
 } from 'class-validator';
 import { PAGINATION } from '../common/http/pagination.js';
-import type {
-  CredentialAudience,
-  CredentialCapability,
+import {
+  CREDENTIAL_AUDIENCES,
+  type CredentialAudience,
+  type CredentialCapability,
 } from './integrations.types.js';
 
 export class IssueCredentialDto {
@@ -31,7 +32,7 @@ export class IssueCredentialDto {
   @Matches(/^[^\p{Cc}\p{Cs}]+$/u)
   label!: string;
 
-  @IsIn(['mcp', 'mcp_oauth', 'cli'])
+  @IsIn(CREDENTIAL_AUDIENCES)
   audience!: CredentialAudience;
 
   @IsArray()

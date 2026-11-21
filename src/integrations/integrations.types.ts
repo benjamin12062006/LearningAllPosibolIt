@@ -20,7 +20,13 @@ export const INTEGRATION_LIMITS = {
   lastUsedEveryMs: 60_000,
 } as const;
 
-export type CredentialAudience = 'mcp' | 'mcp_oauth' | 'cli';
+export const CREDENTIAL_AUDIENCES = [
+  'mcp',
+  'mcp_oauth',
+  'cli',
+  'cli_oauth',
+] as const;
+export type CredentialAudience = (typeof CREDENTIAL_AUDIENCES)[number];
 
 export type CredentialCapability = 'read' | 'prepare';
 
@@ -49,6 +55,7 @@ export type Delegation = Readonly<{
   identity: AuthenticatedIdentity;
   canPrepare: boolean;
   expiresAt: string;
+  grantExpiresAt?: string;
 }>;
 
 /**

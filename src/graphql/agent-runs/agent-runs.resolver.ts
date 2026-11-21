@@ -45,8 +45,9 @@ export class AgentRunsResolver {
     return this.runs.find(identity, { organizationId, projectId }, id);
   }
 
+  /** Continúa igual que en REST; la ejecución nueva se ve con `latest`. */
   @Mutation(() => AgentProposalType, { name: 'confirmAgentProposal' })
-  confirm(
+  async confirm(
     @CurrentIdentity() identity: AuthenticatedIdentity,
     @IdArg('organizationId') organizationId: string,
     @IdArg('projectId') projectId: string,
@@ -55,13 +56,14 @@ export class AgentRunsResolver {
     @Args('input', { type: () => AgentProposalDecisionInput })
     input: AgentProposalDecisionInput,
   ) {
-    return this.runs.confirm(
+    const { proposal } = await this.runs.confirm(
       identity,
       { organizationId, projectId },
       runId,
       proposalId,
       input.proposalHash,
     );
+    return proposal;
   }
 
   @Mutation(() => AgentProposalType, { name: 'rejectAgentProposal' })

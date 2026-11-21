@@ -25,6 +25,7 @@ import {
 } from './agent-runs.types.js';
 import { credentialHash, newRunCredential } from './run-credential.js';
 import { AgentOperationCatalog } from './operations/agent-operation-catalog.js';
+import { ProjectBriefing } from './project-briefing.js';
 
 /** Tope de un mensaje guardado (`ai_messages_content_check`). */
 const MAX_MESSAGE_LENGTH = 16_000;
@@ -48,6 +49,7 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly repository: AgentRunsRepository,
     private readonly catalog: AgentOperationCatalog,
     private readonly sheetTools: WorksheetToolsRepository,
+    private readonly briefing: ProjectBriefing,
     @Inject(AI_SERVICE_CLIENT)
     private readonly client: AiServiceClient | null,
     @Inject(AGENT_RUN_OPTIONS)
@@ -126,7 +128,7 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
     const cancel = new AbortController();
     this.inFlight.set(run.id, cancel);
     try {
-      const prompt = await this.repository.promptOf(run);
+      const prompt = await this.repository.promptOf(run, this.options.clock());
       const response = await client.runAgent(
         {
           runId: run.id,
@@ -137,11 +139,13 @@ export class AgentRunWorker implements OnApplicationBootstrap, OnModuleDestroy {
           credential,
           message: prompt.message,
           history: prompt.history,
+          omittedMessages: prompt.omittedMessages,
           operations: await this.catalog.describeFor(
             run.identity,
             run.scope.projectId,
           ),
           context: { ...run.context },
+          project: await this.briefing.of(run),
         },
         randomUUID(),
         AGENT_RUN_LIMITS.requestTimeoutMs,

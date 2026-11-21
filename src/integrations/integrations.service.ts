@@ -16,6 +16,7 @@ import { can } from '../organizations/organization-roles.js';
 import { assertProjectPermission } from '../projects/project-access.js';
 import { UsersService } from '../users/users.service.js';
 import type { ProjectScope } from '../worksheets/worksheets.types.js';
+import { readCliSkill } from './cli-skill.js';
 import { integrationToken, newIntegrationSecret } from './integration-token.js';
 import type {
   CredentialPageDto,
@@ -34,6 +35,12 @@ import {
   type McpOAuthConfig,
 } from './mcp-oauth-config.js';
 
+import {
+  CLI_OAUTH_CONFIG,
+  requireCliOAuth,
+  type CliOAuthConfig,
+} from './cli-oauth-config.js';
+
 const HOUR_MS = 60 * 60_000;
 
 /** Administración de Integraciones mediante la sesión humana de Descope. */
@@ -48,7 +55,14 @@ export class IntegrationsService {
     @Inject(AGENT_RUN_OPTIONS)
     private readonly options: AgentRunOptions,
     @Inject(MCP_OAUTH_CONFIG) private readonly oauth: McpOAuthConfig | null,
+    @Inject(CLI_OAUTH_CONFIG) private readonly cliOAuth: CliOAuthConfig | null,
   ) {}
+
+  async cliSkill(identity: AuthenticatedIdentity, scope: ProjectScope) {
+    const actor = await this.users.findCurrent(identity);
+    await this.repository.requireMember(scope, actor.id);
+    return readCliSkill();
+  }
 
   async list(
     identity: AuthenticatedIdentity,
@@ -74,6 +88,7 @@ export class IntegrationsService {
       ...page,
       oauthResourceUrl:
         oauthMatchesProject && !access.isArchived ? this.oauth.resource : null,
+      ...(this.cliOAuth && !access.isArchived && { cliOAuthAvailable: true }),
     };
   }
 
@@ -87,10 +102,11 @@ export class IntegrationsService {
   ): Promise<{ credential: CredentialView; token?: string }> {
     const actor = await this.users.findCurrent(identity);
     const now = this.options.clock();
-    const oauth =
-      input.audience === 'mcp_oauth'
-        ? requireMcpOAuth(this.oauth, scope)
-        : null;
+    let resource: string | null = null;
+    if (input.audience === 'mcp_oauth')
+      resource = requireMcpOAuth(this.oauth, scope).resource;
+    if (input.audience === 'cli_oauth')
+      resource = requireCliOAuth(this.cliOAuth).resource;
     const secret = newIntegrationSecret();
     const credential = await this.repository.insert(
       scope,
@@ -98,7 +114,7 @@ export class IntegrationsService {
       {
         label: input.label,
         audience: input.audience,
-        resourceUrl: oauth?.resource ?? null,
+        resourceUrl: resource,
         canPrepare: input.capabilities.includes('prepare'),
         secretHash: credentialHash(secret),
         expiresAt: expiryOf(input.expiresAt, now),
@@ -107,7 +123,7 @@ export class IntegrationsService {
       now,
     );
     this.audit('issued', credential.id, actor.id, scope, requestId);
-    if (oauth) return { credential };
+    if (resource) return { credential };
     return { credential, token: integrationToken(credential.id, secret) };
   }
 
@@ -148,9 +164,13 @@ export class IntegrationsService {
     const actor = await this.users.findCurrent(identity);
     const access = await this.repository.requireMember(scope, actor.id);
     assertProjectPermission(access, 'ai.use');
+    const load = () =>
+      this.repository.findOwnerProposal(scope, actor.id, proposalId);
+    const { audience } = await load();
+    const fromCli = audience === 'cli' || audience === 'cli_oauth';
     return this.decisions.confirm(
       { identity, actorId: actor.id, scope, context: EXTERNAL_CONTEXT },
-      () => this.repository.findOwnerProposal(scope, actor.id, proposalId),
+      load,
       proposalHash,
       (proposal, permission) =>
         this.repository.beginConfirm(
@@ -160,6 +180,7 @@ export class IntegrationsService {
           permission,
           this.options.clock,
         ),
+      fromCli ? 'record' : 'retry',
     );
   }
 

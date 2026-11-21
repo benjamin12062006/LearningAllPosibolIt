@@ -114,7 +114,7 @@ describe('cobertura GraphQL de la API REST (C7)', () => {
     expect(missing).toEqual([]);
   });
 
-  it('101 de 140 rutas tienen equivalente; 15 son solo HTTP y 24 se quedan en REST', () => {
+  it('101 de 146 rutas tienen equivalente; 15 son solo HTTP y 30 se quedan en REST', () => {
     const count = (predicate: (row: MatrixRow) => boolean) =>
       rows.filter(predicate).length;
     expect({
@@ -122,6 +122,6 @@ describe('cobertura GraphQL de la API REST (C7)', () => {
       withEquivalent: count(hasEquivalent),
       httpOnly: count((row) => row.decision === 'HTTP'),
       restOnly: count((row) => row.decision === 'REST'),
-    }).toEqual({ total: 140, withEquivalent: 101, httpOnly: 15, restOnly: 24 });
+    }).toEqual({ total: 146, withEquivalent: 101, httpOnly: 15, restOnly: 30 });
   });
 });

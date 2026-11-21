@@ -50,18 +50,24 @@ export type RunContext = Readonly<{
   selectionId: string | null;
 }>;
 
-/** Límites de una ejecución (plan 05, D2–D3). */
+/**
+ * Límites de una ejecución (plan 05, D2–D3; ampliados en el plan 10, D2: Gemini
+ * 3.5 Flash lee un millón de tokens y las tareas de varios pasos se cortaban).
+ */
 export const AGENT_RUN_LIMITS = {
   /** Mensajes anteriores que se mandan como historial. */
-  historyMessages: 50,
-  /** Bytes del historial en total: el resto se recorta por lo más antiguo. */
-  historyBytes: 64 * 1024,
-  /** Llamadas aceptadas por la pasarela en una ejecución. */
-  calls: 20,
-  /** El servicio de IA corta a los 120 s; Nest espera un poco más. */
-  requestTimeoutMs: 150_000,
+  historyMessages: 100,
+  /**
+   * Bytes del historial en total, con su actividad: el resto se recorta por lo
+   * más antiguo y el agente sabe cuántos mensajes faltan.
+   */
+  historyBytes: 256 * 1024,
+  /** Llamadas aceptadas por la pasarela en una ejecución (igual en FastAPI). */
+  calls: 40,
+  /** El servicio de IA corta a los 180 s; Nest espera un poco más. */
+  requestTimeoutMs: 210_000,
   /** Lo que dura el reclamo de una ejecución, y con él su credencial. */
-  leaseMs: 180_000,
+  leaseMs: 240_000,
   /** Una ejecución en cola que no se reclama en este plazo caduca. */
   queueTimeoutMs: 10 * 60_000,
   /** Lo que la persona tiene para confirmar una propuesta. */
@@ -133,9 +139,11 @@ export type ProposalView = Readonly<{
   summary: string;
   rulesetReview?: unknown;
   hash: string;
-  status: 'ready' | 'confirming' | 'confirmed' | 'rejected';
+  /** `failed`: confirmarla falló con un error conocido (plan 10, D7). */
+  status: 'ready' | 'confirming' | 'confirmed' | 'rejected' | 'failed';
   target: unknown;
   result: unknown;
+  error: PublicError | null;
   expiresAt: string;
   createdAt: string;
   decidedAt: string | null;

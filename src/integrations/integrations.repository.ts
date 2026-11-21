@@ -23,6 +23,7 @@ import {
 } from '../projects/project-access.js';
 import type { ProjectScope } from '../worksheets/worksheets.types.js';
 import {
+  CREDENTIAL_AUDIENCES,
   INTEGRATION_LIMITS,
   type CredentialAudience,
   type CredentialView,
@@ -72,6 +73,7 @@ type NewProposal = Readonly<{
 const PROJECT_QUOTA_SUBJECT = '*';
 const MINUTE_MS = 60_000;
 
+const MANAGED_AUDIENCES = Prisma.join(CREDENTIAL_AUDIENCES);
 const CREDENTIAL_COLUMNS = Prisma.sql`
   c.id,
   c.owner_id AS "ownerId",
@@ -114,9 +116,18 @@ export class IntegrationsRepository {
         throw apiError(ErrorCodes.ORGANIZATION_ARCHIVED);
       }
       await assertCanIssue(tx, scope, ownerId, credential.issueKey, now);
+      const oauthAudience = credential.audience;
       if (
         credential.resourceUrl &&
-        (await this.oauthGrant(scope, ownerId, credential.resourceUrl, now, tx))
+        (oauthAudience === 'mcp_oauth' || oauthAudience === 'cli_oauth') &&
+        (await this.oauthGrant(
+          scope,
+          ownerId,
+          credential.resourceUrl,
+          now,
+          tx,
+          oauthAudience,
+        ))
       ) {
         throw apiError(ErrorCodes.INTEGRATION_OAUTH_GRANT_EXISTS);
       }
@@ -142,7 +153,7 @@ export class IntegrationsRepository {
   ) {
     const filter = Prisma.sql`
       c.organization_id = ${scope.organizationId} AND c.project_id = ${scope.projectId}
-      AND c.audience IN ('mcp', 'mcp_oauth', 'cli')
+      AND c.audience IN (${MANAGED_AUDIENCES})
       AND (${ownerId}::text IS NULL OR c.owner_id = ${ownerId})`;
     const after = await credentialAfter(this.prisma, filter, page.cursor);
     const rows = await this.prisma.$queryRaw<CredentialRow[]>`
@@ -178,7 +189,7 @@ export class IntegrationsRepository {
       const rows = await tx.$queryRaw<{ ownerId: string }[]>`
         SELECT owner_id AS "ownerId" FROM estadistica_forms.integration_credentials
         WHERE id = ${credentialId} AND organization_id = ${scope.organizationId}
-          AND project_id = ${scope.projectId} AND audience IN ('mcp', 'mcp_oauth', 'cli')`;
+          AND project_id = ${scope.projectId} AND audience IN (${MANAGED_AUDIENCES})`;
       const credential = rows[0];
       if (
         !credential ||
@@ -199,14 +210,32 @@ export class IntegrationsRepository {
     resource: string,
     now: Date,
     db: DatabaseReader = this.prisma,
+    audience: 'mcp_oauth' | 'cli_oauth' = 'mcp_oauth',
   ) {
     const [grant] = await db.$queryRaw<CredentialRow[]>`
       SELECT ${CREDENTIAL_COLUMNS}
       FROM estadistica_forms.integration_credentials c
       WHERE c.organization_id = ${scope.organizationId} AND c.project_id = ${scope.projectId}
-        AND c.owner_id = ${actorId} AND c.audience = 'mcp_oauth'
+        AND c.owner_id = ${actorId} AND c.audience = ${audience}
         AND c.resource_url = ${resource} AND c.revoked_at IS NULL
         AND c.expires_at > ${now.toISOString()}`;
+    return grant ?? null;
+  }
+
+  async cliGrant(
+    projectId: string,
+    actorId: string,
+    resource: string,
+    now: Date,
+  ) {
+    const [grant] = await this.prisma.$queryRaw<
+      (CredentialRow & { organizationId: string })[]
+    >`
+      SELECT ${CREDENTIAL_COLUMNS}, c.organization_id AS "organizationId"
+      FROM estadistica_forms.integration_credentials c
+      WHERE c.project_id = ${projectId} AND c.owner_id = ${actorId}
+        AND c.audience = 'cli_oauth' AND c.resource_url = ${resource}
+        AND c.revoked_at IS NULL AND c.expires_at > ${now.toISOString()}`;
     return grant ?? null;
   }
 
@@ -323,7 +352,7 @@ export class IntegrationsRepository {
       const expiresAt = new Date(
         Math.min(
           now.getTime() + AGENT_RUN_LIMITS.proposalTtlMs,
-          Date.parse(delegation.expiresAt),
+          Date.parse(delegation.grantExpiresAt ?? delegation.expiresAt),
         ),
       ).toISOString();
       const rows = await tx.$queryRaw<StoredProposal[]>`
@@ -346,15 +375,19 @@ export class IntegrationsRepository {
     scope: ProjectScope,
     actorId: string,
     proposalId: string,
-  ): Promise<StoredProposal> {
-    const rows = await this.prisma.$queryRaw<StoredProposal[]>`
-      SELECT ${PROPOSAL_COLUMNS}
+    credentialId?: string,
+  ): Promise<StoredProposal & { audience: CredentialAudience }> {
+    const rows = await this.prisma.$queryRaw<
+      (StoredProposal & { audience: CredentialAudience })[]
+    >`
+      SELECT ${PROPOSAL_COLUMNS}, c.audience
       FROM estadistica_forms.ai_proposals p
+      JOIN estadistica_forms.integration_credentials c ON c.id = p.credential_id
       WHERE p.id = ${proposalId}
         AND p.organization_id = ${scope.organizationId}
         AND p.project_id = ${scope.projectId}
         AND p.actor_id = ${actorId}
-        AND p.credential_id IS NOT NULL`;
+        AND (${credentialId ?? null}::text IS NULL OR p.credential_id = ${credentialId ?? null})`;
     if (!rows[0]) {
       throw apiError(ErrorCodes.AGENT_PROPOSAL_NOT_FOUND);
     }
@@ -493,7 +526,7 @@ async function isCredentialActive(
 ) {
   const rows = await db.$queryRaw<{ id: string }[]>`
     SELECT id FROM estadistica_forms.integration_credentials
-    WHERE id = ${credentialId} AND audience IN ('mcp', 'mcp_oauth', 'cli') AND can_prepare
+    WHERE id = ${credentialId} AND audience IN (${MANAGED_AUDIENCES}) AND can_prepare
       AND revoked_at IS NULL AND expires_at > ${now.toISOString()}`;
   return rows.length > 0;
 }

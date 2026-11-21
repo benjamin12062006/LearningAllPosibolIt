@@ -83,6 +83,7 @@ ENV CATALOG_IMPORT_ROOT=/data/catalog-import
 RUN mkdir -p /data/catalog-import && chown -R node:node /data
 COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY skills/ktsu-cli ./skills/ktsu-cli
 # `"type": "module"` está en el package.json: sin él, Node no carga `dist/`.
 COPY package.json ./
 USER node

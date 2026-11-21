@@ -124,7 +124,7 @@ export type DeliveryStatus = Readonly<{
 export type NewFeed = Readonly<{
   id: string;
   projectId: string;
-  deliveryTokenHash: string;
+  deliveryTokenHash: string | null;
   createdAt: string;
 }>;
 

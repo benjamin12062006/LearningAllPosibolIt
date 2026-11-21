@@ -22,6 +22,14 @@ export class DescopeService {
     audience: string,
     issuer: string,
   ): Promise<AuthenticationInfo['token']> {
+    return this.validateIntegrationAccess(jwt, audience, issuer);
+  }
+
+  async validateIntegrationAccess(
+    jwt: string,
+    audience: string,
+    issuer: string,
+  ): Promise<AuthenticationInfo['token']> {
     const { token } = await this.client.validateJwt(jwt, { audience });
     // El SDK normaliza iss al ID del proyecto. Comprueba el issuer original
     // del JWT ya verificado antes de usar esa identidad normalizada.
@@ -49,8 +57,24 @@ export class DescopeService {
     const isMcpScope =
       typeof scope === 'string' &&
       scope.split(/\s+/u).some((value) => value.startsWith('ktsu:mcp:'));
-    if (isMcpScope || (resource && audiences.includes(resource))) {
-      throw new Error('El token OAuth de MCP no es una sesión web.');
+    const cliResource = process.env.CLI_OAUTH_RESOURCE_URL?.trim();
+    const isCliScope =
+      typeof scope === 'string' &&
+      scope.split(/\s+/u).some((value) => value.startsWith('ktsu:cli:'));
+    const isCliClient = Boolean(
+      process.env.CLI_OAUTH_CLIENT_ID &&
+      session.token.azp === process.env.CLI_OAUTH_CLIENT_ID.trim(),
+    );
+    if (
+      isMcpScope ||
+      isCliScope ||
+      isCliClient ||
+      (resource && audiences.includes(resource)) ||
+      (cliResource && audiences.includes(cliResource))
+    ) {
+      throw new Error(
+        'El token OAuth de una integración no es una sesión web.',
+      );
     }
     return session;
   }

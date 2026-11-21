@@ -1,32 +1,45 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import {
+  link,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
 
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+import { CliError, integrationRequest, trustedUrl } from '../lib/http.mjs';
+import { oauthSession } from '../lib/oauth.mjs';
 const UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/iu;
 const OPERATION = /^[a-z][a-z0-9_]{1,63}$/u;
 const MAX_INPUT = 32 * 1024;
 const MAX_TOKEN = 512;
-const HELP = `ktsu config set --api-url <URL> [--web-url <URL>]
+const HELP =
+  `ktsu config set --api-url <URL> [--web-url <URL>] [--project-id <uuid>]
 ktsu config show
+ktsu auth login [--read-only]
 ktsu auth status
+ktsu auth logout
 ktsu operations list
 ktsu operations describe <name>
 ktsu read <name> [--input <file.json>]
-ktsu prepare <name> --input <file.json> [--call-id <uuid>]
-ktsu proposals confirm <proposalId>
+ktsu prepare <name> [--input <file.json>] [--call-id <uuid>]
+ktsu proposals review <proposalId>
+ktsu proposals status <proposalId>
+ktsu proposals download <proposalId> --output <file>
+ktsu exports download <exportId> --output <file.tsv>
+ktsu feed download <versionId> --feed-id <uuid> --output <file.tsv>
+ktsu feed delivery
 
-Usa KTSU_TOKEN o --token-stdin. --json devuelve JSON compacto. `.trim();
-
-class CliError extends Error {
-  constructor(message, details = {}) {
-    super(message);
-    this.details = details;
-  }
-}
+Usa OAuth o una credencial CLI por KTSU_TOKEN o --token-stdin. --json devuelve JSON compacto. `.trim();
 
 let json = process.argv.includes('--json');
 try {
@@ -35,6 +48,10 @@ try {
     options: {
       'api-url': { type: 'string' },
       'web-url': { type: 'string' },
+      'project-id': { type: 'string' },
+      'read-only': { type: 'boolean' },
+      'feed-id': { type: 'string' },
+      output: { type: 'string' },
       'token-stdin': { type: 'boolean' },
       'call-id': { type: 'string' },
       input: { type: 'string' },
@@ -70,8 +87,13 @@ async function run(args, values) {
     if (!values['api-url'])
       throw new CliError('Indica --api-url para guardar el destino.');
     const next = { apiUrl: apiRoot(values['api-url']) };
-    const webUrl = values['web-url'] ?? profile.webUrl;
+    const sameDestination = next.apiUrl === profile.apiUrl;
+    const webUrl =
+      values['web-url'] ?? (sameDestination ? profile.webUrl : undefined);
+    const project =
+      values['project-id'] ?? (sameDestination ? profile.projectId : undefined);
     if (webUrl) next.webUrl = trustedUrl(webUrl);
+    if (project !== undefined) next.projectId = projectUuid(project);
     await saveProfile(next);
     return next;
   }
@@ -81,11 +103,25 @@ async function run(args, values) {
   if (command === 'read' || command === 'prepare') {
     if (args.length !== 2 || !OPERATION.test(action))
       throw new CliError('Indica el nombre de una operación.');
-    return invoke(await openClient(values, profile), command, action, values);
+    return invoke(
+      await openClient(values, profile),
+      command,
+      action,
+      values,
+      profile,
+    );
   }
 
-  if (command === 'auth' && action === 'status' && args.length === 2) {
-    return (await openClient(values, profile))('/session');
+  if (command === 'auth' && args.length === 2) {
+    if (action === 'login' || action === 'logout') {
+      const project = projectUuid(targetProject(values, profile));
+      const session = oauthSession(targetApi(values, profile), project);
+      return action === 'login'
+        ? session.login(values['read-only'])
+        : session.logout();
+    }
+    if (action === 'status')
+      return (await openClient(values, profile))('/session');
   }
   if (command === 'operations' && action === 'list' && args.length === 2) {
     return (await openClient(values, profile))('/operations');
@@ -104,34 +140,64 @@ async function run(args, values) {
       throw new CliError('La operación no está disponible para tu credencial.');
     return operation;
   }
+  if (command === 'proposals' && args.length === 3 && UUID.test(argument)) {
+    const request = await openClient(values, profile);
+    const path = `/proposals/${argument}`;
+    if (action === 'status') return request(path);
+    // "confirm" se conserva como alias para abrir el enlace de revisión.
+    if (action === 'review' || action === 'confirm') {
+      return projectLink(
+        request,
+        webOrigin(values, profile),
+        `/integrations/proposals/${argument}`,
+      );
+    }
+    if (action === 'download')
+      return download(request, `${path}/file`, values.output);
+  }
   if (
-    command === 'proposals' &&
-    action === 'confirm' &&
+    command === 'exports' &&
+    action === 'download' &&
     args.length === 3 &&
     UUID.test(argument)
   ) {
-    const webUrl =
-      values['web-url'] ?? process.env.KTSU_WEB_URL ?? profile.webUrl;
-    if (!webUrl)
-      throw new CliError('Indica --web-url o configura la URL de la web.');
-    const base = trustedUrl(webUrl);
-    const { projectId } = await (await openClient(values, profile))('/session');
-    if (typeof projectId !== 'string' || !UUID.test(projectId))
-      throw new CliError('La sesión no devolvió un proyecto válido.');
-    return {
-      url: new URL(
-        `/projects/${projectId}/integrations/proposals/${argument}`,
-        base,
-      ).href,
-    };
+    return download(
+      await openClient(values, profile),
+      `/exports/${argument}/file`,
+      values.output,
+    );
+  }
+  if (
+    command === 'feed' &&
+    action === 'download' &&
+    args.length === 3 &&
+    UUID.test(argument)
+  ) {
+    const feedId = values['feed-id'];
+    if (!feedId || !UUID.test(feedId))
+      throw new CliError('Indica --feed-id con el ID del feed.');
+    return download(
+      await openClient(values, profile),
+      `/feeds/${feedId}/versions/${argument}/file`,
+      values.output,
+    );
+  }
+  if (command === 'feed' && action === 'delivery' && args.length === 2) {
+    return projectLink(
+      await openClient(values, profile),
+      webOrigin(values, profile),
+      '/feed#feed-delivery',
+    );
   }
   throw new CliError('Comando inválido. Consulta ktsu --help.');
 }
 
-async function invoke(request, command, operation, values) {
+async function invoke(request, command, operation, values, profile) {
   const callId = values['call-id'] ?? randomUUID();
   if (!UUID.test(callId))
     throw new CliError('Usa un UUID válido para --call-id.');
+  const web =
+    command === 'prepare' ? webOrigin(values, profile, false) : undefined;
   const args = values.input ? await readInput(values.input) : {};
   const mode = command === 'read' ? 'execute' : 'prepare';
   const result = await request(`/operations/${operation}`, {
@@ -139,55 +205,97 @@ async function invoke(request, command, operation, values) {
     mode,
     arguments: args,
   });
-  return command === 'prepare' ? { ...result, callId } : result;
+  if (command === 'read') return result;
+  const path = result?.reviewPath;
+  const reviewUrl =
+    web &&
+    typeof path === 'string' &&
+    /^\/projects\/[a-f0-9-]+\/integrations\/proposals\/[a-f0-9-]+$/iu.test(path)
+      ? new URL(path, web).href
+      : undefined;
+  return { ...result, ...(reviewUrl && { reviewUrl }), callId };
 }
 
 async function openClient(values, profile) {
+  const base = targetApi(values, profile);
+  const explicit =
+    values['token-stdin'] || process.env.KTSU_TOKEN !== undefined;
+  if (explicit) {
+    const token = await readToken(values['token-stdin']);
+    return (path, body, raw) =>
+      integrationRequest(base, path, { token, body, raw });
+  }
+  const project = projectUuid(targetProject(values, profile));
+  const token = await oauthSession(base, project).token();
+  return (path, body, raw) =>
+    integrationRequest(base, path, { token, project, body, raw });
+}
+
+function targetApi(values, profile) {
   const base = values['api-url'] ?? process.env.KTSU_API_URL ?? profile.apiUrl;
   if (!base)
     throw new CliError('Configura el destino con ktsu config set --api-url.');
-  const url = apiRoot(base);
-  const token = await readToken(values['token-stdin']);
-  return (path, body) => apiRequest(url, token, path, body);
+  return apiRoot(base);
 }
 
-async function apiRequest(base, token, path, body) {
-  let response;
-  try {
-    response = await fetch(`${base}/api/v1/integrations${path}`, {
-      method: body ? 'POST' : 'GET',
-      redirect: 'error',
-      signal: AbortSignal.timeout(30_000),
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(body && { 'Content-Type': 'application/json' }),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch {
+function targetProject(values, profile) {
+  const useSavedProject = targetApi(values, profile) === profile.apiUrl;
+  return (
+    values['project-id'] ??
+    process.env.KTSU_PROJECT_ID ??
+    (useSavedProject ? profile.projectId : undefined)
+  );
+}
+
+function projectUuid(value) {
+  if (typeof value !== 'string' || !UUID.test(value)) {
     throw new CliError(
-      'No se pudo completar la petición a KTSU. Reutiliza --call-id si reintentas una preparación.',
-      { callId: body?.callId },
+      'Para OAuth indica --project-id o configúralo. Si tienes una credencial CLI, usa KTSU_TOKEN o --token-stdin.',
     );
   }
-  const result = await response.json().catch(() => undefined);
-  if (!response.ok) {
+  return value.toLowerCase();
+}
+
+function webOrigin(values, profile, required = true) {
+  const sameDestination = targetApi(values, profile) === profile.apiUrl;
+  const url =
+    values['web-url'] ??
+    process.env.KTSU_WEB_URL ??
+    (sameDestination ? profile.webUrl : undefined);
+  if (!url && required)
+    throw new CliError('Indica --web-url o configura la URL de la web.');
+  return url ? trustedUrl(url) : undefined;
+}
+
+async function projectLink(request, web, path) {
+  const { projectId } = await request('/session');
+  return {
+    url: new URL(`/projects/${projectUuid(projectId)}${path}`, web).href,
+  };
+}
+
+async function download(request, route, output) {
+  if (!output) throw new CliError('Indica --output con el nombre del archivo.');
+  const path = resolve(output);
+  const temporary = join(dirname(path), `.ktsu-download-${randomUUID()}`);
+  const response = await request(route, undefined, true);
+  try {
+    await pipeline(
+      Readable.fromWeb(response.body),
+      createWriteStream(temporary, { flags: 'wx', mode: 0o600 }),
+    );
+    // Publica el archivo completo sin reemplazar un destino existente.
+    await link(temporary, path);
+    return { path };
+  } catch (error) {
     const message =
-      typeof result?.message?.es === 'string'
-        ? result.message.es
-        : `La API respondió HTTP ${response.status}.`;
-    throw new CliError(message, {
-      ...(typeof result?.code === 'string' && { code: result.code }),
-      requestId: response.headers.get('X-Request-Id') ?? undefined,
-      callId: body?.callId,
-    });
+      error?.code === 'EEXIST'
+        ? 'El archivo de destino ya existe.'
+        : 'No se pudo guardar el archivo completo. Comprueba el destino y vuelve a intentarlo.';
+    throw new CliError(message);
+  } finally {
+    await rm(temporary, { force: true });
   }
-  if (result === undefined) {
-    throw new CliError('KTSU devolvió una respuesta sin JSON válido.', {
-      callId: body?.callId,
-    });
-  }
-  return result;
 }
 
 async function readToken(fromStdin) {
@@ -237,26 +345,6 @@ async function readInput(path) {
   }
 }
 
-function trustedUrl(value) {
-  const url = URL.parse(value);
-  const protocolAllowed =
-    url?.protocol === 'https:' ||
-    (url?.protocol === 'http:' && LOOPBACK.has(url.hostname));
-  if (
-    !url ||
-    !protocolAllowed ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  ) {
-    throw new CliError(
-      'Usa HTTPS o HTTP en loopback y una URL sin credenciales, query ni fragmento.',
-    );
-  }
-  return url.href;
-}
-
 function apiRoot(value) {
   const url = new URL(trustedUrl(value));
   if (!['/', '/api/v1', '/api/v1/'].includes(url.pathname))
@@ -276,6 +364,9 @@ async function readProfile() {
       throw new CliError('El perfil de KTSU no es válido.');
     return {
       ...(typeof data.apiUrl === 'string' && { apiUrl: apiRoot(data.apiUrl) }),
+      ...(typeof data.projectId === 'string' && {
+        projectId: projectUuid(data.projectId),
+      }),
       ...(typeof data.webUrl === 'string' && {
         webUrl: trustedUrl(data.webUrl),
       }),

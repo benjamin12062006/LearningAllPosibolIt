@@ -585,6 +585,8 @@ model AiProposal {
   hash           String
   status         String
   result         Json?
+  /// Solo en `failed`: el error público que impidió aplicarla (plan 10, D7).
+  error          Json?
   expiresAt      String                 @map("expires_at")
   createdAt      String                 @map("created_at")
   decidedAt      String?                @map("decided_at")

@@ -4,6 +4,11 @@ import { AuthModule } from '../auth/auth.module.js';
 import { PrismaModule } from '../database/prisma.module.js';
 import { KnowledgeModule } from '../knowledge/knowledge.module.js';
 import { UsersModule } from '../users/users.module.js';
+import { WorksheetExportsModule } from '../worksheet-exports/worksheet-exports.module.js';
+import { FeedsModule } from '../feeds/feeds.module.js';
+import { ExportsModule } from '../exports/exports.module.js';
+import { CliOAuthAccess } from './cli-oauth-access.js';
+import { CLI_OAUTH_CONFIG, cliOAuthConfigFrom } from './cli-oauth-config.js';
 import { CliIntegrationController } from './cli-integration.controller.js';
 import { IntegrationGatewayController } from './integration-gateway.controller.js';
 import { IntegrationGatewayService } from './integration-gateway.service.js';
@@ -27,6 +32,9 @@ import { mcpAdapterTokenFrom } from './mcp-adapter-config.js';
     UsersModule,
     KnowledgeModule,
     AgentRunsModule,
+    WorksheetExportsModule,
+    FeedsModule,
+    ExportsModule,
   ],
   controllers: [
     IntegrationsController,
@@ -38,6 +46,11 @@ import { mcpAdapterTokenFrom } from './mcp-adapter-config.js';
     IntegrationsService,
     IntegrationGatewayService,
     McpOAuthAccess,
+    CliOAuthAccess,
+    {
+      provide: CLI_OAUTH_CONFIG,
+      useFactory: () => cliOAuthConfigFrom(process.env),
+    },
     {
       provide: MCP_OAUTH_CONFIG,
       useFactory: () => mcpOAuthConfigFrom(process.env),

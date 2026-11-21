@@ -172,6 +172,12 @@ E6.2 añade seis rutas de conversaciones y mensajes con equivalente GraphQL. Cob
 | `integrations` | `GET …/org/proyecto/integrations/proposals/:proposalId` | Titular | — | Nuxt | REST | Revisión humana de una propuesta externa |
 | `integrations` | `POST …/org/proyecto/integrations/proposals/:proposalId/confirm` | Editor titular o superior | — | Nuxt | REST | Confirmación humana con el hash revisado |
 | `integrations` | `POST …/org/proyecto/integrations/proposals/:proposalId/reject` | Titular | — | Nuxt | REST | Rechazo humano con el hash revisado |
+| `integrations` | `GET /integrations/oauth` | Público | — | CLI | REST | Configuración OAuth pública |
+| `integrations` | `GET /integrations/proposals/:proposalId` | Credencial CLI | — | CLI | REST | Estado de propuesta |
+| `integrations` | `GET /integrations/proposals/:proposalId/file` | Credencial CLI | — | CLI | REST | Archivo de hoja confirmado |
+| `integrations` | `GET /integrations/exports/:exportId/file` | Credencial CLI | — | CLI | REST | Archivo de exportación |
+| `integrations` | `GET /integrations/feeds/:feedId/versions/:versionId/file` | Credencial CLI | — | CLI | REST | Archivo de versión publicada |
+| `integrations` | `GET …/org/proyecto/integrations/cli-skill` | Sesión web y membresía | — | Integraciones | REST | Árbol de la skill para lectura y copia |
 | `integrations` | `GET /integrations/session` | Credencial CLI | — | CLI | REST | Ámbito y capacidades |
 | `integrations` | `GET /integrations/operations` | Credencial CLI | — | CLI | REST | Catálogo autorizado |
 | `integrations` | `POST /integrations/operations/:name` | Credencial CLI | — | CLI | REST | Lecturas y propuestas |

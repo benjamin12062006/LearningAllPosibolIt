@@ -8,7 +8,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { ErrorCode } from './error-codes.js';
+import { isErrorCode, type ErrorCode } from './error-codes.js';
 import { API_MESSAGES } from './messages.js';
 import {
   publicError,
@@ -42,4 +42,19 @@ export function apiError(
     default:
       return new HttpException(body, status);
   }
+}
+
+/**
+ * El error público de un rechazo de los servicios: un 4xx de `apiError` con
+ * su código. Nulo para un 5xx o cualquier otro error, que puede ser pasajero.
+ */
+export function rejectionOf(error: unknown): PublicError | null {
+  if (!(error instanceof HttpException) || error.getStatus() >= 500) {
+    return null;
+  }
+  const response = error.getResponse();
+  if (typeof response !== 'object' || !('code' in response)) {
+    return null;
+  }
+  return isErrorCode(response.code) ? publicError(response.code) : null;
 }

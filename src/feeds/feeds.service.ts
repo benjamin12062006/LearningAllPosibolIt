@@ -59,19 +59,38 @@ export class FeedsService {
    * devuelve aquí: la base guarda su hash (D7).
    */
   async create(identity: AuthenticatedIdentity, projectId: string) {
-    await this.actorFor(identity, projectId, 'changeset.approve');
     const delivery = createDeliveryToken();
+    const feed = await this.createWithDeliveryHash(
+      identity,
+      projectId,
+      delivery.hash,
+    );
+    return { feed, deliveryUrl: deliveryUrlOf(delivery.token) };
+  }
 
+  async createWithoutDelivery(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+  ) {
+    return this.createWithDeliveryHash(identity, projectId, null);
+  }
+
+  private async createWithDeliveryHash(
+    identity: AuthenticatedIdentity,
+    projectId: string,
+    deliveryTokenHash: string | null,
+  ) {
+    await this.actorFor(identity, projectId, 'changeset.approve');
     const feed = await this.repository.create({
       id: randomUUID(),
       projectId,
-      deliveryTokenHash: delivery.hash,
+      deliveryTokenHash,
       createdAt: new Date().toISOString(),
     });
     if (!feed) {
       throw apiError(ErrorCodes.FEED_ALREADY_EXISTS);
     }
-    return { feed, deliveryUrl: deliveryUrlOf(delivery.token) };
+    return feed;
   }
 
   async findAll(identity: AuthenticatedIdentity, projectId: string) {

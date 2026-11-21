@@ -57,6 +57,8 @@ test('Prisma despliega las migraciones PostgreSQL y no las repite', async () => 
         '20261114170000_create_integration_credentials',
         '20261114230000_add_mcp_oauth_grants',
         '20261115100000_add_project_conversations',
+        '20261121120000_add_ai_proposal_failure',
+        '20261121130000_add_cli_oauth_grants',
       ],
     );
     assert.ok(migrations.every((migration) => migration.finished_at));

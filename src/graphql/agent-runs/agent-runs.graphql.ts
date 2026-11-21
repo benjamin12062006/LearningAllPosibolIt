@@ -24,10 +24,12 @@ export class AgentProposalType {
   @Field(() => JsonScalar, { nullable: true }) rulesetReview?: unknown;
   /** Se manda al confirmar o rechazar: prueba que se vio esta propuesta. */
   @Field() hash!: string;
-  /** `ready`, `confirming`, `confirmed` o `rejected`. */
+  /** `ready`, `confirming`, `confirmed`, `rejected` o `failed`. */
   @Field() status!: string;
   @Field(() => JsonScalar, { nullable: true }) target!: unknown;
   @Field(() => JsonScalar, { nullable: true }) result!: unknown;
+  /** Solo en `failed`: por qué no se pudo aplicar. */
+  @Field(() => ApiErrorType, { nullable: true }) error!: ApiErrorType | null;
   @Field() expiresAt!: string;
   @Field() createdAt!: string;
   @Field(() => String, { nullable: true }) decidedAt!: string | null;

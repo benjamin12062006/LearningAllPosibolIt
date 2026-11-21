@@ -5,10 +5,12 @@ import { ChangesetsModule } from '../changesets/changesets.module.js';
 import { PrismaModule } from '../database/prisma.module.js';
 import { EvaluationsModule } from '../evaluations/evaluations.module.js';
 import { ExportsModule } from '../exports/exports.module.js';
+import { FeedRefreshesModule } from '../feed-refreshes/feed-refreshes.module.js';
 import { FeedViewerModule } from '../feed-viewer/feed-viewer.module.js';
 import { FeedsModule } from '../feeds/feeds.module.js';
 import { KnowledgeModule } from '../knowledge/knowledge.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
+import { ConversationsModule } from '../conversations/conversations.module.js';
 import { RulesetsModule } from '../rulesets/rulesets.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { WorksheetExportsModule } from '../worksheet-exports/worksheet-exports.module.js';
@@ -25,6 +27,7 @@ import { AgentRunsService } from './agent-runs.service.js';
 import { AGENT_RUN_DEFAULTS, AGENT_RUN_OPTIONS } from './agent-runs.types.js';
 import { AI_AUTO_CONFIRM, aiAutoConfirmFrom } from './auto-confirm.js';
 import { AgentOperationCatalog } from './operations/agent-operation-catalog.js';
+import { ProjectBriefing } from './project-briefing.js';
 import { ProposalDecisions } from './proposal-decisions.js';
 
 /**
@@ -42,6 +45,7 @@ import { ProposalDecisions } from './proposal-decisions.js';
     EvaluationsModule,
     ExportsModule,
     FeedsModule,
+    FeedRefreshesModule,
     FeedViewerModule,
     WorksheetsModule,
     WorksheetCatalogSnapshotsModule,
@@ -50,6 +54,7 @@ import { ProposalDecisions } from './proposal-decisions.js';
     WorksheetImportsModule,
     WorksheetExportsModule,
     KnowledgeModule,
+    ConversationsModule,
   ],
   controllers: [AgentRunsController, AgentGatewayController],
   providers: [
@@ -57,6 +62,7 @@ import { ProposalDecisions } from './proposal-decisions.js';
     AgentRunsService,
     AgentGatewayService,
     AgentRunWorker,
+    ProjectBriefing,
     AgentOperationCatalog,
     ProposalDecisions,
     { provide: AGENT_RUN_OPTIONS, useValue: AGENT_RUN_DEFAULTS },
