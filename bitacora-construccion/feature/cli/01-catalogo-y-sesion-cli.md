@@ -22,11 +22,18 @@ La CLI comparte los casos de uso del agente y verifica los permisos desde la pas
 | `pnpm run ktsu config show --json` y `auth status --json` dentro de la skill con un perfil temporal | stdout solo con JSON; pnpm escribe su línea `$ node …` en stderr y conserva el código de salida 1. |
 | Ida y vuelta: archivos reales → `skillClipboard` → JSON pegado → carpeta nueva → `diff -r` contra el repositorio → `pnpm run ktsu --help` en la copia | Idéntico y ejecutable (prueba temporal de Vitest, retirada después). |
 | Vitest `test/unit/integrations` y ESLint en la web | 6/6 pruebas, sin avisos. |
-| e2e `integrations.e2e-spec` en Nest | Pendiente de resultado en esta sesión. |
+| Suites de features de Nest (`--runInBand`), incluida `integrations.e2e-spec` | 46 suites y 580 pruebas aprobadas, 2 omitidas. |
+| `node --test test/ktsu-cli-oauth.test.mjs` | 1/1. |
+| Nuxt: `pnpm test`, `typecheck` y `lint` | 199 pruebas; typecheck sin errores; lint con 2 avisos previos de `vue/require-default-prop`. |
+| FastAPI: `pytest`, `ruff check`, `ruff format --check`, `mypy` y `lint-imports` | Aprobados. |
+
+## Publicación (2026-11-21)
+
+- Commits en `feature/ia-contexto`: Nest `3896d0f`, Nuxt `ff8f62b`, FastAPI `2c840a1`. Nest y FastAPI pasaron a `deploy/vercel` por fast-forward. En Nuxt, `deploy/vercel` tenía `7919a40`, cuyo contenido ya estaba en la rama de la feature; la unión `af84753` deja el árbol idéntico a `ff8f62b`.
+- Neon: `migrate status` mostró solo `add_ai_proposal_failure` y `add_cli_oauth_grants` pendientes; `migrate deploy` las aplicó, `status` dice «Database schema is up to date!» y `migrate diff` contra `schema.prisma` sale vacío. Ambas solo amplían restricciones y añaden una columna opcional.
+- Sin `CLI_OAUTH_*`, `cliOAuthConfigFrom` devuelve `null`: Nest arranca con el OAuth de la CLI desactivado y la credencial de proyecto sigue disponible.
 
 ## Pendiente
 
-- Commit de `feature/ia-contexto` en Nest y Nuxt, y su paso a `deploy/vercel`. La web publicada sigue mostrando `npm install -g ./packages/ktsu-cli`.
-- Descope: API Resource e Inbound App de la CLI y las variables `CLI_OAUTH_*` en Vercel (plan 03, «Vincular Descope a Nest»).
-- Migraciones de propuestas y concesiones OAuth en Neon antes de publicar la API.
-- Prueba de producción con **Personal · Prueba**: `auth login`, `auth status`, `read get_project_overview` y una propuesta revisada en la web.
+- Descope: API Resource e Inbound App de la CLI y las variables `CLI_OAUTH_*` en `ktsu-api` (plan 03, «Vincular Descope a Nest»). Hasta entonces, la web ofrece solo **Credencial de proyecto**.
+- Prueba de producción con **Personal · Prueba**: `auth status`, `read get_project_overview` y una propuesta revisada en la web.
