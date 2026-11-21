@@ -16,7 +16,10 @@ import { can } from '../organizations/organization-roles.js';
 import { assertProjectPermission } from '../projects/project-access.js';
 import { UsersService } from '../users/users.service.js';
 import type { ProjectScope } from '../worksheets/worksheets.types.js';
-import { readCliSkill } from './cli-skill.js';
+import {
+  readPublishedSkill,
+  type PublishedSkillName,
+} from './published-skills.js';
 import { integrationToken, newIntegrationSecret } from './integration-token.js';
 import type {
   CredentialPageDto,
@@ -58,10 +61,15 @@ export class IntegrationsService {
     @Inject(CLI_OAUTH_CONFIG) private readonly cliOAuth: CliOAuthConfig | null,
   ) {}
 
-  async cliSkill(identity: AuthenticatedIdentity, scope: ProjectScope) {
+  /** Los archivos exactos de una skill publicada, para un miembro del proyecto. */
+  async publishedSkill(
+    identity: AuthenticatedIdentity,
+    scope: ProjectScope,
+    name: PublishedSkillName,
+  ) {
     const actor = await this.users.findCurrent(identity);
     await this.repository.requireMember(scope, actor.id);
-    return readCliSkill();
+    return readPublishedSkill(name);
   }
 
   async list(

@@ -37,7 +37,26 @@ export class IntegrationsController {
     organizationId: string,
     @Param('projectId', uuidParamPipe('projectId')) projectId: string,
   ) {
-    return this.integrations.cliSkill(identity, { organizationId, projectId });
+    return this.integrations.publishedSkill(
+      identity,
+      { organizationId, projectId },
+      'ktsu-cli',
+    );
+  }
+
+  @Get('mcp-skill')
+  @Header('Cache-Control', 'no-store')
+  mcpSkill(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+    @Param('organizationId', uuidParamPipe('organizationId'))
+    organizationId: string,
+    @Param('projectId', uuidParamPipe('projectId')) projectId: string,
+  ) {
+    return this.integrations.publishedSkill(
+      identity,
+      { organizationId, projectId },
+      'ktsu-mcp',
+    );
   }
 
   @Get('credentials')

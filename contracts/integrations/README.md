@@ -46,7 +46,7 @@ Nest resuelve organización y proyecto desde la credencial, y valida los recurso
 
 ## CLI y skill del repositorio
 
-- `GET P/integrations/cli-skill` devuelve `{ name, files: [{ path, content }] }` a un miembro del proyecto con sesión web. Contiene el texto versionado de la [skill de CLI](../../skills/ktsu-cli/SKILL.md).
+- `GET P/integrations/cli-skill` y `GET P/integrations/mcp-skill` devuelven `{ name, files: [{ path, content }] }` a un miembro del proyecto con sesión web. Contienen el texto versionado de la [skill de CLI](../../skills/ktsu-cli/SKILL.md) y de la [skill del MCP remoto](../../skills/ktsu-mcp/SKILL.md).
 - La CLI acepta el token opaco de audiencia `cli` o un access token de Descope con `X-Ktsu-Cli-Project: <uuid>`. `GET /api/v1/integrations/oauth` sirve el issuer, Resource, Client ID y scopes públicos. Las concesiones `cli_oauth` se emiten desde el proyecto y no devuelven un secreto.
 - `GET /api/v1/integrations/proposals/:id` devuelve el estado al titular con la credencial que preparó la propuesta. Solo la web confirma o rechaza. `GET /api/v1/integrations/proposals/:id/file` sirve una exportación de hoja después de confirmarla.
 - `GET /api/v1/integrations/exports/:exportId/file` y `GET /api/v1/integrations/feeds/:feedId/versions/:versionId/file` sirven TSV del proyecto autorizado. Los códigos del almacén distinguen archivos faltantes y versiones retiradas.

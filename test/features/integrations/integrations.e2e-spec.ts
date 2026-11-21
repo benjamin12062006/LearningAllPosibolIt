@@ -525,34 +525,39 @@ describe('E6.7: credenciales, catálogo y confirmación MCP', () => {
     await status('prepare').expect(403);
   });
 
-  it('sirve la skill exacta al miembro del proyecto y rechaza usuarios ajenos', async () => {
-    const path = `${integrations()}/cli-skill`;
-    await http().get(path).expect(401);
-    await rest('bob-session').get(path).expect(404);
-    const { body } = await rest()
-      .get(path)
-      .expect('Cache-Control', 'no-store')
-      .expect(200);
-    expect(body.name).toBe('ktsu-cli');
-    // La lista servida debe cubrir todos los archivos de la carpeta: si se
-    // añade uno a la skill sin publicarlo, la copia desde la web quedaría incompleta.
-    const onDisk = (
-      await readdir('skills/ktsu-cli', { recursive: true, withFileTypes: true })
-    )
-      .filter((entry) => entry.isFile())
-      .map((entry) =>
-        relative('skills/ktsu-cli', join(entry.parentPath, entry.name)),
+  it.each([
+    ['cli-skill', 'ktsu-cli'],
+    ['mcp-skill', 'ktsu-mcp'],
+  ])(
+    'sirve %s exacta al miembro del proyecto y rechaza usuarios ajenos',
+    async (route, name) => {
+      const path = `${integrations()}/${route}`;
+      const folder = `skills/${name}`;
+      await http().get(path).expect(401);
+      await rest('bob-session').get(path).expect(404);
+      const { body } = await rest()
+        .get(path)
+        .expect('Cache-Control', 'no-store')
+        .expect(200);
+      expect(body.name).toBe(name);
+      // La lista servida debe cubrir todos los archivos de la carpeta: si se
+      // añade uno a la skill sin publicarlo, la copia desde la web quedaría incompleta.
+      const onDisk = (
+        await readdir(folder, { recursive: true, withFileTypes: true })
       )
-      .sort();
-    expect(
-      (body.files as { path: string }[]).map((file) => file.path).sort(),
-    ).toEqual(onDisk);
-    for (const file of body.files as { path: string; content: string }[]) {
-      expect(file.content).toBe(
-        await readFile(`skills/ktsu-cli/${file.path}`, 'utf8'),
-      );
-    }
-  });
+        .filter((entry) => entry.isFile())
+        .map((entry) => relative(folder, join(entry.parentPath, entry.name)))
+        .sort();
+      expect(
+        (body.files as { path: string }[]).map((file) => file.path).sort(),
+      ).toEqual(onDisk);
+      for (const file of body.files as { path: string; content: string }[]) {
+        expect(file.content).toBe(
+          await readFile(`${folder}/${file.path}`, 'utf8'),
+        );
+      }
+    },
+  );
 
   it('ejecuta la CLI incluida en la skill contra Nest con un perfil aislado', async () => {
     const { body } = await rest()
