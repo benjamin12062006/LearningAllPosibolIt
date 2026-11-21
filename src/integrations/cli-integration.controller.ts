@@ -9,15 +9,13 @@ import {
   Req,
   StreamableFile,
 } from '@nestjs/common';
-import { isUUID } from 'class-validator';
-import { apiError } from '../common/http/api-error.js';
-import { ErrorCodes } from '../common/http/error-codes.js';
 import type { RequestWithId } from '../common/http/request-id.js';
 import { uuidParamPipe } from '../common/http/validation-errors.js';
 import { ExportsService } from '../exports/exports.service.js';
 import { FeedsService } from '../feeds/feeds.service.js';
 import { WorksheetExportsService } from '../worksheet-exports/worksheet-exports.service.js';
 import { CliOAuthAccess } from './cli-oauth-access.js';
+import { confirmedWorksheetExportId } from './credential-tools.js';
 import { IntegrationGatewayService } from './integration-gateway.service.js';
 import { IntegrationCallDto } from './integrations.dto.js';
 
@@ -66,7 +64,7 @@ export class CliIntegrationController {
     @Req() request: RequestWithId,
     @Param('proposalId', uuidParamPipe('proposalId')) proposalId: string,
   ) {
-    const { proposal } = await this.gateway.cliProposalAccess(
+    const { proposal } = await this.gateway.proposalAccess(
       cliHeaders(request),
       proposalId,
     );
@@ -79,26 +77,15 @@ export class CliIntegrationController {
     @Req() request: RequestWithId,
     @Param('proposalId', uuidParamPipe('proposalId')) proposalId: string,
   ) {
-    const { proposal, delegation } = await this.gateway.cliProposalAccess(
+    const { proposal, delegation } = await this.gateway.proposalAccess(
       cliHeaders(request),
       proposalId,
     );
-    const result = proposal.result;
-    if (
-      proposal.operation !== 'export_worksheet' ||
-      proposal.status !== 'confirmed' ||
-      !result ||
-      typeof result !== 'object' ||
-      !('exportId' in result) ||
-      typeof result.exportId !== 'string' ||
-      !isUUID(result.exportId)
-    ) {
-      throw apiError(ErrorCodes.WORKSHEET_EXPORT_NOT_FOUND);
-    }
+    const exportId = confirmedWorksheetExportId(proposal);
     const { content, file } = await this.worksheets.openDownload(
       delegation.identity,
       delegation.scope,
-      result.exportId,
+      exportId,
     );
     const type =
       file.format === 'csv'
@@ -106,7 +93,7 @@ export class CliIntegrationController {
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     return new StreamableFile(content, {
       type,
-      disposition: `attachment; filename="hoja-${result.exportId}.${file.format}"`,
+      disposition: `attachment; filename="hoja-${exportId}.${file.format}"`,
       length: file.byteSize,
     });
   }
@@ -117,9 +104,7 @@ export class CliIntegrationController {
     @Req() request: RequestWithId,
     @Param('exportId', uuidParamPipe('exportId')) exportId: string,
   ) {
-    const { identity, scope } = await this.gateway.cliReader(
-      cliHeaders(request),
-    );
+    const { identity, scope } = await this.gateway.reader(cliHeaders(request));
     const { content } = await this.exports.openDownload(
       identity,
       scope.projectId,
@@ -138,9 +123,7 @@ export class CliIntegrationController {
     @Param('feedId', uuidParamPipe('feedId')) feedId: string,
     @Param('versionId', uuidParamPipe('versionId')) versionId: string,
   ) {
-    const { identity, scope } = await this.gateway.cliReader(
-      cliHeaders(request),
-    );
+    const { identity, scope } = await this.gateway.reader(cliHeaders(request));
     const { content } = await this.feeds.openVersionFile(
       identity,
       scope.projectId,

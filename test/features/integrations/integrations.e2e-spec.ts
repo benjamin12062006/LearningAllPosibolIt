@@ -794,6 +794,89 @@ describe('E6.7: credenciales, catálogo y confirmación MCP', () => {
     expect(await numberOfCreatedSheets()).toBe(1);
   });
 
+  it('el MCP tiene lo mismo que la CLI: sus operaciones, el estado de una propuesta y sus archivos', async () => {
+    const { token } = await issue({ prepare: true });
+    const { body } = await catalog(token).expect(200);
+    const names: string[] = body.operations.map(
+      (operation: { name: string }) => operation.name,
+    );
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'submit_changeset',
+        'rebase_changeset',
+        'export_worksheet',
+        'delete_catalog_import',
+        'create_feed',
+        'refresh_feed',
+        'list_feed_versions',
+        'get_proposal_status',
+        'read_worksheet_export_file',
+        'read_catalog_export_file',
+        'read_feed_version_file',
+      ]),
+    );
+    const exportSchema = body.operations.find(
+      (item: { name: string }) => item.name === 'export_worksheet',
+    );
+    expect(exportSchema.inputSchema.required).toEqual(
+      expect.arrayContaining(['worksheetId']),
+    );
+
+    const prepared = (
+      await call(token, 'export_worksheet', 'prepare', {
+        worksheetId: sheet.worksheetId,
+        format: 'csv',
+      }).expect(200)
+    ).body as Preparation;
+    const status = async () =>
+      (
+        await call(token, 'get_proposal_status', 'execute', {
+          proposalId: prepared.proposalId,
+        }).expect(200)
+      ).body.proposal;
+    expect(await status()).toMatchObject({
+      operation: 'export_worksheet',
+      status: 'ready',
+    });
+    // Sin confirmar, no hay archivo.
+    const early = await call(token, 'read_worksheet_export_file', 'execute', {
+      proposalId: prepared.proposalId,
+    }).expect(404);
+    expect(early.body.code).toBe('WORKSHEET_EXPORT_NOT_FOUND');
+
+    const review = await rest().get(proposalUrl(prepared)).expect(200);
+    await rest()
+      .post(`${proposalUrl(prepared)}/confirm`)
+      .send({ proposalHash: review.body.proposal.hash })
+      .expect(200);
+    expect((await status()).status).toBe('confirmed');
+    const { body: file } = await call(
+      token,
+      'read_worksheet_export_file',
+      'execute',
+      { proposalId: prepared.proposalId },
+    ).expect(200);
+    expect(file).toMatchObject({
+      contentType: 'text/csv; charset=utf-8',
+      encoding: 'utf-8',
+    });
+    // El mismo CSV que descarga la CLI: con BOM y la cabecera de la hoja.
+    expect(file.content.startsWith('\uFEFF')).toBe(true);
+    expect(file.bytes).toBeGreaterThan(3);
+
+    // Lo ajeno o mal escrito no se lee; una lectura no se prepara.
+    await call(token, 'get_proposal_status', 'execute', {
+      proposalId: randomUUID(),
+    }).expect(404);
+    await call(token, 'read_feed_version_file', 'execute', {
+      feedId: 'no-es-uuid',
+      versionId: randomUUID(),
+    }).expect(400);
+    await call(token, 'get_proposal_status', 'prepare', {
+      proposalId: prepared.proposalId,
+    }).expect(400);
+  });
+
   it('una propuesta pendiente deja de ser confirmable cuando revocan su credencial', async () => {
     const { token, credential } = await issue({
       prepare: true,

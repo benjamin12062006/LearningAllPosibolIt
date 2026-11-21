@@ -48,6 +48,19 @@ import {
 } from './integrations.types.js';
 
 import { CliOAuthAccess } from './cli-oauth-access.js';
+import {
+  confirmedWorksheetExportId,
+  CREDENTIAL_TOOLS,
+  fileContent,
+  isCredentialTool,
+  parseExportRef,
+  parseFeedVersionRef,
+  parseProposalRef,
+  type CredentialToolName,
+} from './credential-tools.js';
+import { ExportsService } from '../exports/exports.service.js';
+import { FeedsService } from '../feeds/feeds.service.js';
+import { WorksheetExportsService } from '../worksheet-exports/worksheet-exports.service.js';
 import { McpOAuthAccess } from './mcp-oauth-access.js';
 
 type RequestedIntegration = Readonly<{
@@ -109,7 +122,8 @@ const DELEGATED_OPERATIONS = new Map<string, readonly string[]>([
   ['publish_feed', []],
 ]);
 
-// Los clientes CLI señalan la entidad cuando el chat podría inferirla.
+// Ampliación para clientes externos: la CLI desde su creación y el MCP desde
+// el 2026-11-21 (paridad con la CLI). Señalan la entidad que el chat infiere.
 const CLI_OPERATIONS = new Map<string, readonly string[]>([
   ['submit_changeset', ['changesetId']],
   ['reopen_changeset', ['changesetId']],
@@ -139,11 +153,9 @@ const CLI_OPERATIONS = new Map<string, readonly string[]>([
   ['disable_feed_delivery', ['feedId']],
 ]);
 
-function selectorsOf(name: string, cli: boolean) {
-  return (
-    (cli ? CLI_OPERATIONS.get(name) : undefined) ??
-    DELEGATED_OPERATIONS.get(name)
-  );
+/** Los selectores obligatorios de una operación externa; sin ellos, no se ofrece. */
+function selectorsOf(name: string) {
+  return CLI_OPERATIONS.get(name) ?? DELEGATED_OPERATIONS.get(name);
 }
 
 @Injectable()
@@ -164,6 +176,9 @@ export class IntegrationGatewayService {
     private readonly decisions: ProposalDecisions,
     @Inject(AI_AUTO_CONFIRM)
     private readonly autoConfirm: boolean,
+    private readonly worksheetExports: WorksheetExportsService,
+    private readonly catalogExports: ExportsService,
+    private readonly feeds: FeedsService,
   ) {}
 
   async session(headers: RequestedIntegration) {
@@ -189,12 +204,11 @@ export class IntegrationGatewayService {
     headers: RequestedIntegration,
   ): Promise<{ operations: OperationDescription[] }> {
     const access = await this.authorizeRequest(headers);
-    const cli = headers.channel === 'cli';
     const allowed = this.catalog
-      .all(cli)
+      .all(true)
       .filter(
         (operation) =>
-          selectorsOf(operation.name, cli) !== undefined &&
+          selectorsOf(operation.name) !== undefined &&
           canUse(access, operation),
       );
     const knowledge = knowledgeOperation(this.ai, headers.requestId);
@@ -202,9 +216,10 @@ export class IntegrationGatewayService {
       allowed.push(knowledge);
     }
     return {
-      operations: this.catalog
-        .describe(allowed)
-        .map((item) => withRequiredSelectors(item, cli)),
+      operations: [
+        ...this.catalog.describe(allowed).map(withRequiredSelectors),
+        ...CREDENTIAL_TOOLS,
+      ],
     };
   }
 
@@ -214,12 +229,15 @@ export class IntegrationGatewayService {
     body: IntegrationCallDto,
   ): Promise<unknown> {
     const access = await this.authorizeRequest(headers);
+    if (isCredentialTool(name)) {
+      return this.callCredentialTool(access, headers, name, body);
+    }
     const cli = headers.channel === 'cli';
-    const selectors = selectorsOf(name, cli);
+    const selectors = selectorsOf(name);
     const operation =
       name === SEARCH_KNOWLEDGE
         ? knowledgeOperation(this.ai, headers.requestId)
-        : selectors && this.catalog.find(name, cli);
+        : selectors && this.catalog.find(name, true);
     if (!operation) {
       throw apiError(ErrorCodes.AGENT_OPERATION_NOT_FOUND);
     }
@@ -243,10 +261,8 @@ export class IntegrationGatewayService {
     }
   }
 
-  async cliProposalAccess(
-    headers: Extract<RequestedIntegration, { channel: 'cli' }>,
-    proposalId: string,
-  ) {
+  /** Una propuesta de esta credencial, con `expired` si venció sin decidir. */
+  async proposalAccess(headers: RequestedIntegration, proposalId: string) {
     const access = await this.authorizeRequest(headers);
     const stored = await this.repository.findOwnerProposal(
       access.delegation.scope,
@@ -268,8 +284,99 @@ export class IntegrationGatewayService {
     return { delegation: access.delegation, proposal: { ...view, status } };
   }
 
-  async cliReader(headers: Extract<RequestedIntegration, { channel: 'cli' }>) {
+  async reader(headers: RequestedIntegration) {
     return (await this.authorizeRequest(headers)).delegation;
+  }
+
+  /**
+   * Las lecturas de la credencial que la CLI hace con sus propias rutas
+   * (estado y archivos): el MCP las usa como herramientas.
+   */
+  private async callCredentialTool(
+    access: AuthorizedDelegation,
+    headers: RequestedIntegration,
+    name: CredentialToolName,
+    body: IntegrationCallDto,
+  ) {
+    if (body.mode !== 'execute') {
+      throw apiError(ErrorCodes.AGENT_OPERATION_MODE_INVALID);
+    }
+    try {
+      const result = await this.readForCredential(
+        headers,
+        name,
+        body.arguments,
+      );
+      this.audit(access.delegation, name, 'succeeded', headers);
+      return result;
+    } catch (error) {
+      this.audit(access.delegation, name, 'failed', headers);
+      throw error;
+    }
+  }
+
+  private async readForCredential(
+    headers: RequestedIntegration,
+    name: CredentialToolName,
+    input: Record<string, unknown>,
+  ) {
+    switch (name) {
+      case 'get_proposal_status': {
+        const { proposalId } = await parseProposalRef(input);
+        return {
+          proposal: (await this.proposalAccess(headers, proposalId)).proposal,
+        };
+      }
+      case 'read_worksheet_export_file': {
+        const { proposalId } = await parseProposalRef(input);
+        const { proposal, delegation } = await this.proposalAccess(
+          headers,
+          proposalId,
+        );
+        const exportId = confirmedWorksheetExportId(proposal);
+        const { content, file } = await this.worksheetExports.openDownload(
+          delegation.identity,
+          delegation.scope,
+          exportId,
+        );
+        return fileContent(
+          content,
+          `hoja-${exportId}.${file.format}`,
+          file.format === 'csv'
+            ? 'text/csv; charset=utf-8'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+      }
+      case 'read_catalog_export_file': {
+        const { exportId } = await parseExportRef(input);
+        const { identity, scope } = await this.reader(headers);
+        const { content } = await this.catalogExports.openDownload(
+          identity,
+          scope.projectId,
+          exportId,
+        );
+        return fileContent(
+          content,
+          `export-${exportId}.tsv`,
+          'text/tab-separated-values; charset=utf-8',
+        );
+      }
+      case 'read_feed_version_file': {
+        const { feedId, versionId } = await parseFeedVersionRef(input);
+        const { identity, scope } = await this.reader(headers);
+        const { content } = await this.feeds.openVersionFile(
+          identity,
+          scope.projectId,
+          feedId,
+          versionId,
+        );
+        return fileContent(
+          content,
+          `feed-${versionId}.tsv`,
+          'text/tab-separated-values; charset=utf-8',
+        );
+      }
+    }
   }
 
   private async authorizeRequest(
@@ -525,9 +632,8 @@ function canUse(access: AuthorizedDelegation, operation: AgentOperation) {
 
 function withRequiredSelectors(
   operation: OperationDescription,
-  cli: boolean,
 ): OperationDescription {
-  const selectors = selectorsOf(operation.name, cli);
+  const selectors = selectorsOf(operation.name);
   if (!selectors?.length) {
     return operation;
   }
