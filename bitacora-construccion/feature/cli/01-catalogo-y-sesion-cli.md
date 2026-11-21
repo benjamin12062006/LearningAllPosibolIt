@@ -41,6 +41,11 @@ La CLI comparte los casos de uso del agente y verifica los permisos desde la pas
 - `ktsu-api` tiene `CLI_OAUTH_CLIENT_ID`, `CLI_OAUTH_ISSUER` (`https://api.descope.com/v1/apps/P3JZVKos0A8JS0nkys6IhYAySQdI`) y `CLI_OAUTH_RESOURCE_URL`. Nest se redesplegó (`ktsu-kg88dm11p…`) y `ktsu-mcp` se apuntó a él y se redesplegó (`ktsu-bno2mzcfx…`).
 - Comprobado: `GET /api/v1/integrations/oauth` 200 con cliente, issuer, recurso y scopes; discovery con el mismo issuer, endpoints en `api.descope.com` y S256. `authorize` con puerto efímero en `127.0.0.1` redirige al flujo `inbound-apps-user-consent` con ambos scopes; antes de añadirlos a la app devolvía `invalid_scope`. La CLI de la skill contra producción responde `INTEGRATION_CREDENTIAL_INVALID` a una credencial ficticia.
 
+## Prueba con sesión real (2026-11-21)
+
+- Los dos primeros `auth login` terminaron en `INTEGRATION_OAUTH_GRANT_REQUIRED`: Descope autenticaba, pero no existía ninguna concesión `cli_oauth` (tampoco `mcp_oauth`). El paso **Autorizar CLI con OAuth** de la web no se había hecho, y antes de configurar Descope Nest no podía crearlo. El mensaje del error, que hablaba solo de MCP, se corrigió en `2a6a2b3`.
+- Se creó en la web la concesión **CLI de Benjamín** (CLI OAuth, lectura y propuestas, 24 horas) y después `auth login` devolvió la sesión `oauth` con `read` y `prepare` para **Personal · Prueba**. `auth status`, `read get_project_overview` (proyecto «Prueba», rol owner) y `operations list` (67 operaciones) respondieron contra producción.
+
 ## Pendiente
 
-- Prueba con sesión real en **Personal · Prueba**: autorizar la CLI en Integraciones, `pnpm run ktsu auth login`, `auth status`, `read get_project_overview` y una propuesta revisada en la web.
+- Preparar una propuesta desde la CLI y revisarla en la web.
