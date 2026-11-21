@@ -1198,8 +1198,8 @@ export const API_MESSAGES = {
   ),
   [ErrorCodes.INTEGRATION_OAUTH_GRANT_REQUIRED]: entry(
     403,
-    'Activa el acceso MCP OAuth desde Integraciones.',
-    'Enable MCP OAuth access in Integrations.',
+    'Autoriza el acceso OAuth de este proyecto en Integraciones (pestaña MCP o CLI, según el cliente) y vuelve a iniciar sesión.',
+    'Authorize OAuth access for this project in Integrations (MCP or CLI tab, depending on the client) and sign in again.',
   ),
   [ErrorCodes.INTEGRATION_OAUTH_GRANT_EXISTS]: entry(
     409,
