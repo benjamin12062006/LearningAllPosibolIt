@@ -33,7 +33,14 @@ La CLI comparte los casos de uso del agente y verifica los permisos desde la pas
 - Neon: `migrate status` mostró solo `add_ai_proposal_failure` y `add_cli_oauth_grants` pendientes; `migrate deploy` las aplicó, `status` dice «Database schema is up to date!» y `migrate diff` contra `schema.prisma` sale vacío. Ambas solo amplían restricciones y añaden una columna opcional.
 - Sin `CLI_OAUTH_*`, `cliOAuthConfigFrom` devuelve `null`: Nest arranca con el OAuth de la CLI desactivado y la credencial de proyecto sigue disponible.
 
+## Descope y OAuth de la CLI (2026-11-21)
+
+- Recurso **KTSU CLI** (`RS3MR3SNBSl9cWkA3hMHDyweobfpp`), tipo API, audiencia `https://ktsu-api.vercel.app/api/v1/integrations`, scopes `ktsu:cli:read` y `ktsu:cli:prepare`.
+- Inbound App **KTSU CLI** (`TPA3MR3Ux65X3knuKi4ixCPapTIo7C`): cliente público (PKCE obligatorio), Authorization Code, callback `http://127.0.0.1/callback`, audiencia permitida la del recurso y los mismos dos permission scopes. El scope por defecto `full_access` se sustituyó.
+- Sin regla de Access Policy: crear la primera activa la aplicación de políticas con «bloquear todo» por defecto y cortaría el OAuth del MCP, que no tiene regla propia. La regla por defecto sigue permitiendo cualquier petición.
+- `ktsu-api` tiene `CLI_OAUTH_CLIENT_ID`, `CLI_OAUTH_ISSUER` (`https://api.descope.com/v1/apps/P3JZVKos0A8JS0nkys6IhYAySQdI`) y `CLI_OAUTH_RESOURCE_URL`. Nest se redesplegó (`ktsu-kg88dm11p…`) y `ktsu-mcp` se apuntó a él y se redesplegó (`ktsu-bno2mzcfx…`).
+- Comprobado: `GET /api/v1/integrations/oauth` 200 con cliente, issuer, recurso y scopes; discovery con el mismo issuer, endpoints en `api.descope.com` y S256. `authorize` con puerto efímero en `127.0.0.1` redirige al flujo `inbound-apps-user-consent` con ambos scopes; antes de añadirlos a la app devolvía `invalid_scope`. La CLI de la skill contra producción responde `INTEGRATION_CREDENTIAL_INVALID` a una credencial ficticia.
+
 ## Pendiente
 
-- Descope: API Resource e Inbound App de la CLI y las variables `CLI_OAUTH_*` en `ktsu-api` (plan 03, «Vincular Descope a Nest»). Hasta entonces, la web ofrece solo **Credencial de proyecto**.
-- Prueba de producción con **Personal · Prueba**: `auth status`, `read get_project_overview` y una propuesta revisada en la web.
+- Prueba con sesión real en **Personal · Prueba**: autorizar la CLI en Integraciones, `pnpm run ktsu auth login`, `auth status`, `read get_project_overview` y una propuesta revisada en la web.
