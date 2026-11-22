@@ -1,7 +1,7 @@
 # 05 — Los cambios se aplican sin aprobación humana
 
 Fecha de creación: 2026-11-21  
-Estado: Implementado, pendiente de verificación en producción  
+Estado: Implementado y verificado  
 Revisión de partida: `3e8ef8a` (`deploy/vercel`)  
 Relacionada con: [plan 05 de cli](../../../docs/plans/feature/cli/05-plan-aplicar-sin-aprobacion.md), [02, paridad del MCP y la CLI](02-paridad-del-mcp-con-la-cli.md) y [contrato externo](../../../contracts/integrations/README.md).
 
@@ -40,4 +40,7 @@ Se mantienen los permisos por rol y la capacidad `prepare` de cada credencial: l
 - Repo IA (`deploy/vercel` y `deploy/vercel-mcp`): `ruff check`/`format` y 110 pruebas unitarias en cada rama.
 - Web: `eslint` de los archivos tocados y `vitest` (198 pruebas).
 
-Pendiente: despliegue y una escritura real por CLI en producción.
+- Despliegue: push de `5cee4e0` (api), `21ab74e` (web), `17a11d9` (ai) a `deploy/vercel` y `a33e9cd` a `deploy/vercel-mcp`; los cuatro proyectos de Vercel quedaron `Ready` en producción.
+- Producción, CLI con OAuth: `prepare create_workbook` y `prepare archive_workbook` devolvieron `status: confirmed` con su `result` en la misma llamada, sin `reviewUrl` (libro de prueba creado y archivado).
+
+No se probó una llamada real por el MCP remoto desde esta sesión (sus herramientas no cargaron); lo cubren las pruebas de la pasarela y del servidor MCP.
