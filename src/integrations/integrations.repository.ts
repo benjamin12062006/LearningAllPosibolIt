@@ -222,11 +222,12 @@ export class IntegrationsRepository {
     return grant ?? null;
   }
 
-  async cliGrant(
+  async oauthGrantForProject(
     projectId: string,
     actorId: string,
     resource: string,
     now: Date,
+    audience: 'mcp_oauth' | 'cli_oauth',
   ) {
     const [grant] = await this.prisma.$queryRaw<
       (CredentialRow & { organizationId: string })[]
@@ -234,7 +235,7 @@ export class IntegrationsRepository {
       SELECT ${CREDENTIAL_COLUMNS}, c.organization_id AS "organizationId"
       FROM estadistica_forms.integration_credentials c
       WHERE c.project_id = ${projectId} AND c.owner_id = ${actorId}
-        AND c.audience = 'cli_oauth' AND c.resource_url = ${resource}
+        AND c.audience = ${audience} AND c.resource_url = ${resource}
         AND c.revoked_at IS NULL AND c.expires_at > ${now.toISOString()}`;
     return grant ?? null;
   }

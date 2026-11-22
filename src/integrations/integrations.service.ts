@@ -92,10 +92,16 @@ export class IntegrationsService {
     const oauthMatchesProject =
       this.oauth?.scope.organizationId === scope.organizationId &&
       this.oauth.scope.projectId === scope.projectId;
+    const resource = this.oauth?.resource;
+    const oauthResourceUrl =
+      resource && !access.isArchived
+        ? oauthMatchesProject
+          ? resource
+          : mcpProjectUrl(resource, scope.projectId)
+        : null;
     return {
       ...page,
-      oauthResourceUrl:
-        oauthMatchesProject && !access.isArchived ? this.oauth.resource : null,
+      oauthResourceUrl,
       ...(this.cliOAuth && !access.isArchived && { cliOAuthAvailable: true }),
     };
   }
@@ -112,7 +118,7 @@ export class IntegrationsService {
     const now = this.options.clock();
     let resource: string | null = null;
     if (input.audience === 'mcp_oauth')
-      resource = requireMcpOAuth(this.oauth, scope).resource;
+      resource = requireMcpOAuth(this.oauth).resource;
     if (input.audience === 'cli_oauth')
       resource = requireCliOAuth(this.cliOAuth).resource;
     const secret = newIntegrationSecret();
@@ -236,4 +242,10 @@ function expiryOf(expiresAt: string | undefined, now: Date): Date {
     throw apiError(ErrorCodes.INTEGRATION_EXPIRY_INVALID);
   }
   return new Date(expiryMs);
+}
+
+function mcpProjectUrl(resource: string, projectId: string) {
+  const url = new URL(resource);
+  url.searchParams.set('project', projectId);
+  return url.href;
 }

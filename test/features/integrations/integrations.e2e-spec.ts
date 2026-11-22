@@ -376,15 +376,45 @@ describe('E6.7: credenciales, catálogo y confirmación MCP', () => {
           audience: 'mcp_oauth',
           capabilities: ['read', 'prepare'],
         });
-    const oauth = (token: string, path = '/operations') =>
-      http()
+    const oauth = (token: string, path = '/operations', projectId?: string) => {
+      const request = http()
         .get(`${MCP}${path}`)
         .auth(ADAPTER_TOKEN, { type: 'bearer' })
         .set('X-Ktsu-Mcp-OAuth', `Bearer ${token}`);
+      return projectId === undefined
+        ? request
+        : request.set('X-Ktsu-Mcp-Project', projectId);
+    };
 
     await oauth('oauth.alice.read').expect(403);
     await oauth('wrong.test.jwt').expect(401);
-    await grant(sibling).expect(404);
+    await oauth('oauth.alice.prepare', '/session', sibling.projectId).expect(
+      403,
+    );
+    await oauth('oauth.alice.prepare', '/session', 'incorrecto').expect(400);
+    await rest()
+      .get(`${integrations(sibling)}/credentials`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.oauthResourceUrl).toBe(
+          `${RESOURCE}?project=${sibling.projectId}`,
+        );
+      });
+    const siblingGrant = await grant(sibling).expect(201);
+    await oauth('oauth.alice.prepare', '/session', sibling.projectId)
+      .expect(200)
+      .expect(({ body }) => expect(body.projectId).toBe(sibling.projectId));
+    await oauth('oauth.alice.prepare', '/session', outside.projectId).expect(
+      403,
+    );
+    await rest()
+      .post(
+        `${integrations(sibling)}/credentials/${siblingGrant.body.credential.id}/revoke`,
+      )
+      .expect(204);
+    await oauth('oauth.alice.prepare', '/session', sibling.projectId).expect(
+      403,
+    );
     const issued = await grant().expect(201);
     expect(issued.body.token).toBeUndefined();
     expect(issued.body.credential.audience).toBe('mcp_oauth');

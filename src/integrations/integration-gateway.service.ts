@@ -73,6 +73,7 @@ type RequestedIntegration = Readonly<{
         channel?: 'mcp';
         delegation: string | undefined;
         oauth?: string;
+        project?: string;
       }>
   );
 type McpRequest = Exclude<RequestedIntegration, { channel: 'cli' }>;
@@ -421,12 +422,19 @@ export class IntegrationGatewayService {
     if (!matchesAdapter) {
       throw apiError(ErrorCodes.INTEGRATION_ADAPTER_INVALID);
     }
-    if (headers.oauth !== undefined && headers.delegation !== undefined) {
+    if (
+      (headers.oauth !== undefined && headers.delegation !== undefined) ||
+      (headers.oauth === undefined && headers.project !== undefined)
+    ) {
       throw apiError(ErrorCodes.INTEGRATION_CREDENTIAL_INVALID);
     }
     return headers.oauth === undefined
       ? this.authenticateOpaque(headers.delegation, 'mcp')
-      : this.oauth.authenticate(headers.oauth, this.options.clock());
+      : this.oauth.authenticate(
+          headers.oauth,
+          this.options.clock(),
+          headers.project,
+        );
   }
 
   private async authenticateOpaque(

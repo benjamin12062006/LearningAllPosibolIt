@@ -1,10 +1,14 @@
 # Conectar el MCP remoto
 
-La URL del servidor aparece en **Integraciones → MCP** («Copiar URL del MCP»); en producción es `https://ktsu-mcp.vercel.app/mcp`. El nombre recomendado del servidor es `ktsu-remoto`. Conserva las demás entradas MCP que ya tenga el cliente: añade o actualiza solo esta.
+La URL del servidor aparece en **Integraciones → MCP** («Copiar URL del MCP»); en producción es `https://ktsu-mcp.vercel.app/mcp`. Usa el nombre que muestra la configuración copiada del proyecto. El nombre `ktsu-remoto` corresponde a la conexión original del piloto. Conserva las demás entradas MCP que ya tenga el cliente: añade o actualiza solo esta.
 
 Antes de iniciar sesión, la persona pulsa **Autorizar cuenta para OAuth** en **Integraciones → MCP** del proyecto, con la misma cuenta que usará en Descope.
 
+Las conexiones nuevas incluyen `?project=<uuid>` en la URL. Conserva la URL completa en el cliente y usa una concesión emitida desde ese mismo proyecto. Al verificar, comprueba el ID del proyecto con `get_project_overview`.
+
 ## Por cliente
+
+En los ejemplos sustituye `ktsu-remoto` por el nombre indicado en tu configuración.
 
 | Cliente | Añadir el servidor | Iniciar sesión |
 | --- | --- | --- |

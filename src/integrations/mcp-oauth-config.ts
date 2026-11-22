@@ -39,19 +39,9 @@ export function mcpOAuthConfigFrom(
   return { resource, issuer, scope: { organizationId, projectId } };
 }
 
-export function requireMcpOAuth(
-  config: McpOAuthConfig | null,
-  scope?: ProjectScope,
-): McpOAuthConfig {
+export function requireMcpOAuth(config: McpOAuthConfig | null): McpOAuthConfig {
   if (!config) {
     throw apiError(ErrorCodes.INTEGRATIONS_UNAVAILABLE);
-  }
-  if (
-    scope &&
-    (scope.projectId !== config.scope.projectId ||
-      scope.organizationId !== config.scope.organizationId)
-  ) {
-    throw apiError(ErrorCodes.PROJECT_NOT_FOUND);
   }
   return config;
 }

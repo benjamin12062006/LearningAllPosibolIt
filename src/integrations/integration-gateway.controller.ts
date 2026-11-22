@@ -30,12 +30,14 @@ export class IntegrationGatewayController {
     @Headers('authorization') authorization: string | undefined,
     @Headers('x-ktsu-delegation') delegation: string | undefined,
     @Headers('x-ktsu-mcp-oauth') oauth: string | undefined,
+    @Headers('x-ktsu-mcp-project') project: string | undefined,
     @Req() request: RequestWithId,
   ) {
     return this.gateway.session({
       authorization,
       delegation,
       oauth,
+      project,
       requestId: request.requestId,
     });
   }
@@ -46,12 +48,14 @@ export class IntegrationGatewayController {
     @Headers('authorization') authorization: string | undefined,
     @Headers('x-ktsu-delegation') delegation: string | undefined,
     @Headers('x-ktsu-mcp-oauth') oauth: string | undefined,
+    @Headers('x-ktsu-mcp-project') project: string | undefined,
     @Req() request: RequestWithId,
   ) {
     return this.gateway.operations({
       authorization,
       delegation,
       oauth,
+      project,
       requestId: request.requestId,
     });
   }
@@ -63,12 +67,19 @@ export class IntegrationGatewayController {
     @Headers('authorization') authorization: string | undefined,
     @Headers('x-ktsu-delegation') delegation: string | undefined,
     @Headers('x-ktsu-mcp-oauth') oauth: string | undefined,
+    @Headers('x-ktsu-mcp-project') project: string | undefined,
     @Param('name') name: string,
     @Body() body: IntegrationCallDto,
     @Req() request: RequestWithId,
   ) {
     return this.gateway.call(
-      { authorization, delegation, oauth, requestId: request.requestId },
+      {
+        authorization,
+        delegation,
+        oauth,
+        project,
+        requestId: request.requestId,
+      },
       name,
       body,
     );

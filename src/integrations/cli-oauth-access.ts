@@ -71,11 +71,12 @@ export class CliOAuthAccess {
 
     const identity = { issuer: iss, subject: sub };
     const actor = await this.users.findCurrent(identity);
-    const grant = await this.repository.cliGrant(
+    const grant = await this.repository.oauthGrantForProject(
       projectId,
       actor.id,
       config.resource,
       now,
+      'cli_oauth',
     );
     if (!grant) throw apiError(ErrorCodes.INTEGRATION_OAUTH_GRANT_REQUIRED);
     if (iat < Math.floor(Date.parse(grant.createdAt) / 1000)) {
