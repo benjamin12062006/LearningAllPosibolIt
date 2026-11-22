@@ -1,4 +1,3 @@
-import { Storage } from '@google-cloud/storage';
 import { Module } from '@nestjs/common';
 import { resolve } from 'node:path';
 import { ArtifactStore } from './artifact.store.js';
@@ -7,6 +6,7 @@ import {
   type ArtifactStoreOptions,
 } from './artifacts.types.js';
 import { CloudStorageArtifactStore } from './cloud-storage.artifact-store.js';
+import { createGoogleStorage } from './vercel-federation.js';
 
 /**
  * Archivos privados compartidos por las features que los guardan (RC3: lo
@@ -47,8 +47,10 @@ export function createArtifactStore(
 ) {
   const bucket = bucketName?.trim();
   if (bucket) {
-    // Credenciales de la cuenta de servicio de Cloud Run (o ADC en local).
-    return new CloudStorageArtifactStore(new Storage().bucket(bucket));
+    // En Vercel, credenciales federadas; si no, las de Cloud Run o ADC en local.
+    return new CloudStorageArtifactStore(
+      createGoogleStorage(process.env).bucket(bucket),
+    );
   }
   return new ArtifactStore(localOptions);
 }

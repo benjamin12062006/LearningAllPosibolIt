@@ -3,6 +3,7 @@ import {
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
+import { rememberVercelOidcToken } from './artifacts/vercel-federation.js';
 import { openRequestCache } from './common/http/request-cache.js';
 import { ApiExceptionFilter } from './common/http/api-exception.filter.js';
 import {
@@ -24,6 +25,8 @@ const LOCAL_WEB_ORIGINS = [
 export function configureHttp(app: INestApplication) {
   // El `requestId` va primero: también un cuerpo mal formado lo lleva (jobs&files, D12).
   app.use(assignRequestId);
+  // En Vercel, el token OIDC de cada petición da acceso al bucket (deploys, plan 08).
+  app.use(rememberVercelOidcToken);
   // Las lecturas de acceso se recuerdan durante la petición (plan C7, G2).
   app.use(openRequestCache);
   // Mismos parsers del adaptador, antes del normalizador de errores de transporte.
