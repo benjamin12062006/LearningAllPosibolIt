@@ -32,7 +32,6 @@ ktsu operations list
 ktsu operations describe <name>
 ktsu read <name> [--input <file.json>]
 ktsu prepare <name> [--input <file.json>] [--call-id <uuid>]
-ktsu proposals review <proposalId>
 ktsu proposals status <proposalId>
 ktsu proposals download <proposalId> --output <file>
 ktsu exports download <exportId> --output <file.tsv>
@@ -144,14 +143,6 @@ async function run(args, values) {
     const request = await openClient(values, profile);
     const path = `/proposals/${argument}`;
     if (action === 'status') return request(path);
-    // "confirm" se conserva como alias para abrir el enlace de revisión.
-    if (action === 'review' || action === 'confirm') {
-      return projectLink(
-        request,
-        webOrigin(values, profile),
-        `/integrations/proposals/${argument}`,
-      );
-    }
     if (action === 'download')
       return download(request, `${path}/file`, values.output);
   }
@@ -196,8 +187,6 @@ async function invoke(request, command, operation, values, profile) {
   const callId = values['call-id'] ?? randomUUID();
   if (!UUID.test(callId))
     throw new CliError('Usa un UUID válido para --call-id.');
-  const web =
-    command === 'prepare' ? webOrigin(values, profile, false) : undefined;
   const args = values.input ? await readInput(values.input) : {};
   const mode = command === 'read' ? 'execute' : 'prepare';
   const result = await request(`/operations/${operation}`, {
@@ -206,14 +195,9 @@ async function invoke(request, command, operation, values, profile) {
     arguments: args,
   });
   if (command === 'read') return result;
-  const path = result?.reviewPath;
-  const reviewUrl =
-    web &&
-    typeof path === 'string' &&
-    /^\/projects\/[a-f0-9-]+\/integrations\/proposals\/[a-f0-9-]+$/iu.test(path)
-      ? new URL(path, web).href
-      : undefined;
-  return { ...result, ...(reviewUrl && { reviewUrl }), callId };
+  // KTSU aplica la escritura en la misma llamada: la respuesta ya trae
+  // `status: confirmed` y su resultado (plan 05 de cli).
+  return { ...result, callId };
 }
 
 async function openClient(values, profile) {

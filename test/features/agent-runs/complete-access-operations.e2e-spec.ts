@@ -11,7 +11,6 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import request from 'supertest';
 import { AI_AUTO_CONFIRM } from '../../../src/agent-runs/auto-confirm.js';
-import { apiError } from '../../../src/common/http/api-error.js';
 import { EvaluationWorker } from '../../../src/evaluations/evaluations.worker.js';
 import { IntegrationsModule } from '../../../src/integrations/integrations.module.js';
 import {
@@ -128,17 +127,6 @@ describe.each(['agente', 'CLI'])(
       return body as { token: string; credential: { id: string } };
     }
 
-    async function confirmInWeb(proposalId: string) {
-      const path = `${base()}/integrations/proposals/${proposalId}`;
-      const { body: preview } = await rest().get(path).expect(200);
-      expect(preview.proposal.status).toBe('ready');
-      const { body } = await rest()
-        .post(`${path}/confirm`)
-        .send({ proposalHash: preview.proposal.hash })
-        .expect(200);
-      return body.proposal;
-    }
-
     function as(identity: typeof alice, actorId: string): OperationContext {
       return {
         identity,
@@ -165,7 +153,7 @@ describe.each(['agente', 'CLI'])(
       return found.execute(as(alice, aliceId), await found.parse(input));
     }
 
-    /** Prepara y confirma, como la persona en la web. */
+    /** Escribe: la CLI ya aplica en la misma llamada (plan 05 de cli). */
     async function write(
       name: string,
       input: Record<string, unknown> = {},
@@ -187,12 +175,11 @@ describe.each(['agente', 'CLI'])(
         if (prepared.status !== 200)
           throw new HttpException(prepared.body, prepared.status);
         lastProposalId = prepared.body.proposalId;
+        expect(prepared.body).not.toHaveProperty('reviewPath');
+        expect(prepared.body.status).toBe('confirmed');
         const status = await cliGet(`/proposals/${lastProposalId}`).expect(200);
-        expect(status.body.proposal.status).toBe('ready');
-        const confirmed = await confirmInWeb(lastProposalId);
-        if (confirmed.status === 'failed') throw apiError(confirmed.error.code);
-        expect(confirmed.status).toBe('confirmed');
-        return confirmed.result;
+        expect(status.body.proposal.status).toBe('confirmed');
+        return prepared.body.result;
       }
       const found = operation(name);
       if (found.level !== 'write') throw new Error(`${name} no es escritura`);

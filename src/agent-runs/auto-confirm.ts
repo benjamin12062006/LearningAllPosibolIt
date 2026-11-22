@@ -1,17 +1,21 @@
 import { createHash } from 'node:crypto';
 
 /**
- * Si lo que prepara la IA se confirma solo, en el chat de la web y en el MCP
- * (ampliación del 2026-11-15). Se activa con `AI_AUTO_CONFIRM=true`: entonces
- * cada escritura se aplica en la misma llamada, en nombre de la persona y con
- * sus permisos. Sin la variable, la persona confirma cada propuesta.
+ * Las escrituras se aplican en la misma llamada, en nombre de la persona y con
+ * sus permisos: en el chat de la web, el MCP, la CLI y cualquier integración
+ * (plan 05 de cli, 2026-11-21). No hay interruptor en producción. Solo la
+ * suite (`NODE_ENV=test`) puede pedir el flujo con propuesta pendiente con
+ * `AI_AUTO_CONFIRM=false`, para seguir probando esa ruta.
  */
 export const AI_AUTO_CONFIRM = Symbol('AI_AUTO_CONFIRM');
 
 export function aiAutoConfirmFrom(
   env: Readonly<Record<string, string | undefined>>,
 ): boolean {
-  return env.AI_AUTO_CONFIRM?.trim().toLowerCase() === 'true';
+  const manualInTests =
+    env.NODE_ENV === 'test' &&
+    env.AI_AUTO_CONFIRM?.trim().toLowerCase() === 'false';
+  return !manualInTests;
 }
 
 /**

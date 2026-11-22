@@ -8,7 +8,7 @@ Todos los comandos se ejecutan desde `scripts/ktsu-cli` como `pnpm run ktsu <com
 | --- | --- |
 | `--json` | Imprime JSON compacto en stdout. Los errores salen en stderr como `{"code", "message", "requestId"?, "callId"?}`. |
 | `--api-url <URL>` | Sustituye el destino guardado solo en esta llamada. HTTPS, o HTTP en `localhost`/`127.0.0.1`/`[::1]`. Ruta `/` o `/api/v1`. |
-| `--web-url <URL>` | Origen de la web para construir enlaces de revisión. |
+| `--web-url <URL>` | Origen de la web para construir enlaces (por ejemplo, `feed delivery`). |
 | `--project-id <uuid>` | Proyecto para OAuth. Con una credencial de proyecto, el proyecto lo fija la credencial. |
 | `--token-stdin` | Lee la credencial CLI desde un pipe. Rechaza una terminal interactiva. |
 | `-h`, `--help` | Muestra la lista de comandos. |
@@ -43,15 +43,14 @@ El orden de prioridad es: opción → variable de entorno → perfil guardado. E
 | `operations list` | Operaciones que la credencial puede usar, con nombre, descripción, modo y esquema. |
 | `operations describe <nombre>` | Esquema de una operación. Es la fuente de los campos y selectores de `--input`. |
 | `read <nombre> [--input <archivo.json>]` | Ejecuta una lectura (`mode: execute`). |
-| `prepare <nombre> [--input <archivo.json>] [--call-id <uuid>]` | Crea una propuesta (`mode: prepare`). Devuelve `proposalId`, `summary`, `expiresAt`, `reviewUrl` y el `callId` usado. No cambia nada hasta que una persona confirma en la web. |
+| `prepare <nombre> [--input <archivo.json>] [--call-id <uuid>]` | Aplica el cambio en la misma llamada (`mode: prepare`). Devuelve `proposalId`, `status: confirmed`, `summary`, `result` y el `callId` usado. |
 
 `--input` acepta un archivo con un objeto JSON de hasta 32 KiB. Para reintentar un `prepare` cuya respuesta se perdió, repite el mismo `--call-id`, la misma operación y los mismos argumentos.
 
-## Propuestas y archivos
+## Estado de un cambio y archivos
 
 | Comando | Resultado |
 | --- | --- |
-| `proposals review <proposalId>` | Devuelve `{ url }` de la pantalla de revisión. `confirm` es un alias antiguo y tampoco confirma. |
 | `proposals status <proposalId>` | Estado `ready`, `confirming`, `confirmed`, `failed`, `rejected` o `expired`, con el resultado o el motivo del fallo. |
 | `proposals download <proposalId> --output <archivo>` | Descarga el archivo de una exportación de hoja confirmada. |
 | `exports download <exportId> --output <archivo.tsv>` | Descarga una exportación aprobada. |

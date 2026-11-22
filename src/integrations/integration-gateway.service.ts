@@ -233,7 +233,6 @@ export class IntegrationGatewayService {
     if (isCredentialTool(name)) {
       return this.callCredentialTool(access, headers, name, body);
     }
-    const cli = headers.channel === 'cli';
     const selectors = selectorsOf(name);
     const operation =
       name === SEARCH_KNOWLEDGE
@@ -249,7 +248,7 @@ export class IntegrationGatewayService {
         access.delegation,
         operation,
         body,
-        !cli && this.autoConfirm,
+        this.autoConfirm,
       );
       // Entre la autorización inicial y el resultado pudo cambiar la membresía
       // o revocarse el secreto, en particular durante la búsqueda remota.
@@ -512,6 +511,7 @@ export class IntegrationGatewayService {
         status: confirmed.status,
         summary: confirmed.summary,
         result: confirmed.result,
+        ...(confirmed.error && { error: confirmed.error }),
       };
     }
     return {

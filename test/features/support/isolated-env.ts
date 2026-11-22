@@ -16,6 +16,10 @@ for (const key of [
   delete process.env[key];
 }
 process.env.NODE_ENV = 'test';
+// Producción aplica siempre al momento (plan 05 de cli). La suite parte del
+// flujo con propuesta pendiente; las pruebas de la aplicación inmediata
+// sobrescriben `AI_AUTO_CONFIRM` a `true`.
+process.env.AI_AUTO_CONFIRM = 'false';
 
 // Si una prueba monta `ArtifactsModule` sin sobrescribir `ARTIFACT_STORE_OPTIONS`,
 // escribe en una carpeta temporal y no en `.data/catalog-import`.

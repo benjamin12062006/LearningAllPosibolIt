@@ -1,8 +1,8 @@
 # Recorridos de herramientas
 
-Todas las herramientas actúan sobre el proyecto de la sesión. El esquema de cada una es la fuente de los argumentos, tipos y campos obligatorios. Las escrituras devuelven una propuesta con `proposalId`, `summary` y `reviewPath`; nada cambia hasta que la persona la confirma en la web.
+Todas las herramientas actúan sobre el proyecto de la sesión. El esquema de cada una es la fuente de los argumentos, tipos y campos obligatorios. Las escrituras se aplican en la misma llamada y devuelven `proposalId`, `status: confirmed`, `summary` y `result`.
 
-## Propuestas
+## Estado de un cambio
 
 `get_proposal_status` con `proposalId` devuelve `ready`, `confirming`, `confirmed`, `failed`, `rejected` o `expired`, y el resultado o el motivo del fallo. En `failed`, informa del código y del mensaje.
 
@@ -31,7 +31,7 @@ Un cliente MCP no escribe en el disco de la persona: el archivo vuelve en la res
 
 1. `get_feed_status` devuelve el feed del proyecto y su versión actual. Si no existe, prepara `create_feed`.
 2. Con el `feedId`, consulta `get_feed_configuration`, `get_feed_delivery_status` y `list_feed_versions`. Para ver productos, `list_feed_products` con `feedId` y `versionId`, o con `exportId` para una exportación aprobada.
-3. Para automatizar, prepara `set_feed_source`, `approve_feed_policy` y `set_feed_schedule`. Relee el estado después de cada confirmación.
-4. Para actualizar ahora, prepara `refresh_feed`. Tras confirmar, toma el ID de la actualización de `get_proposal_status` y consulta `get_feed_refresh`.
+3. Para automatizar, prepara `set_feed_source`, `approve_feed_policy` y `set_feed_schedule`. Relee el estado después de cada cambio.
+4. Para actualizar ahora, prepara `refresh_feed`. Toma el ID de la actualización de `get_proposal_status` y consulta `get_feed_refresh`.
 5. Para publicar, `publish_feed` con una exportación aprobada; para recuperar una versión anterior, `republish_feed_version`.
 6. `disable_feed_delivery` retira la URL pública. Crear o rotar la URL de entrega se hace en la web, en **Feed**.

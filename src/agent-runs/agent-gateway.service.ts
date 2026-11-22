@@ -33,9 +33,9 @@ const BEARER = /^Bearer ([A-Za-z0-9_-]{16,256})$/;
  * La pasarela del agente (plan 05, D3–D7): lo único que el servicio de IA
  * puede hacer en Nest. Autentica la credencial de la ejecución, busca la
  * operación en el catálogo, valida sus argumentos como REST y llama al
- * servicio con la identidad de la persona. Las lecturas se ejecutan; las
- * escrituras dejan una propuesta para que la persona la confirme, o se
- * aplican al momento con `AI_AUTO_CONFIRM`.
+ * servicio con la identidad de la persona. Las lecturas se ejecutan y las
+ * escrituras se aplican al momento (`AI_AUTO_CONFIRM`, siempre activo fuera
+ * de las pruebas).
  */
 @Injectable()
 export class AgentGatewayService {

@@ -24,7 +24,7 @@ Una credencial de preparación exige `ai.use`. La propuesta guarda el efecto que
 
 `GET /internal/v1/mcp-integrations/session`, `GET /internal/v1/mcp-integrations/operations` y `POST /internal/v1/mcp-integrations/operations/:name` reciben `Authorization: Bearer <MCP_ADAPTER_SERVICE_TOKEN>` y `X-Ktsu-Delegation: Bearer <credencial MCP>`. El secreto de adaptador se configura en el entorno del proceso. Si Nest está detrás de un proxy público, el proxy bloquea estas rutas y descarta la cabecera de delegación entrante.
 
-El POST recibe `{ callId, mode, arguments }`. `callId` es un UUID. `execute` se usa para lecturas y `prepare` devuelve `{ proposalId, summary, expiresAt, reviewPath }`. La pantalla revisa la propuesta con las rutas humanas de este contrato. `reviewPath` identifica la ruta de revisión en el proyecto de Nuxt y carece de credenciales. Un reintento HTTP de la misma preparación reutiliza su `callId`. Cambiar los argumentos de ese ID da 422.
+El POST recibe `{ callId, mode, arguments }`. `callId` es un UUID. `execute` se usa para lecturas. `prepare` aplica la escritura en la misma llamada, con la misma confirmación que usaba la web (plan guardado, hash, permisos vigentes y credencial activa), y devuelve `{ proposalId, status: 'confirmed', summary, result }`. Desde el 2026-11-21 no hay aprobación humana en ningún canal ([plan 05 de cli](../../docs/plans/feature/cli/05-plan-aplicar-sin-aprobacion.md)); solo la suite de pruebas puede pedir el flujo antiguo con `reviewPath`. Un reintento HTTP de la misma preparación reutiliza su `callId`. Cambiar los argumentos de ese ID da 422.
 
 ## Conexión remota con OAuth
 
@@ -48,5 +48,5 @@ Nest resuelve organización y proyecto desde la credencial, y valida los recurso
 
 - `GET P/integrations/cli-skill` y `GET P/integrations/mcp-skill` devuelven `{ name, files: [{ path, content }] }` a un miembro del proyecto con sesión web. Contienen el texto versionado de la [skill de CLI](../../skills/ktsu-cli/SKILL.md) y de la [skill del MCP remoto](../../skills/ktsu-mcp/SKILL.md).
 - La CLI acepta el token opaco de audiencia `cli` o un access token de Descope con `X-Ktsu-Cli-Project: <uuid>`. `GET /api/v1/integrations/oauth` sirve el issuer, Resource, Client ID y scopes públicos. Las concesiones `cli_oauth` se emiten desde el proyecto y no devuelven un secreto.
-- `GET /api/v1/integrations/proposals/:id` devuelve el estado al titular con la credencial que preparó la propuesta. Solo la web confirma o rechaza. `GET /api/v1/integrations/proposals/:id/file` sirve una exportación de hoja después de confirmarla.
+- `GET /api/v1/integrations/proposals/:id` devuelve el estado al titular con la credencial que preparó la propuesta. Las propuestas antiguas que quedaron pendientes aún se pueden decidir en la web. `GET /api/v1/integrations/proposals/:id/file` sirve una exportación de hoja después de confirmarla.
 - `GET /api/v1/integrations/exports/:exportId/file` y `GET /api/v1/integrations/feeds/:feedId/versions/:versionId/file` sirven TSV del proyecto autorizado. Los códigos del almacén distinguen archivos faltantes y versiones retiradas.

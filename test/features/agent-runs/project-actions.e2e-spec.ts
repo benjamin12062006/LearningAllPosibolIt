@@ -398,4 +398,30 @@ describe('Acciones del proyecto desde la IA y confirmación automática', () => 
       result: { sequence: 3 },
     });
   });
+
+  it('la CLI también aplica en la misma llamada, sin enlace de revisión', async () => {
+    const { body: issued } = await rest()
+      .post(`${base()}/integrations/credentials`)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        label: 'CLI autónoma',
+        audience: 'cli',
+        capabilities: ['read', 'prepare'],
+      })
+      .expect(201);
+    const { body } = await request(app.getHttpServer())
+      .post('/api/v1/integrations/operations/create_workbook')
+      .auth(issued.token, { type: 'bearer' })
+      .send({
+        callId: randomUUID(),
+        mode: 'prepare',
+        arguments: { name: 'Desde la CLI' },
+      })
+      .expect(200);
+    expect(body).toMatchObject({
+      status: 'confirmed',
+      result: { name: 'Desde la CLI' },
+    });
+    expect(body).not.toHaveProperty('reviewPath');
+  });
 });
