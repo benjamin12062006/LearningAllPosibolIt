@@ -178,6 +178,7 @@ E6.2 añade seis rutas de conversaciones y mensajes con equivalente GraphQL. Cob
 | `integrations` | `GET /integrations/exports/:exportId/file` | Credencial CLI | — | CLI | REST | Archivo de exportación |
 | `integrations` | `GET /integrations/feeds/:feedId/versions/:versionId/file` | Credencial CLI | — | CLI | REST | Archivo de versión publicada |
 | `integrations` | `GET …/org/proyecto/integrations/cli-skill` | Sesión web y membresía | — | Integraciones | REST | Árbol de la skill para lectura y copia |
+| `integrations` | `GET …/org/proyecto/integrations/mcp-skill` | Sesión web y membresía | — | Integraciones | REST | Árbol de la skill del MCP remoto para lectura y copia |
 | `integrations` | `GET /integrations/session` | Credencial CLI | — | CLI | REST | Ámbito y capacidades |
 | `integrations` | `GET /integrations/operations` | Credencial CLI | — | CLI | REST | Catálogo autorizado |
 | `integrations` | `POST /integrations/operations/:name` | Credencial CLI | — | CLI | REST | Lecturas y propuestas |
